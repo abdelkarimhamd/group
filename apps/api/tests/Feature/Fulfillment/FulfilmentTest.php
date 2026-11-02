@@ -124,7 +124,9 @@ class FulfilmentTest extends TestCase
     #[Test]
     public function orders_are_shipped_tracked_and_delivered_then_the_campaign_completes(): void
     {
+        $sms = $this->fakeSms();
         [$first, $second] = $this->shippedToWarehouse([2, 1]);
+        $phone = $first->user()->sole()->phone_e164;
         $this->receive([['product_variant_id' => $this->campaign->variants()->firstOrFail()->uuid, 'qty_received' => 3, 'qty_damaged' => 0]])->assertCreated();
         $order = $this->orderOf($first);
 
@@ -138,6 +140,7 @@ class FulfilmentTest extends TestCase
             ->assertJsonCount(1, 'data.events')
             ->json('data');
         $this->assertSame('shipped', $order->refresh()->status->value);
+        $this->assertSame("طلبك {$order->order_number} في الطريق مع SMSA. رقم التتبع: SMSA-0001.", last($sms->to($phone)));
         $this->ship($order)->assertStatus(409)->assertJsonPath('code', 'shipment_exists');
 
         // Tracking updates, one arriving late: the newest sets the status.
@@ -170,6 +173,8 @@ class FulfilmentTest extends TestCase
             ->assertJsonPath('data.delivered_at', $deliveredAt->toIso8601ZuluString());
         $order->refresh();
         $this->assertSame(['delivered', $deliveredAt->toIso8601ZuluString(), $deliveredAt->addDays(7)->toIso8601ZuluString()], [$order->status->value, $order->delivered_at->toIso8601ZuluString(), $order->return_window_ends_at->toIso8601ZuluString()]);
+        $returnBy = $deliveredAt->addDays(7)->setTimezone('Asia/Riyadh')->locale('ar')->translatedFormat('j F, H:i');
+        $this->assertSame("تم توصيل طلبك {$order->order_number}. يمكنك إرجاع المنتجات غير المستخدمة حتى {$returnBy}.", last($sms->to($phone)));
         $this->assertSame('fulfilling', $this->campaign->refresh()->status->value);
         $this->track($shipment['id'], ['status' => 'returned', 'occurred_at' => now()->toIso8601ZuluString()])->assertStatus(409);
 

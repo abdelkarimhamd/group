@@ -10,6 +10,8 @@ use App\Modules\Fulfillment\Enums\ShipmentStatus;
 use App\Modules\Fulfillment\Models\Shipment;
 use App\Modules\Fulfillment\Models\ShipmentEvent;
 use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Notifications\Enums\NotificationTemplate;
+use App\Modules\Notifications\Services\Notifier;
 use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Support\Actor;
@@ -35,6 +37,7 @@ final class Shipments
         private readonly CampaignLifecycle $lifecycle,
         private readonly StatusHistory $history,
         private readonly AuditLogger $audit,
+        private readonly Notifier $notifier,
     ) {}
 
     /**
@@ -78,6 +81,11 @@ final class Shipments
                 'courier' => $shipment->courier,
                 'tracking_number' => $shipment->tracking_number,
             ]);
+            $this->notifier->send($order->user()->firstOrFail(), NotificationTemplate::Shipped, $order, [
+                'order' => $order->order_number,
+                'courier' => $shipment->courier,
+                'tracking' => $shipment->tracking_number,
+            ], "shipped:customer_order:{$order->id}");
 
             return $shipment;
         });
@@ -196,6 +204,10 @@ final class Shipments
         $order->return_window_ends_at = $at->addDays((int) config('groupbuy.orders.return_window_days'));
         $order->save();
         $this->history->record($order, OrderStatus::Shipped, OrderStatus::Delivered, $actor);
+        $this->notifier->send($order->user()->firstOrFail(), NotificationTemplate::Delivered, $order, [
+            'order' => $order->order_number,
+            'return_by_at' => $order->return_window_ends_at->toIso8601ZuluString(),
+        ], "delivered:customer_order:{$order->id}");
         $this->completeCampaignIfSettled($campaign, $actor);
     }
 

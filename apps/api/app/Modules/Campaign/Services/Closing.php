@@ -16,6 +16,7 @@ use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Notifications\Enums\NotificationTemplate;
 use App\Modules\Orders\Services\PurchaseOrders;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
@@ -68,6 +69,7 @@ final class Closing
         private readonly AuditLogger $audit,
         private readonly Holds $holds,
         private readonly PurchaseOrders $purchaseOrders,
+        private readonly CampaignNotices $notices,
     ) {}
 
     /**
@@ -483,6 +485,7 @@ final class Closing
             $participation->cancel_reason = $reason->value;
             $participation->save();
             $this->history->record($participation, ParticipationStatus::Authorized, ParticipationStatus::CaptureFailed, $actor, $reason->value);
+            $this->notices->holdReleased(NotificationTemplate::CaptureFailed, Campaign::query()->findOrFail($participation->campaign_id), $participation);
             ParticipationCaptureFailed::dispatch($participation->id);
         }
 

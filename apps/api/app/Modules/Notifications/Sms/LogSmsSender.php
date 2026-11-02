@@ -18,15 +18,17 @@ final class LogSmsSender implements SmsSender
         private readonly ?string $channel = null,
     ) {}
 
-    public function send(string $to, string $message): void
+    public function send(string $to, string $message): ?string
     {
         if ($this->production) {
             throw new SmsDeliveryFailed('The log SMS driver does not send messages. Set SMS_DRIVER to a real provider in production.');
         }
 
-        Log::channel($this->channel)->info('SMS not sent (log driver)', [
-            'to' => SaudiMobile::mask($to),
-            'message' => $message,
-        ]);
+        $context = ['to' => SaudiMobile::mask($to), 'message' => $message];
+        $this->channel === null
+            ? Log::info('SMS not sent (log driver)', $context)
+            : Log::channel($this->channel)->info('SMS not sent (log driver)', $context);
+
+        return null;
     }
 }

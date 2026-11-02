@@ -16,13 +16,23 @@ final class FakeSmsSender implements SmsSender
 
     public bool $failing = false;
 
-    public function send(string $to, string $message): void
+    public function send(string $to, string $message): ?string
     {
         if ($this->failing) {
             throw new SmsDeliveryFailed('Provider unavailable (fake).');
         }
 
         $this->sent[] = ['to' => $to, 'message' => $message];
+
+        return 'fake-sms-'.count($this->sent);
+    }
+
+    /**
+     * @return list<string> the texts sent to one number, oldest first
+     */
+    public function to(string $phone): array
+    {
+        return array_values(array_map(fn (array $sms) => $sms['message'], array_filter($this->sent, fn (array $sms) => $sms['to'] === $phone)));
     }
 
     /**
