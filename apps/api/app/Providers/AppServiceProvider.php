@@ -30,7 +30,6 @@ use App\Modules\Notifications\Sms\SmsSender;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
 use App\Modules\Orders\Models\SupplierPurchaseOrder;
-use App\Modules\Orders\Services\Invoices;
 use App\Modules\Payments\Gateway\FakeMoyasarGateway;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Models\PaymentAuthorization;
@@ -94,12 +93,6 @@ class AppServiceProvider extends ServiceProvider
 
         // Block migrate:fresh, db:wipe and similar commands against production.
         DB::prohibitDestructiveCommands($this->app->isProduction());
-
-        // Production refuses to start with the placeholder seller of record,
-        // which would go onto every tax invoice.
-        if ($this->app->isProduction()) {
-            Invoices::assertSellerConfigured();
-        }
 
         // Polymorphic columns (audit subjects, token owners, role holders) store
         // these short names, never class names, so classes can move freely.

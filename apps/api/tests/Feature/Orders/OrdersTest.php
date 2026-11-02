@@ -9,7 +9,11 @@ use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
 use App\Modules\Orders\Services\Invoices;
 use App\Modules\Orders\Support\ZatcaQr;
+use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Jobs\CapturePayment;
+use App\Modules\Payments\Models\PaymentTransaction;
+use App\Modules\Payments\Services\Captures;
+use App\Support\Actor;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -17,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\ClosesCampaigns;
+use Tests\Fakes\ScriptedMoyasarGateway;
 use Tests\TestCase;
 
 /**
@@ -179,10 +184,10 @@ class OrdersTest extends TestCase
     }
 
     #[Test]
-    public function production_will_not_start_with_the_placeholder_seller_of_record(): void
+    public function no_money_is_taken_in_production_while_the_seller_of_record_is_a_placeholder(): void
     {
         config(['groupbuy.seller.legal_name_en' => 'Group Buying Co.']);
-        Invoices::assertSellerConfigured();
+        $this->assertNull(Invoices::sellerProblem());
 
         foreach ([
             ['groupbuy.seller.vat_number' => '300000000000003'],
@@ -192,15 +197,27 @@ class OrdersTest extends TestCase
         ] as $placeholder) {
             $configured = config('groupbuy.seller');
             config($placeholder);
-
-            try {
-                Invoices::assertSellerConfigured();
-                $this->fail('Accepted '.json_encode($placeholder));
-            } catch (LogicException $e) {
-                $this->assertStringContainsString('GROUPBUY_SELLER_VAT_NUMBER', $e->getMessage());
-            } finally {
-                config(['groupbuy.seller' => $configured]);
-            }
+            $this->assertStringContainsString('GROUPBUY_SELLER_VAT_NUMBER', (string) Invoices::sellerProblem(), (string) json_encode($placeholder));
+            config(['groupbuy.seller' => $configured]);
         }
+
+        // In production a capture stops before anything is written or sent.
+        $gateway = new ScriptedMoyasarGateway;
+        $this->app->instance(PaymentGateway::class, $gateway);
+        [$join] = $this->paidJoin($this->campaign, 1);
+        config(['groupbuy.seller.vat_number' => '300000000000003']);
+        $this->app['env'] = 'production';
+
+        try {
+            app(Captures::class)->capture($join->latestPayment()->firstOrFail(), Actor::system());
+            $this->fail('A capture was attempted with the placeholder seller.');
+        } catch (LogicException $e) {
+            $this->assertStringContainsString('GROUPBUY_SELLER_VAT_NUMBER', $e->getMessage());
+        } finally {
+            $this->app['env'] = 'testing';
+        }
+
+        $this->assertSame([], $gateway->captures);
+        $this->assertSame(0, PaymentTransaction::query()->where('idempotency_key', 'like', 'capture:%')->count());
     }
 }
