@@ -5,6 +5,7 @@ namespace App\Modules\Orders\Models;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Catalog\Models\ProductVariant;
+use App\Modules\Fulfillment\Models\Shipment;
 use App\Modules\Identity\Models\User;
 use App\Modules\Orders\Enums\InvoiceType;
 use App\Modules\Orders\Enums\OrderStatus;
@@ -51,6 +52,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property-read ProductVariant $variant
  * @property-read Collection<int, Invoice> $invoices
  * @property-read Collection<int, Refund> $refunds
+ * @property-read Shipment|null $shipment
  */
 class CustomerOrder extends Model
 {
@@ -145,6 +147,16 @@ class CustomerOrder extends Model
     public function taxInvoice(): HasOne
     {
         return $this->hasOne(Invoice::class)->where('type', InvoiceType::SimplifiedTaxInvoice);
+    }
+
+    /**
+     * The last mile (fulfilment, E13); one per order in the pilot.
+     *
+     * @return HasOne<Shipment, $this>
+     */
+    public function shipment(): HasOne
+    {
+        return $this->hasOne(Shipment::class);
     }
 
     /**

@@ -2737,8 +2737,12 @@ paths:
       tags: [Admin fulfilment]
       operationId: adminCreateShipment
       summary: Ship an order from the warehouse
+      description: |
+        Hands a `ready_to_ship` order to the courier: the shipment starts
+        `picked_up` with its first tracking event, and the order becomes
+        `shipped`. One shipment per order in the pilot.
       x-epic: E13
-      x-status: mock
+      x-status: live
       x-permission: fulfilment.edit
       security: [{adminToken: []}]
       requestBody:
@@ -2776,9 +2780,16 @@ paths:
       tags: [Admin fulfilment]
       operationId: adminAddShipmentEvent
       summary: Record a tracking update by hand
-      description: For couriers without a tracking API (open question Q11). `delivered` starts the 7-day return window.
+      description: |
+        For couriers without a tracking API (open question Q11). Updates may
+        arrive out of order: the newest sets the shipment's status, and
+        `delivered` always does. `delivered` marks the order delivered and
+        starts its 7-day return window (`groupbuy.orders.return_window_days`);
+        once every order of the campaign is delivered or cancelled, the
+        campaign is `completed`. A delivered, returned or cancelled shipment
+        takes no more updates (409).
       x-epic: E13
-      x-status: mock
+      x-status: live
       x-permission: fulfilment.edit
       security: [{adminToken: []}]
       requestBody:
@@ -2799,6 +2810,7 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
 
   /admin/purchase-orders:
@@ -2948,9 +2960,15 @@ paths:
       tags: [Admin fulfilment]
       operationId: adminRecordInboundReceipt
       summary: Record goods counted at the warehouse
-      description: Marks the purchase order `received`. Missing or damaged units are listed so the admin can pick the orders to refund.
+      description: |
+        Only for a `shipped` purchase order (409 otherwise); marks it
+        `received`. Count every variant on the order once
+        (`receipt_lines_mismatch` otherwise); damaged units are counted among
+        those received. Customer orders the good units cover become
+        `ready_to_ship`, oldest first; any left uncovered by missing or
+        damaged units stay `processing` for the admin to refund.
       x-epic: E13
-      x-status: mock
+      x-status: live
       x-permission: fulfilment.edit
       security: [{adminToken: []}]
       requestBody:
@@ -4245,7 +4263,7 @@ components:
         event_type:
           type: string
           example: price_changed
-          description: For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, supplier_shipped, failed, cancelled.
+          description: For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, supplier_shipped, goods_received, completed, failed, cancelled.
         from_status:
           type: string
           allOf: [{$ref: '#/components/schemas/CampaignStatus'}]
@@ -4541,9 +4559,10 @@ components:
               qty_expected: {type: integer}
               qty_received: {type: integer}
               qty_damaged: {type: integer}
-              qty_missing: {type: integer}
+              qty_missing: {type: integer, description: Expected but not received.}
         photo_urls:
           type: array
+          description: Empty until file storage is connected.
           items: {type: string, format: uri}
 
     ReconciliationRun:

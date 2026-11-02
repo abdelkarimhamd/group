@@ -68,6 +68,8 @@ return [
         'order_not_for_payment' => 'That order was not paid with this payment.',
         'refund_exceeds_captured' => 'The refund is more than what is left of the captured amount.',
         'purchase_order_incomplete' => 'Record the Alibaba order number and the exchange rate first, and a freight tracking reference before shipping.',
+        'shipment_exists' => 'This order already has a shipment.',
+        'receipt_lines_mismatch' => 'Count every variant on the purchase order exactly once, and nothing else.',
         'payment_provider_unavailable' => 'We could not check your payment right now. We will update it shortly.',
     ],
 

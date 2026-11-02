@@ -4,6 +4,7 @@ namespace App\Modules\Orders\Http\Resources;
 
 use App\Modules\Campaign\Http\Resources\CampaignDetailResource;
 use App\Modules\Campaign\Http\Resources\CampaignSummaryResource;
+use App\Modules\Fulfillment\Http\Resources\ShipmentResource;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Support\Money\Money;
 use Illuminate\Http\Request;
@@ -16,7 +17,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class OrderResource extends JsonResource
 {
-    public const RELATIONS = ['campaign.currentTiers', 'campaign.product.images.variant', 'variant', 'payment', 'invoices'];
+    public const RELATIONS = ['campaign.currentTiers', 'campaign.product.images.variant', 'variant', 'payment', 'invoices', 'shipment.events'];
 
     /** The address fields of the `AddressInput` schema, in its order. */
     private const ADDRESS_FIELDS = [
@@ -55,7 +56,7 @@ class OrderResource extends JsonResource
                 'refunded_amount' => Money::sar($payment->refunded_amount_halalas),
             ],
             // Shipments arrive with fulfilment (E13).
-            'shipment' => null,
+            'shipment' => $this->shipment === null ? null : ShipmentResource::make($this->shipment)->resolve($request),
             'invoices' => InvoiceRefResource::collection($this->invoices)->resolve($request),
             'delivered_at' => $this->delivered_at?->toIso8601ZuluString(),
             'return_window_ends_at' => $this->return_window_ends_at?->toIso8601ZuluString(),

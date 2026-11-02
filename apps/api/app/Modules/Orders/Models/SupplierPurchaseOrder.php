@@ -3,6 +3,7 @@
 namespace App\Modules\Orders\Models;
 
 use App\Modules\Campaign\Models\Campaign;
+use App\Modules\Fulfillment\Models\InboundReceipt;
 use App\Modules\Identity\Models\AdminUser;
 use App\Modules\Orders\Enums\PurchaseOrderStatus;
 use App\Modules\Supplier\Models\Supplier;
@@ -49,6 +50,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read SupplierQuotation $quotation
  * @property-read AdminUser|null $placedBy
  * @property-read Collection<int, SupplierPurchaseOrderLine> $lines
+ * @property-read Collection<int, InboundReceipt> $receipts
  */
 class SupplierPurchaseOrder extends Model
 {
@@ -130,6 +132,16 @@ class SupplierPurchaseOrder extends Model
     public function placedBy(): BelongsTo
     {
         return $this->belongsTo(AdminUser::class, 'placed_by_admin_id');
+    }
+
+    /**
+     * Warehouse counts; one in the pilot.
+     *
+     * @return HasMany<InboundReceipt, $this>
+     */
+    public function receipts(): HasMany
+    {
+        return $this->hasMany(InboundReceipt::class)->orderBy('id');
     }
 
     /**

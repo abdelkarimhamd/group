@@ -14,6 +14,8 @@ use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductImage;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Finance\Models\ApprovalRequest;
+use App\Modules\Fulfillment\Models\InboundReceipt;
+use App\Modules\Fulfillment\Models\Shipment;
 use App\Modules\Identity\Admins\AdminAccounts;
 use App\Modules\Identity\Models\Address;
 use App\Modules\Identity\Models\AdminUser;
@@ -109,6 +111,8 @@ class AppServiceProvider extends ServiceProvider
             'invoice' => Invoice::class,
             'refund' => Refund::class,
             'supplier_purchase_order' => SupplierPurchaseOrder::class,
+            'inbound_receipt' => InboundReceipt::class,
+            'shipment' => Shipment::class,
         ]);
 
         // A campaign that starts closing gets its closing job.
