@@ -7,11 +7,13 @@ use InvalidArgumentException;
 
 /**
  * Database-level protection for history tables (audit logs, status history,
- * ledger entries). PostgreSQL triggers reject UPDATE, DELETE and TRUNCATE, so
- * no code path, raw query or console session can rewrite history.
+ * ledger entries). PostgreSQL triggers reject UPDATE, DELETE and TRUNCATE from
+ * the application, raw queries and console sessions that use the app's role.
  *
- * In production the application's database role should also lack UPDATE and
- * DELETE grants on these tables; the triggers are the second line of defence.
+ * The triggers stop mistakes, not a determined table owner: the owner can drop
+ * or disable them. In production, migrations run as the owner role, and the
+ * runtime role gets only SELECT and INSERT on history tables (plus USAGE on
+ * their sequences). Grants are the boundary; the triggers are the safety net.
  */
 final class AppendOnly
 {

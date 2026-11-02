@@ -7,7 +7,6 @@ use App\Support\Actor;
 use App\Support\RequestContext;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 use LogicException;
 
 /**
@@ -27,7 +26,10 @@ final class StatusHistory
         ?string $reason = null,
         ?array $metadata = null,
     ): StatusTransition {
-        if (DB::transactionLevel() === 0) {
+        // Ask the transaction manager rather than DB::transactionLevel(): in tests
+        // RefreshDatabase wraps everything in a transaction the manager ignores,
+        // so this guard behaves the same in tests and in production.
+        if (app('db.transactions')->callbackApplicableTransactions()->isEmpty()) {
             throw new LogicException('Status history must be written inside the transaction that changes the status.');
         }
 

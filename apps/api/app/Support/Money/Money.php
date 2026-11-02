@@ -100,13 +100,20 @@ final class Money implements JsonSerializable
             throw new InvalidArgumentException('VAT rate cannot be negative.');
         }
 
-        $sign = $this->minor < 0 ? -1 : 1;
-        $absolute = abs($this->minor);
+        // abs(PHP_INT_MIN) is a float, so check it like every other operation.
+        $absolute = self::checked(abs($this->minor));
+        $scaled = self::checked($absolute * 10_000);
         $denominator = 10_000 + $rateBp;
 
-        // Integer half-up rounding of absolute * 10000 / denominator.
-        $net = intdiv(2 * self::checked($absolute * 10_000) + $denominator, 2 * $denominator);
-        $net *= $sign;
+        // Round half away from zero using the remainder, so no step can overflow.
+        $net = intdiv($scaled, $denominator);
+        if (2 * ($scaled % $denominator) >= $denominator) {
+            $net++;
+        }
+
+        if ($this->minor < 0) {
+            $net = -$net;
+        }
 
         return [
             'net' => new self($net, $this->currency),
@@ -123,13 +130,13 @@ final class Money implements JsonSerializable
         $decimals = $this->currency->decimals();
         $divisor = 10 ** $decimals;
         $sign = $this->minor < 0 ? '-' : '';
-        $absolute = abs($this->minor);
 
+        // Split before taking the absolute value: abs(PHP_INT_MIN) would be a float.
         return sprintf(
             '%s%d.%0'.$decimals.'d %s',
             $sign,
-            intdiv($absolute, $divisor),
-            $absolute % $divisor,
+            abs(intdiv($this->minor, $divisor)),
+            abs($this->minor % $divisor),
             $this->currency->value,
         );
     }

@@ -66,7 +66,7 @@ class MoneyTest extends TestCase
             'one unit at 69 SAR' => [6_900, 6_000, 900],
             'one halala' => [1, 1, 0],
             'zero' => [0, 0, 0],
-            'exact half rounds up: 23 halalas' => [23, 20, 3],
+            '23 halalas divide exactly' => [23, 20, 3],
             'credit note mirrors the invoice' => [-9_800, -8_522, -1_278],
         ];
     }
@@ -82,12 +82,64 @@ class MoneyTest extends TestCase
         $this->assertSame($total, $split['net']->plus($split['vat'])->minor);
     }
 
+    /**
+     * At a 100% rate the denominator is 20,000, so odd totals land exactly on
+     * a half and show the rounding direction.
+     *
+     * @return array<string, array{int, int, int}>
+     */
+    public static function tieCases(): array
+    {
+        return [
+            'half of 1 rounds away from zero' => [1, 1, 0],
+            'half of 3 rounds away from zero' => [3, 2, 1],
+            'half of -1 rounds away from zero' => [-1, -1, 0],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('tieCases')]
+    public function it_rounds_an_exact_half_away_from_zero(int $total, int $net, int $vat): void
+    {
+        $split = Money::sar($total)->splitVatInclusive(10_000);
+
+        $this->assertSame($net, $split['net']->minor);
+        $this->assertSame($vat, $split['vat']->minor);
+    }
+
+    #[Test]
+    public function the_vat_split_refuses_amounts_it_cannot_scale(): void
+    {
+        $this->expectException(OverflowException::class);
+
+        Money::sar(PHP_INT_MAX)->splitVatInclusive(1_500);
+    }
+
+    #[Test]
+    public function the_vat_split_refuses_the_smallest_integer(): void
+    {
+        $this->expectException(OverflowException::class);
+
+        Money::sar(PHP_INT_MIN)->splitVatInclusive(1_500);
+    }
+
+    #[Test]
+    public function the_vat_split_handles_the_largest_amount_it_accepts(): void
+    {
+        $total = intdiv(PHP_INT_MAX, 10_000);
+        $split = Money::sar($total)->splitVatInclusive(1_500);
+
+        $this->assertSame($total, $split['net']->plus($split['vat'])->minor);
+    }
+
     #[Test]
     public function it_formats_for_display_and_json(): void
     {
         $this->assertSame('49.00 SAR', Money::sar(4_900)->format());
         $this->assertSame('0.05 SAR', Money::sar(5)->format());
         $this->assertSame('-12.34 SAR', Money::sar(-1_234)->format());
+        $this->assertSame('-0.05 SAR', Money::sar(-5)->format());
+        $this->assertSame('-92233720368547758.08 SAR', Money::sar(PHP_INT_MIN)->format());
 
         $this->assertSame(
             ['amount_minor' => 4_900, 'currency' => 'SAR', 'formatted' => '49.00 SAR'],

@@ -44,10 +44,11 @@ A module may call another module's public services, never its tables directly. S
 ## Conventions
 
 - **Money:** columns end in `_halalas` (or `_minor` for supplier currencies) and are `bigint`. Customer prices include 15% VAT.
-- **Time:** `timestamptz` columns in UTC. Convert to `Asia/Riyadh` only for display.
+- **Time:** `timestamptz` columns in UTC, and the database session time zone is pinned to UTC in `config/database.php`. Convert to `Asia/Riyadh` only for display.
+- **Client IP:** set `TRUSTED_PROXIES` to the load balancer's addresses in each deployed environment, or audit logs record the balancer's IP instead of the customer's.
 - **Language:** API messages follow `Accept-Language`, Arabic by default. Customer-facing text columns come in `_ar` and `_en` pairs.
 - **Statuses:** a `varchar` column with a CHECK constraint, mirrored by a PHP enum. Each change writes a `status_transitions` row.
-- **History is append-only:** a trigger rejects UPDATE, DELETE and TRUNCATE on history tables. In production the app's database role should also lack those grants.
+- **History is append-only:** a trigger rejects UPDATE, DELETE and TRUNCATE on history tables. The trigger stops mistakes from the app or a console session, not the table owner, who can drop it. In production, migrations run as an owner role and the app runs as a separate role with only SELECT and INSERT on history tables (plus USAGE on their sequences). The grants are the real boundary.
 - **Business numbers live in `config/groupbuy.php`:** campaign length, hold lifetime, capture cutoff, minimum margin. Each one cites the decision behind it.
 - **Request IDs:** every response has an `X-Request-Id` header. The ID appears in logs, audit records and status history.
 

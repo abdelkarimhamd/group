@@ -81,6 +81,25 @@ class RequestBasicsTest extends TestCase
     }
 
     #[Test]
+    public function the_client_ip_comes_from_a_trusted_proxy(): void
+    {
+        // The test client connects from 127.0.0.1, standing in for the load balancer.
+        config(['trustedproxy.proxies' => '10.0.0.0/8, 127.0.0.1']);
+
+        $this->getJson('/api/v1/health', ['X-Forwarded-For' => '203.0.113.9'])->assertOk();
+
+        $this->assertSame('203.0.113.9', RequestContext::ip());
+    }
+
+    #[Test]
+    public function forwarded_headers_are_ignored_without_a_trusted_proxy(): void
+    {
+        $this->getJson('/api/v1/health', ['X-Forwarded-For' => '203.0.113.9'])->assertOk();
+
+        $this->assertSame('127.0.0.1', RequestContext::ip());
+    }
+
+    #[Test]
     public function unknown_api_routes_answer_in_json(): void
     {
         $this->get('/api/v1/does-not-exist')

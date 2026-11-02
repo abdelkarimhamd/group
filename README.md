@@ -16,10 +16,10 @@ The product rules live in the [MVP build spec](https://claude.ai/artifact/WZRndB
 
 ## Run the API locally
 
-You need PHP 8.3+, Composer, and either Docker or local PostgreSQL 16 and Redis 7.
+You need PHP 8.3+ with the `pdo_pgsql` and `redis` extensions, Composer, and either Docker or local PostgreSQL 16 and Redis 7.
 
 ```bash
-docker compose up -d            # PostgreSQL on 5432, Redis on 6379
+docker compose up -d            # PostgreSQL on 127.0.0.1:5432, Redis on 127.0.0.1:6379
 cd apps/api
 composer install
 cp .env.example .env
@@ -28,7 +28,15 @@ php artisan migrate
 php artisan serve               # http://localhost:8000/api/v1/health
 ```
 
-Tests use a separate `groupbuy_test` database, which Docker creates for you:
+Without Docker, create the role and both databases yourself:
+
+```bash
+sudo -u postgres psql -c "CREATE ROLE groupbuy LOGIN PASSWORD 'groupbuy'"
+sudo -u postgres createdb -O groupbuy groupbuy
+sudo -u postgres createdb -O groupbuy groupbuy_test
+```
+
+Tests use the separate `groupbuy_test` database (Docker creates it for you). The test suite refuses to run against any database whose name does not end in `_test`, because it drops every table between runs:
 
 ```bash
 cd apps/api

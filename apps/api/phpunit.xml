@@ -29,7 +29,7 @@
         <env name="DB_DATABASE" value="groupbuy_test" force="true"/>
         <env name="DB_USERNAME" value="groupbuy"/>
         <env name="DB_PASSWORD" value="groupbuy"/>
-        <env name="DB_URL" value=""/>
+        <env name="DB_URL" value="" force="true"/>
         <env name="REDIS_HOST" value="127.0.0.1"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

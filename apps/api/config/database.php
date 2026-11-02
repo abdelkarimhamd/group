@@ -97,6 +97,9 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Always UTC, whatever the server default, so timestamptz values
+            // and now() agree with the application clock.
+            'timezone' => 'UTC',
         ],
 
         'sqlsrv' => [

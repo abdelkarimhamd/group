@@ -47,14 +47,14 @@ class AppendOnlyHistoryTest extends TestCase
     {
         $subject = $this->subject();
 
-        $transition = app(StatusHistory::class)->record(
+        $transition = DB::transaction(fn () => app(StatusHistory::class)->record(
             $subject,
             'pending_approval',
             'scheduled',
             Actor::system(),
             reason: 'approved',
             metadata: ['tier_version' => 1],
-        );
+        ));
 
         $fresh = StatusTransition::findOrFail($transition->id);
         $this->assertSame($subject->getMorphClass(), $fresh->subject_type);
@@ -64,6 +64,18 @@ class AppendOnlyHistoryTest extends TestCase
         $this->assertSame('system', $fresh->actor_type);
         $this->assertNull($fresh->actor_id);
         $this->assertSame(['tier_version' => 1], $fresh->metadata);
+    }
+
+    #[Test]
+    public function status_history_refuses_to_write_outside_a_transaction(): void
+    {
+        // RefreshDatabase wraps each test in a transaction; the guard must still
+        // see this call as outside any transaction the application opened.
+        $subject = $this->subject();
+
+        $this->expectException(LogicException::class);
+
+        app(StatusHistory::class)->record($subject, null, 'draft', Actor::system());
     }
 
     #[Test]
