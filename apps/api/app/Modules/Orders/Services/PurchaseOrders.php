@@ -109,7 +109,7 @@ final class PurchaseOrders
         ]);
 
         foreach ($lines as $line) {
-            $order->lines()->create($line + ['unit_cost_minor' => $unitCost->minor]);
+            $order->lines()->create($line + ['unit_cost_minor' => $unitCost->minor, 'currency' => $currency]);
         }
 
         $this->history->record($order, null, PurchaseOrderStatus::Draft, $actor, 'captures_completed');
@@ -120,7 +120,9 @@ final class PurchaseOrders
     /**
      * Record the Alibaba order details and freight (PATCH: fields left out
      * keep their value). Changing the currency drops a rate that no longer
-     * applies; the SAR total follows the total and the rate.
+     * applies and needs the total in the new currency; the SAR total follows
+     * the total and the rate. The payment date can be recorded or corrected
+     * once the order is paid.
      *
      * @param  array<string, mixed>  $input
      */
@@ -144,6 +146,19 @@ final class PurchaseOrders
 
             if (array_key_exists('fx_rate_to_sar', $input)) {
                 $order->fx_rate_to_sar = $input['fx_rate_to_sar'];
+            }
+
+            if ($order->currency === Currency::SAR && preg_match('/^0*1(\.0*)?$/', (string) $order->fx_rate_to_sar) !== 1) {
+                throw ApiException::unprocessable('sar_rate_must_be_one', 'fx_rate_to_sar');
+            }
+
+            if (array_key_exists('paid_at', $input)) {
+                if ($order->status->rank() < PurchaseOrderStatus::Paid->rank()) {
+                    throw ApiException::unprocessable('purchase_order_not_paid', 'paid_at');
+                }
+
+                $order->paid_at = CarbonImmutable::parse($input['paid_at']);
+                $this->assertStepOrder($order, 'paid_at');
             }
 
             $order->total_halalas = $order->totalInSar()?->minor;
@@ -196,6 +211,7 @@ final class PurchaseOrders
             $order->setAttribute((string) $to->timestampColumn(), $at);
             $order->placed_at ??= $at;
             $order->placed_by_admin_id ??= $by->id;
+            $this->assertStepOrder($order, 'occurred_at');
             $this->assertComplete($order);
             $order->save();
 
@@ -218,6 +234,31 @@ final class PurchaseOrders
 
             return $order;
         });
+    }
+
+    /**
+     * Step dates never go backwards: each one recorded is no earlier than
+     * the step before it.
+     *
+     * @throws ApiException 422 step_date_out_of_order on $field
+     */
+    private function assertStepOrder(SupplierPurchaseOrder $order, string $field): void
+    {
+        $latest = null;
+
+        foreach (['placed_at', 'supplier_confirmed_at', 'paid_at', 'shipped_at', 'received_at'] as $column) {
+            $at = $order->getAttribute($column);
+
+            if ($at === null) {
+                continue;
+            }
+
+            if ($latest !== null && $at->lessThan($latest)) {
+                throw ApiException::unprocessable('step_date_out_of_order', $field);
+            }
+
+            $latest = $at;
+        }
     }
 
     /**

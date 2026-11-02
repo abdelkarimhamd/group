@@ -37,7 +37,7 @@ class PurchaseOrderResource extends JsonResource
             'lines' => $this->lines->map(fn (SupplierPurchaseOrderLine $line) => [
                 'product_variant' => AdminVariantResource::make($line->variant)->resolve($request),
                 'qty' => $line->qty,
-                'unit_cost' => Money::of($line->unit_cost_minor, $this->currency),
+                'unit_cost' => Money::of($line->unit_cost_minor, $line->currency),
             ])->all(),
             'placed_at' => $this->placed_at?->toIso8601ZuluString(),
             'supplier_confirmed_at' => $this->supplier_confirmed_at?->toIso8601ZuluString(),

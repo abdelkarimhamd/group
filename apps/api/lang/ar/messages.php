@@ -68,6 +68,9 @@ return [
         'order_not_for_payment' => 'هذا الطلب لم يُدفع بعملية الدفع هذه.',
         'refund_exceeds_captured' => 'مبلغ الاسترداد أكبر من المتبقي من المبلغ المحصّل.',
         'purchase_order_incomplete' => 'سجّل رقم طلب علي بابا وسعر الصرف أولًا، ورقم تتبع الشحن قبل الشحن.',
+        'sar_rate_must_be_one' => 'سعر الصرف لطلب بالريال هو 1.',
+        'purchase_order_not_paid' => 'سجّل تاريخ الدفع بعد دفع الطلب.',
+        'step_date_out_of_order' => 'هذا التاريخ أقدم من خطوة مر بها الطلب.',
         'payment_provider_unavailable' => 'تعذّر التحقق من الدفع الآن. سنحدّثه قريبًا.',
     ],
 

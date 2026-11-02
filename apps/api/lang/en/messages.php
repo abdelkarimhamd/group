@@ -68,6 +68,9 @@ return [
         'order_not_for_payment' => 'That order was not paid with this payment.',
         'refund_exceeds_captured' => 'The refund is more than what is left of the captured amount.',
         'purchase_order_incomplete' => 'Record the Alibaba order number and the exchange rate first, and a freight tracking reference before shipping.',
+        'sar_rate_must_be_one' => 'A SAR order has an exchange rate of 1.',
+        'purchase_order_not_paid' => 'Record the payment date once the order is paid.',
+        'step_date_out_of_order' => 'This date is earlier than a step the order already went through.',
         'payment_provider_unavailable' => 'We could not check your payment right now. We will update it shortly.',
     ],
 
