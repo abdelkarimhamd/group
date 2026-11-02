@@ -4,6 +4,9 @@ namespace App\Providers;
 
 use App\Models\AuditLog;
 use App\Models\StatusTransition;
+use App\Modules\Campaign\Models\Campaign;
+use App\Modules\Campaign\Models\CampaignParticipation;
+use App\Modules\Campaign\Services\CampaignQuotationUsage;
 use App\Modules\Catalog\Models\Category;
 use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductImage;
@@ -17,8 +20,12 @@ use App\Modules\Identity\Models\User;
 use App\Modules\Identity\Otp\OtpService;
 use App\Modules\Notifications\Sms\LogSmsSender;
 use App\Modules\Notifications\Sms\SmsSender;
+use App\Modules\Payments\Gateway\FakeMoyasarGateway;
+use App\Modules\Payments\Gateway\PaymentGateway;
+use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierQuotation;
+use App\Modules\Supplier\Services\QuotationUsage;
 use App\Support\Audit\AuditLogger;
 use App\Support\Audit\StatusHistory;
 use App\Support\Phone\SaudiMobile;
@@ -43,6 +50,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(StatusHistory::class);
         $this->app->singleton(OtpService::class);
         $this->app->singleton(AdminAccounts::class);
+
+        $this->app->singleton(PaymentGateway::class, fn ($app) => match ($driver = config('services.moyasar.driver')) {
+            'fake' => new FakeMoyasarGateway($app->isProduction()),
+            default => throw new InvalidArgumentException("Unknown Moyasar driver [{$driver}]."),
+        });
+
+        // The Supplier module asks which campaigns use a quotation; the Campaign module answers.
+        $this->app->bind(QuotationUsage::class, CampaignQuotationUsage::class);
 
         $this->app->singleton(SmsSender::class, fn ($app) => match ($driver = config('services.sms.driver')) {
             'log' => new LogSmsSender($app->isProduction(), config('services.sms.log_channel')),
@@ -78,6 +93,9 @@ class AppServiceProvider extends ServiceProvider
             'product_image' => ProductImage::class,
             'supplier' => Supplier::class,
             'supplier_quotation' => SupplierQuotation::class,
+            'campaign' => Campaign::class,
+            'campaign_participation' => CampaignParticipation::class,
+            'payment_authorization' => PaymentAuthorization::class,
         ]);
 
         $this->configureTokens();
@@ -115,6 +133,10 @@ class AppServiceProvider extends ServiceProvider
 
             return $limits;
         });
+
+        RateLimiter::for('joins', fn (Request $request): Limit => Limit::perMinute(
+            (int) config('groupbuy.campaigns.joins_per_minute'),
+        )->by('user:'.$request->user()?->getAuthIdentifier()));
 
         RateLimiter::for('otp-verify', fn (Request $request): Limit => Limit::perMinute(
             (int) config('groupbuy.auth.otp.verify_per_ip_per_minute'),

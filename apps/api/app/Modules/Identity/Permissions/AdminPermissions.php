@@ -42,7 +42,7 @@ final class AdminPermissions
         'campaigns.approve' => 'Approve a campaign to go live, or send it back',
         'campaigns.override_margin' => 'Approve a campaign below the margin floor, giving a reason',
         'campaigns.extend' => 'Use the one allowed deadline extension',
-        'campaigns.cancel' => 'Ask to cancel a campaign (needs an approval)',
+        'campaigns.cancel' => 'Cancel a campaign before any capture (after one, it needs an approval)',
         'campaigns.close' => 'Record the supplier reconfirmation and below-target decisions',
         'payments.view' => 'See holds, charges, refunds and Moyasar calls',
         'refunds.request' => 'Ask for a refund (needs an approval)',

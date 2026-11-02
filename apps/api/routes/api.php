@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Modules\Campaign\Http\Controllers\AdminCampaignController;
+use App\Modules\Campaign\Http\Controllers\CampaignController;
+use App\Modules\Campaign\Http\Controllers\ParticipationController;
 use App\Modules\Catalog\Http\Controllers\AdminCategoryController;
 use App\Modules\Catalog\Http\Controllers\AdminProductController;
 use App\Modules\Catalog\Http\Controllers\AdminProductImageController;
@@ -26,6 +29,11 @@ Route::prefix('v1')->name('v1.')->group(function () {
     // ------------------------------------------------------------ Catalog (E6)
     Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
 
+    // ------------------------------------------------------------ Campaigns (E7)
+    Route::get('campaigns', [CampaignController::class, 'index'])->name('campaigns.index');
+    Route::get('campaigns/{campaign}', [CampaignController::class, 'show'])->whereUuid('campaign')->name('campaigns.show');
+    Route::get('campaigns/{campaign}/progress', [CampaignController::class, 'progress'])->whereUuid('campaign')->name('campaigns.progress');
+
     // ------------------------------------------------------------ Customers (E5)
     Route::post('auth/otp', [CustomerAuthController::class, 'requestOtp'])
         ->middleware('throttle:otp-request')->name('auth.otp');
@@ -43,6 +51,9 @@ Route::prefix('v1')->name('v1.')->group(function () {
         Route::post('me/addresses', [AddressController::class, 'store'])->name('me.addresses.store');
         Route::patch('me/addresses/{address}', [AddressController::class, 'update'])->whereUuid('address')->name('me.addresses.update');
         Route::delete('me/addresses/{address}', [AddressController::class, 'destroy'])->whereUuid('address')->name('me.addresses.destroy');
+
+        Route::post('campaigns/{campaign}/participations', [ParticipationController::class, 'store'])->whereUuid('campaign')
+            ->middleware('throttle:joins')->name('campaigns.join');
     });
 
     // ------------------------------------------------------------ Admins (E5)
@@ -104,6 +115,24 @@ Route::prefix('v1')->name('v1.')->group(function () {
                 ->can('suppliers.edit')->name('quotations.update');
             Route::post('quotations/{quotation}/attachment', [AdminQuotationController::class, 'attach'])->whereUuid('quotation')
                 ->can('suppliers.edit')->name('quotations.attachment');
+
+            // Campaigns (E7) and pricing (E8)
+            Route::get('campaigns', [AdminCampaignController::class, 'index'])->can('campaigns.view')->name('campaigns.index');
+            Route::post('campaigns', [AdminCampaignController::class, 'store'])->can('campaigns.edit')->name('campaigns.store');
+            Route::prefix('campaigns/{campaign}')->whereUuid('campaign')->name('campaigns.')->group(function () {
+                Route::get('/', [AdminCampaignController::class, 'show'])->can('campaigns.view')->name('show');
+                Route::patch('/', [AdminCampaignController::class, 'update'])->can('campaigns.edit')->name('update');
+                Route::put('tiers', [AdminCampaignController::class, 'replaceTiers'])->can('pricing.edit')->name('tiers');
+                Route::get('margin', [AdminCampaignController::class, 'margin'])->can('campaigns.view')->name('margin');
+                Route::post('submit', [AdminCampaignController::class, 'submit'])->can('campaigns.edit')->name('submit');
+                Route::post('approve', [AdminCampaignController::class, 'approve'])->can('campaigns.approve')->name('approve');
+                Route::post('reject', [AdminCampaignController::class, 'reject'])->can('campaigns.approve')->name('reject');
+                Route::get('extension-window', [AdminCampaignController::class, 'extensionWindow'])->can('campaigns.view')->name('extension-window');
+                Route::post('extend', [AdminCampaignController::class, 'extend'])->can('campaigns.extend')->name('extend');
+                Route::post('cancel', [AdminCampaignController::class, 'cancel'])->can('campaigns.cancel')->name('cancel');
+                Route::get('participations', [AdminCampaignController::class, 'participations'])->can('campaigns.view')->name('participations');
+                Route::get('events', [AdminCampaignController::class, 'events'])->can('campaigns.view')->name('events');
+            });
         });
     });
 });

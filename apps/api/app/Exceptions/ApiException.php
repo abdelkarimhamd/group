@@ -11,7 +11,9 @@ use RuntimeException;
  * a localized `message` for people. Rendered as
  * {"message": "...", "code": "..."} plus `errors` when a field is at fault.
  *
- * Messages come from lang/{ar,en}/messages.php under errors.<code>.
+ * Messages come from lang/{ar,en}/messages.php under errors.<code>. Some
+ * errors carry more for the client to act on, such as the new price after a
+ * price change; that goes in `extra`, merged into the body.
  * These are expected outcomes, so they are not reported as errors; log
  * anything worth knowing where it is thrown.
  */
@@ -19,12 +21,14 @@ class ApiException extends RuntimeException implements ShouldntReport
 {
     /**
      * @param  array<string, string>  $headers
+     * @param  array<string, mixed>  $extra  Merged into the body, after message, code and errors.
      */
     public function __construct(
         public readonly int $status,
         public readonly string $errorCode,
         public readonly ?string $field = null,
         public readonly array $headers = [],
+        public readonly array $extra = [],
     ) {
         parent::__construct($errorCode);
     }
@@ -48,6 +52,6 @@ class ApiException extends RuntimeException implements ShouldntReport
             $body['errors'] = [$this->field => [$message]];
         }
 
-        return response()->json($body, $this->status, $this->headers);
+        return response()->json($body + $this->extra, $this->status, $this->headers);
     }
 }
