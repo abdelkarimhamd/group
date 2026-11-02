@@ -170,6 +170,7 @@ const ar: Translations = {
     rejection_reservation_expired: 'انتهت مدة الحجز قبل اكتمال الدفع.',
     rejection_campaign_closed: 'أُغلقت الصفقة قبل اكتمال الدفع.',
     rejection_participation_cancelled: 'أُلغي هذا الاشتراك.',
+    rejection_duplicate_hold: 'حُجز المبلغ مرة ثانية لنفس الاشتراك، فألغينا الحجز الزائد.',
   },
   fakePay: {
     title: 'دفع تجريبي',
