@@ -224,7 +224,7 @@ class Joins
             $participation = CampaignParticipation::query()->where('uuid', $uuid)->lockForUpdate()->firstOrFail();
 
             $cancellable = in_array($participation->status, [ParticipationStatus::PendingPayment, ParticipationStatus::Authorized], true)
-                && $campaign->status === CampaignStatus::Active
+                && $campaign->isJoinable()
                 && $campaign->deal_confirmed_at === null;
 
             if (! $cancellable) {

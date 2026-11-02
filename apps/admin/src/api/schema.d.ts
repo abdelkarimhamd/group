@@ -364,9 +364,10 @@ export interface paths {
     put?: never;
     /**
      * Cancel a join before close
-     * @description Allowed while `can_cancel` is true: the campaign is `active` and the
-     *     deal is not yet confirmed (proposed rule, open question Q16). The hold
-     *     is released and the units go back on sale.
+     * @description Allowed while `can_cancel` is true: the campaign is `active`, its
+     *     deadline has not passed and the deal is not yet confirmed (proposed
+     *     rule, open question Q16). The hold is released and the units go back
+     *     on sale.
      */
     post: operations['cancelMyParticipation'];
     delete?: never;
@@ -3828,6 +3829,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      429: components['responses']['TooManyRequests'];
     };
   };
   retryParticipationPayment: {

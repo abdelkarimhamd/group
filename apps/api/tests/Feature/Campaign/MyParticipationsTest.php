@@ -126,6 +126,21 @@ class MyParticipationsTest extends TestCase
         $this->assertSame(['authorized', 8], [$join->refresh()->status->value, $this->campaign->refresh()->committed_qty]);
     }
 
+    #[Test]
+    public function nothing_can_be_cancelled_once_the_deadline_passes_even_before_the_campaign_closes(): void
+    {
+        [$join, $token] = $this->paidJoin($this->campaign, 2);
+        $this->travelTo($this->campaign->deadline_at->addSeconds(20));
+        $this->assertSame('active', $this->campaign->refresh()->status->value);
+
+        $this->as($token, 'get', "/api/v1/me/participations/{$join->uuid}")->assertJsonPath('data.can_cancel', false);
+        $this->as($token, 'post', "/api/v1/me/participations/{$join->uuid}/cancel")
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'cancellation_not_allowed');
+
+        $this->assertSame(['authorized', 2], [$join->refresh()->status->value, $this->campaign->refresh()->committed_qty]);
+    }
+
     private function as(string $token, string $method, string $uri): TestResponse
     {
         $this->forgetAuthenticatedUsers();
