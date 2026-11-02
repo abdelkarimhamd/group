@@ -487,7 +487,7 @@ class AdminCampaignsTest extends TestCase
             ->assertStatus(409)
             ->assertJsonPath('code', 'invalid_transition');
 
-        // While capturing, the cancellation waits for a finance approval (CancellingAfterCaptureTest).
+        // While capturing, the cancellation waits for a finance approval (ClosingCampaignsTest).
         $campaign->forceFill(['status' => 'closing', 'closing_step' => 'awaiting_supplier'])->save();
         $this->withToken($this->token)->postJson("/api/v1/admin/campaigns/{$campaign->uuid}/cancel", ['reason' => 'Supplier said no'])
             ->assertOk()
