@@ -464,7 +464,7 @@ paths:
       operationId: listCategories
       summary: Browsing categories
       x-epic: E6
-      x-status: mock
+      x-status: live
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       responses:
@@ -1173,7 +1173,7 @@ paths:
       operationId: adminListCategories
       summary: Categories
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.view
       security: [{adminToken: []}]
       responses:
@@ -1195,7 +1195,7 @@ paths:
       operationId: adminCreateCategory
       summary: Create a category
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1224,8 +1224,12 @@ paths:
       tags: [Admin catalog]
       operationId: adminUpdateCategory
       summary: Update a category
+      description: |
+        Send the whole category; a missing `sort_order` goes back to 0. A
+        category cannot be moved under itself or one of its own subcategories
+        (422 `category_cycle`).
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1246,7 +1250,11 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '422':
+          description: '`category_cycle`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /admin/products:
     get:
@@ -1254,7 +1262,7 @@ paths:
       operationId: adminListProducts
       summary: Products
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.view
       security: [{adminToken: []}]
       parameters:
@@ -1282,13 +1290,14 @@ paths:
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
     post:
       tags: [Admin catalog]
       operationId: adminCreateProduct
       summary: Create a product from an Alibaba listing
       description: Every product needs at least one variant; send them here or add them after.
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1325,7 +1334,7 @@ paths:
       operationId: adminGetProduct
       summary: One product with variants and images
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.view
       security: [{adminToken: []}]
       responses:
@@ -1345,8 +1354,11 @@ paths:
       tags: [Admin catalog]
       operationId: adminUpdateProduct
       summary: Update a product
+      description: |
+        Send the whole product; optional fields left out are cleared. New products start as `draft`; making one
+        `active` needs an active variant (422 `product_needs_variant`).
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1367,7 +1379,11 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '422':
+          description: '`product_needs_variant`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /admin/products/{product_id}/variants:
     parameters:
@@ -1377,7 +1393,7 @@ paths:
       operationId: adminCreateVariant
       summary: Add a variant
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1407,8 +1423,11 @@ paths:
       tags: [Admin catalog]
       operationId: adminUpdateVariant
       summary: Update a variant
+      description: |
+        Send the whole variant; optional fields left out are cleared. The last active variant of an active product
+        cannot be archived (422 `last_active_variant`); archive the product first.
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1429,7 +1448,11 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '422':
+          description: '`last_active_variant`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /admin/products/{product_id}/images:
     parameters:
@@ -1439,7 +1462,7 @@ paths:
       operationId: adminUploadProductImage
       summary: Upload a product photo
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1481,7 +1504,7 @@ paths:
       operationId: adminDeleteProductImage
       summary: Remove a product photo
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: catalog.edit
       security: [{adminToken: []}]
       responses:
@@ -1497,7 +1520,7 @@ paths:
       operationId: adminListSuppliers
       summary: Suppliers
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.view
       security: [{adminToken: []}]
       parameters:
@@ -1521,12 +1544,13 @@ paths:
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
     post:
       tags: [Admin suppliers]
       operationId: adminCreateSupplier
       summary: Add a supplier
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1556,7 +1580,7 @@ paths:
       operationId: adminGetSupplier
       summary: One supplier
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.view
       security: [{adminToken: []}]
       responses:
@@ -1576,9 +1600,14 @@ paths:
       tags: [Admin suppliers]
       operationId: adminUpdateSupplier
       summary: Update a supplier's details
-      description: Approving or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
+      description: |
+        Send the whole supplier; optional fields left out are cleared. Approving
+        or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
+        Changing the store URL or country of an approved supplier sends it back
+        to `prospect`, because the review was of the old store. A blocked
+        supplier stays blocked.
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1614,7 +1643,7 @@ paths:
         people who add suppliers (`suppliers.edit`) and the people who approve
         them (`suppliers.approve`) can be different.
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.approve
       security: [{adminToken: []}]
       requestBody:
@@ -1643,7 +1672,7 @@ paths:
       operationId: adminListQuotations
       summary: Supplier quotations with landed cost
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.view
       security: [{adminToken: []}]
       parameters:
@@ -1673,13 +1702,17 @@ paths:
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
     post:
       tags: [Admin suppliers]
       operationId: adminCreateQuotation
       summary: Record a quotation and its landed cost
-      description: The landed cost per unit is the sum of the breakdown, computed by the server.
+      description: |
+        The server works out the landed cost per unit as the sum of the
+        breakdown. A SAR quote takes `fx_rate_to_sar` 1. A blocked supplier's quotes
+        are refused (422 `supplier_blocked`).
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1699,7 +1732,11 @@ paths:
                   data: {$ref: '#/components/schemas/Quotation'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '422':
+          description: '`supplier_blocked`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /admin/quotations/{quotation_id}:
     parameters:
@@ -1709,7 +1746,7 @@ paths:
       operationId: adminGetQuotation
       summary: One quotation
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.view
       security: [{adminToken: []}]
       responses:
@@ -1729,9 +1766,14 @@ paths:
       tags: [Admin suppliers]
       operationId: adminUpdateQuotation
       summary: Update a quotation
-      description: Refused with 409 `quotation_frozen` once a campaign beyond `draft` uses it.
+      description: |
+        Send the whole quotation. Accepting needs a `valid_until` of today or
+        later in Riyadh (422 `quotation_expired`) and a supplier that is not
+        blocked (422 `supplier_blocked`). Quotes past their date become `expired`
+        overnight; to revive one, send a new date with a status. Refused with 409
+        `quotation_frozen` once a campaign beyond `draft` uses it.
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1758,7 +1800,11 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '422':
+          description: '`quotation_expired`, `supplier_blocked`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /admin/quotations/{quotation_id}/attachment:
     parameters:
@@ -1767,8 +1813,12 @@ paths:
       tags: [Admin suppliers]
       operationId: adminUploadQuotationAttachment
       summary: Attach the quote PDF or screenshot
+      description: |
+        Replaces any earlier file. The file is private: `attachment_url` is a
+        signed link that works for 30 minutes. Refused with 409 `quotation_frozen`
+        once a campaign beyond `draft` uses the quote.
       x-epic: E6
-      x-status: mock
+      x-status: live
       x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
@@ -3750,17 +3800,19 @@ components:
       type: object
       required: [sku, name_ar, name_en]
       properties:
-        sku: {type: string, maxLength: 64}
+        sku: {type: string, maxLength: 64, pattern: '^[A-Za-z0-9._/-]+$'}
         name_ar: {type: string, maxLength: 100}
         name_en: {type: string, maxLength: 100}
         option_values:
           type: object
-          additionalProperties: {type: string}
-        weight_grams: {type: integer, minimum: 0, nullable: true}
-        length_mm: {type: integer, minimum: 0, nullable: true}
-        width_mm: {type: integer, minimum: 0, nullable: true}
-        height_mm: {type: integer, minimum: 0, nullable: true}
-        status: {type: string, enum: [active, archived]}
+          maxProperties: 10
+          description: Keys are lowercase identifiers matching `^[a-z][a-z0-9_]{0,49}$`, such as `color`.
+          additionalProperties: {type: string, maxLength: 100}
+        weight_grams: {type: integer, minimum: 0, maximum: 10000000, nullable: true}
+        length_mm: {type: integer, minimum: 0, maximum: 10000000, nullable: true}
+        width_mm: {type: integer, minimum: 0, maximum: 10000000, nullable: true}
+        height_mm: {type: integer, minimum: 0, maximum: 10000000, nullable: true}
+        status: {type: string, enum: [active, archived], description: 'Defaults to `active` on create; left out on update, it keeps its current value.'}
 
     AdminVariant:
       allOf:

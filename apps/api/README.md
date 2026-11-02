@@ -21,6 +21,14 @@ The full list, including endpoints that so far exist only on the mock server, is
 | GET | `/api/v1/admin/roles` | Roles, their permissions and whether you can grant each (`admins.manage`) |
 | GET, POST | `/api/v1/admin/admins` | List and add admins (`admins.manage`) |
 | PATCH | `/api/v1/admin/admins/{admin_id}` | Change an admin's details, roles or status, or reset their password (`admins.manage`) |
+| GET | `/api/v1/categories` | Browsing categories, named in the request's language |
+| GET, POST, PATCH | `/api/v1/admin/categories` | Categories (`catalog.view`, `catalog.edit`) |
+| GET, POST, PATCH | `/api/v1/admin/products`, `/admin/products/{id}/variants`, `/admin/variants/{id}` | Products from Alibaba listings and their variants |
+| POST, DELETE | `/api/v1/admin/products/{id}/images`, `/admin/product-images/{id}` | Product photos |
+| GET, POST, PATCH | `/api/v1/admin/suppliers` | Suppliers (`suppliers.view`, `suppliers.edit`) |
+| POST | `/api/v1/admin/suppliers/{id}/review` | Approve, block or reopen a supplier (`suppliers.approve`) |
+| GET, POST, PATCH | `/api/v1/admin/quotations` | Supplier quotes with landed cost worked out by the server |
+| POST | `/api/v1/admin/quotations/{id}/attachment` | The quote PDF or screenshot, kept private |
 | GET | `/up` | Laravel's liveness check (not part of the contract) |
 
 ## Console commands
@@ -29,6 +37,9 @@ The full list, including endpoints that so far exist only on the mock server, is
 | --- | --- |
 | `admin:create {email} --name= --phone= --role=*` | Create an admin. Asks for the password. |
 | `admin:update {email} --name= --phone= --role=* --status= --reset-password` | Change an admin. Needed for admins who hold a permission the portal user lacks, such as finance admins. |
+| `quotations:expire` | Mark draft and accepted quotes past their validity date (Riyadh time) as expired. Scheduled daily at 00:05 Riyadh. |
 | `admin:sync-roles` | Write the roles and permissions in `AdminPermissions` to the database. Run on every deploy. |
 
-The scheduler (`php artisan schedule:work` locally, `schedule:run` every minute in production) prunes expired tokens and old sign-in codes daily.
+The scheduler (`php artisan schedule:work` locally, `schedule:run` every minute in production) prunes expired tokens and old sign-in codes and expires old supplier quotes, daily.
+
+Product photos go to the `public` disk; run `php artisan storage:link` once locally so their URLs work. Supplier quote files go to the private `local` disk. Both move to S3-compatible storage at launch (`MEDIA_DISK`, `DOCUMENTS_DISK`).

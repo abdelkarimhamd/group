@@ -4,6 +4,10 @@ namespace App\Providers;
 
 use App\Models\AuditLog;
 use App\Models\StatusTransition;
+use App\Modules\Catalog\Models\Category;
+use App\Modules\Catalog\Models\Product;
+use App\Modules\Catalog\Models\ProductImage;
+use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Identity\Admins\AdminAccounts;
 use App\Modules\Identity\Models\Address;
 use App\Modules\Identity\Models\AdminUser;
@@ -13,6 +17,8 @@ use App\Modules\Identity\Models\User;
 use App\Modules\Identity\Otp\OtpService;
 use App\Modules\Notifications\Sms\LogSmsSender;
 use App\Modules\Notifications\Sms\SmsSender;
+use App\Modules\Supplier\Models\Supplier;
+use App\Modules\Supplier\Models\SupplierQuotation;
 use App\Support\Audit\AuditLogger;
 use App\Support\Audit\StatusHistory;
 use App\Support\Phone\SaudiMobile;
@@ -66,6 +72,12 @@ class AppServiceProvider extends ServiceProvider
             'privacy_consent' => PrivacyConsent::class,
             'audit_log' => AuditLog::class,
             'status_transition' => StatusTransition::class,
+            'category' => Category::class,
+            'product' => Product::class,
+            'product_variant' => ProductVariant::class,
+            'product_image' => ProductImage::class,
+            'supplier' => Supplier::class,
+            'supplier_quotation' => SupplierQuotation::class,
         ]);
 
         $this->configureTokens();

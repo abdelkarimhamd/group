@@ -56,6 +56,16 @@ A module may call another module's public services, never its tables directly. S
 - **SMS** goes through `App\Modules\Notifications\Sms\SmsSender`. The only driver so far, `log`, writes to the log and refuses to run in production, so production sign-in fails with `sms_unavailable` until a provider is configured.
 - **Phone numbers** are stored in E.164. `App\Support\Phone\SaudiMobile` accepts the ways people type them (05…, 9665…, Arabic-Indic digits).
 
+## Catalog and sourcing (E6)
+
+- **Products** come from Alibaba listings and are sold only through campaigns. Each has variants (SKU, options such as `{"color": "black"}`, size and weight) and photos. A product starts as a draft and can go active only with an active variant; its last active variant cannot be archived while it is active. Variant changes lock the product row, so two admins cannot race past that rule.
+- **Categories** nest through `parent_id`. Moves run one at a time (a transaction advisory lock) and refuse loops (`category_cycle`).
+- **Suppliers** start as prospects. Editing needs `suppliers.edit`; the approval decision is a separate endpoint needing `suppliers.approve`, so the person who adds a supplier need not be the one who approves it. Only approved suppliers will back a campaign (E7).
+- **Quotations** record a supplier's quote in its currency (`unit_cost_minor`, `currency`, `fx_rate_to_sar` as an exact decimal) and the landed cost per unit in halalas, broken down into product, freight, customs duty, import VAT, clearance and last mile. The server adds up the total. A quote can be accepted only while `valid_until` has not passed in Riyadh, and `quotations:expire` marks old ones expired every night. Once a campaign past draft relies on a quote it is frozen (`quotation_frozen`); `Supplier\Services\QuotationUsage` answers that, and E7 fills it in.
+- **Files.** Photos are public (`groupbuy.media.disk`); quote files are private (`groupbuy.media.documents_disk`) and reach the portal as 30-minute signed links. Files are written before the database row and removed if the transaction fails; deleted rows lose their files after the commit.
+- **Updates replace.** Admin `PATCH` requests for categories, products, variants, suppliers and quotations send the whole record; optional fields left out are cleared (a category's `sort_order` goes back to 0). A status left out keeps its current value. A unique value taken by another request at the same moment is answered with the same 422 as the form check (`App\Support\Database\UniqueViolation`).
+- **Supplier approval follows the store.** Changing an approved supplier's store URL or country sends it back to `prospect` for a new review; a blocked supplier stays blocked.
+
 ## Shared building blocks (`app/Support`)
 
 | Class | Use it for |
@@ -67,6 +77,7 @@ A module may call another module's public services, never its tables directly. S
 | `RequestContext` | The request ID (logged) and IP and user agent (hidden from logs). It travels into queued jobs. |
 | `Database\AppendOnly` | Add update, delete and truncate triggers to a history table in its migration. |
 | `Phone\SaudiMobile` | Normalize a typed Saudi mobile number to E.164, or reject it. |
+| `Audit\Changes` | The before and after of a model's pending changes, for the audit log. |
 
 API errors are `{"message", "code"}`. Throw `App\Exceptions\ApiException` with a code; its message comes from `lang/{ar,en}/messages.php` under `errors.<code>`. These are expected outcomes and are not reported to the error log. List endpoints page by `id` with `CursorPage`, which also refuses a cursor that was tampered with. Form requests extend `App\Http\Requests\ApiRequest`, which normalizes phone numbers and Arabic-Indic digits before validation.
 

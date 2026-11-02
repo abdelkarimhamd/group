@@ -698,7 +698,12 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a category */
+        /**
+         * Update a category
+         * @description Send the whole category; a missing `sort_order` goes back to 0. A
+         *     category cannot be moved under itself or one of its own subcategories
+         *     (422 `category_cycle`).
+         */
         patch: operations["adminUpdateCategory"];
         trace?: never;
     };
@@ -739,7 +744,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a product */
+        /**
+         * Update a product
+         * @description Send the whole product; optional fields left out are cleared. New products start as `draft`; making one
+         *     `active` needs an active variant (422 `product_needs_variant`).
+         */
         patch: operations["adminUpdateProduct"];
         trace?: never;
     };
@@ -777,7 +786,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a variant */
+        /**
+         * Update a variant
+         * @description Send the whole variant; optional fields left out are cleared. The last active variant of an active product
+         *     cannot be archived (422 `last_active_variant`); archive the product first.
+         */
         patch: operations["adminUpdateVariant"];
         trace?: never;
     };
@@ -855,7 +868,11 @@ export interface paths {
         head?: never;
         /**
          * Update a supplier's details
-         * @description Approving or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
+         * @description Send the whole supplier; optional fields left out are cleared. Approving
+         *     or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
+         *     Changing the store URL or country of an approved supplier sends it back
+         *     to `prospect`, because the review was of the old store. A blocked
+         *     supplier stays blocked.
          */
         patch: operations["adminUpdateSupplier"];
         trace?: never;
@@ -897,7 +914,9 @@ export interface paths {
         put?: never;
         /**
          * Record a quotation and its landed cost
-         * @description The landed cost per unit is the sum of the breakdown, computed by the server.
+         * @description The server works out the landed cost per unit as the sum of the
+         *     breakdown. A SAR quote takes `fx_rate_to_sar` 1. A blocked supplier's quotes
+         *     are refused (422 `supplier_blocked`).
          */
         post: operations["adminCreateQuotation"];
         delete?: never;
@@ -924,7 +943,11 @@ export interface paths {
         head?: never;
         /**
          * Update a quotation
-         * @description Refused with 409 `quotation_frozen` once a campaign beyond `draft` uses it.
+         * @description Send the whole quotation. Accepting needs a `valid_until` of today or
+         *     later in Riyadh (422 `quotation_expired`) and a supplier that is not
+         *     blocked (422 `supplier_blocked`). Quotes past their date become `expired`
+         *     overnight; to revive one, send a new date with a status. Refused with 409
+         *     `quotation_frozen` once a campaign beyond `draft` uses it.
          */
         patch: operations["adminUpdateQuotation"];
         trace?: never;
@@ -940,7 +963,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Attach the quote PDF or screenshot */
+        /**
+         * Attach the quote PDF or screenshot
+         * @description Replaces any earlier file. The file is private: `attachment_url` is a
+         *     signed link that works for 30 minutes. Refused with 409 `quotation_frozen`
+         *     once a campaign beyond `draft` uses the quote.
+         */
         post: operations["adminUploadQuotationAttachment"];
         delete?: never;
         options?: never;
@@ -2194,6 +2222,7 @@ export interface components {
             sku: string;
             name_ar: string;
             name_en: string;
+            /** @description Keys are lowercase identifiers matching `^[a-z][a-z0-9_]{0,49}$`, such as `color`. */
             option_values?: {
                 [key: string]: string;
             };
@@ -2201,7 +2230,10 @@ export interface components {
             length_mm?: number | null;
             width_mm?: number | null;
             height_mm?: number | null;
-            /** @enum {string} */
+            /**
+             * @description Defaults to `active` on create; left out on update, it keeps its current value.
+             * @enum {string}
+             */
             status?: "active" | "archived";
         };
         AdminVariant: {
@@ -4167,7 +4199,15 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationFailed"];
+            /** @description `category_cycle`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
         };
     };
     adminListProducts: {
@@ -4200,6 +4240,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     adminCreateProduct: {
@@ -4289,7 +4330,15 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationFailed"];
+            /** @description `product_needs_variant`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
         };
     };
     adminCreateVariant: {
@@ -4353,7 +4402,15 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationFailed"];
+            /** @description `last_active_variant`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
         };
     };
     adminUploadProductImage: {
@@ -4450,6 +4507,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     adminCreateSupplier: {
@@ -4602,6 +4660,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     adminCreateQuotation: {
@@ -4630,7 +4689,15 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
-            422: components["responses"]["ValidationFailed"];
+            /** @description `supplier_blocked`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
         };
     };
     adminGetQuotation: {
@@ -4693,7 +4760,15 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            422: components["responses"]["ValidationFailed"];
+            /** @description `quotation_expired`, `supplier_blocked`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
         };
     };
     adminUploadQuotationAttachment: {
