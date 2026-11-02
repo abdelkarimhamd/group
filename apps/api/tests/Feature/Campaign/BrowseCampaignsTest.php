@@ -7,6 +7,8 @@ use App\Modules\Catalog\Models\Category;
 use App\Modules\Catalog\Models\Product;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Pagination\Cursor;
+use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\InteractsWithCampaigns;
 use Tests\TestCase;
@@ -92,6 +94,37 @@ class BrowseCampaignsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.campaign_id', $campaign->uuid)
             ->assertJsonPath('data.remaining_qty', 200);
+    }
+
+    #[Test]
+    public function cached_progress_reads_back_whole_from_a_serializing_store(): void
+    {
+        // Redis and the database store serialize; the plain array store used by tests does not.
+        config(['cache.stores.array.serialize' => true]);
+        Cache::forgetDriver('array');
+        $campaign = Campaign::factory()->active()->withTiers()->create();
+
+        foreach ([1, 2] as $read) {
+            $this->getJson("/api/v1/campaigns/{$campaign->uuid}/progress")
+                ->assertOk()
+                ->assertJsonPath('data.current_unit_price.amount_minor', 12000)
+                ->assertJsonPath('data.current_unit_price.currency', 'SAR');
+        }
+    }
+
+    #[Test]
+    public function a_cursor_with_a_broken_timestamp_is_refused(): void
+    {
+        $campaign = Campaign::factory()->active()->withTiers()->create();
+
+        foreach (['not a date', '2026-13-45T00:00:00Z', '2026-11-09T25:00:00Z'] as $deadline) {
+            $cursor = (new Cursor(['deadline_at' => $deadline, 'id' => $campaign->id]))->encode();
+
+            $this->getJson('/api/v1/campaigns?cursor='.$cursor)->assertUnprocessable()->assertJsonValidationErrors('cursor');
+        }
+
+        $cursor = (new Cursor(['deadline_at' => $campaign->deadline_at->format('Y-m-d\TH:i:s.u\Z'), 'id' => $campaign->id]))->encode();
+        $this->getJson('/api/v1/campaigns?cursor='.$cursor)->assertOk();
     }
 
     #[Test]

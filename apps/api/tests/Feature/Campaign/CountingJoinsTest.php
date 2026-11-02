@@ -2,14 +2,20 @@
 
 namespace Tests\Feature\Campaign;
 
+use App\Models\StatusTransition;
 use App\Modules\Campaign\Events\CampaignClosingStarted;
 use App\Modules\Campaign\Events\CampaignDealConfirmed;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignEvent;
+use App\Modules\Campaign\Services\CampaignLifecycle;
+use App\Modules\Campaign\Services\Joins;
 use App\Modules\Payments\Models\PaymentTransaction;
+use App\Support\Actor;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\InteractsWithCampaigns;
 use Tests\TestCase;
@@ -49,9 +55,34 @@ class CountingJoinsTest extends TestCase
         $this->assertSame(3, $joined->committed_qty_after);
         $this->assertSame($participation->uuid, $joined->payload['participation_id']);
 
-        // Authorizing the same join again changes nothing.
-        $this->assertFalse($this->authorizeHold($participation));
+        // The same hold reported again changes nothing, and is not voided.
+        $this->assertTrue($this->authorizeHold($participation));
         $this->assertSame(3, $campaign->refresh()->committed_qty);
+        $this->assertSame('authorized', $participation->latestPayment->status->value);
+        $this->assertSame(0, PaymentTransaction::count());
+
+        // Counting a join that already counts is a no-op too.
+        $this->assertTrue(DB::transaction(fn () => app(Joins::class)->commitAuthorized($participation, Actor::system())));
+        $this->assertSame(1, CampaignEvent::where('event_type', 'joined')->count());
+    }
+
+    #[Test]
+    public function reaching_a_new_tier_is_recorded_even_at_the_same_price(): void
+    {
+        $campaign = Campaign::factory()->active()->withTiers([
+            ['min_qty' => 1, 'max_qty' => 2, 'unit_price_halalas' => 12000],
+            ['min_qty' => 3, 'max_qty' => 5, 'unit_price_halalas' => 12000],
+        ])->create(['min_target_qty' => 5, 'max_qty' => 5]);
+        [, $token, $address] = $this->customerReadyToJoin();
+
+        $this->authorizeHold($this->joinAs($token, $campaign, $address, ['quantity' => 1]));
+        $this->assertSame(0, CampaignEvent::where('event_type', 'price_changed')->count());
+
+        // The second unit fills the first tier, so the next buyer is in the second.
+        $this->authorizeHold($this->joinAs($token, $campaign, $address, ['quantity' => 1]));
+
+        $tier = CampaignEvent::where('event_type', 'price_changed')->sole();
+        $this->assertSame([12000, 12000, 3, 2], [$tier->payload['from_unit_price_halalas'], $tier->payload['to_unit_price_halalas'], $tier->payload['tier']['min_qty'], $tier->committed_qty_after]);
     }
 
     #[Test]
@@ -122,6 +153,41 @@ class CountingJoinsTest extends TestCase
     }
 
     #[Test]
+    public function a_late_payment_that_fills_the_campaign_while_settling_does_not_close_it_again(): void
+    {
+        Event::fake([CampaignClosingStarted::class]);
+        $campaign = Campaign::factory()->active()->withTiers([['min_qty' => 1, 'max_qty' => 3, 'unit_price_halalas' => 12000]])->create(['min_target_qty' => 1, 'max_qty' => 3]);
+        [, $token, $address] = $this->customerReadyToJoin();
+        $this->authorizeHold($this->joinAs($token, $campaign, $address, ['quantity' => 2]));
+        $this->travelTo($campaign->deadline_at->subMinutes(5));
+        $late = $this->joinAs($token, $campaign, $address, ['quantity' => 1]);
+
+        $this->travelTo($campaign->deadline_at);
+        $this->artisan('campaigns:tick')->assertSuccessful();
+        $this->travel(3)->minutes();
+        $this->assertTrue($this->authorizeHold($late));
+
+        $campaign->refresh();
+        $this->assertSame(['closing', 'deadline', 'settling_joins', 3, 0], [
+            $campaign->status->value, $campaign->close_reason->value, $campaign->closing_step->value, $campaign->committed_qty, $campaign->reserved_qty,
+        ]);
+        $this->assertTrue($campaign->closed_at->equalTo($campaign->deadline_at));
+        $this->assertSame(['closed'], $campaign->events()->whereIn('event_type', ['max_reached', 'closed'])->pluck('event_type')->all());
+        Event::assertDispatchedTimes(CampaignClosingStarted::class, 1);
+    }
+
+    #[Test]
+    public function only_an_active_campaign_starts_closing(): void
+    {
+        $campaign = Campaign::factory()->active()->create();
+        $campaign->forceFill(['status' => 'closing', 'closing_step' => 'settling_joins', 'close_reason' => 'deadline', 'closed_at' => now()])->save();
+
+        $this->expectException(LogicException::class);
+
+        DB::transaction(fn () => app(CampaignLifecycle::class)->enterClosing($campaign, Actor::system()));
+    }
+
+    #[Test]
     public function a_payment_that_arrives_after_its_reservation_expired_is_voided(): void
     {
         $campaign = Campaign::factory()->active()->create();
@@ -131,12 +197,21 @@ class CountingJoinsTest extends TestCase
         $this->travel(16)->minutes();
         $this->artisan('campaigns:tick')->assertSuccessful();
 
+        $released = $participation->latestPayment;
         $this->assertFalse($this->authorizeHold($participation));
 
         $this->assertSame([0, 0], [$campaign->refresh()->committed_qty, $campaign->reserved_qty]);
+
+        // The released payment stays failed; the late hold has a row of its own and is voided.
+        $this->assertSame(['failed', 'reservation_expired'], [$released->refresh()->status->value, $released->rejection_reason->value]);
         $payment = $participation->refresh()->latestPayment;
-        $this->assertSame('voided', $payment->status->value);
+        $this->assertNotSame($released->id, $payment->id);
+        $this->assertSame(['voided', 'reservation_expired'], [$payment->status->value, $payment->rejection_reason->value]);
         $this->assertSame('void:'.$payment->uuid, PaymentTransaction::sole()->idempotency_key);
+        $this->assertSame(
+            [[null, 'pending_authorization'], ['pending_authorization', 'failed'], [null, 'pending_authorization'], ['pending_authorization', 'authorized'], ['authorized', 'voided']],
+            StatusTransition::query()->where('subject_type', $payment->getMorphClass())->orderBy('id')->get()->map(fn ($t) => [$t->from_status, $t->to_status])->all(),
+        );
     }
 
     #[Test]

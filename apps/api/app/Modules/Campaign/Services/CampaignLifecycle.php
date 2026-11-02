@@ -13,6 +13,7 @@ use App\Modules\Campaign\Events\CampaignProgressChanged;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignPriceTier;
 use App\Modules\Catalog\Enums\ProductStatus;
+use App\Modules\Catalog\Enums\VariantStatus;
 use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Identity\Models\AdminUser;
@@ -299,6 +300,10 @@ class CampaignLifecycle
      */
     public function enterClosing(Campaign $campaign, Actor $actor): void
     {
+        if ($campaign->status !== CampaignStatus::Active) {
+            throw new LogicException("Campaign {$campaign->id} is {$campaign->status->value}; only an active campaign starts closing.");
+        }
+
         $reason = $campaign->committed_qty >= $campaign->max_qty ? CloseReason::MaxReached : CloseReason::Deadline;
         $campaign->close_reason = $reason;
         $campaign->closing_step = ClosingStep::SettlingJoins;
@@ -502,7 +507,7 @@ class CampaignLifecycle
     /**
      * Checks a campaign can go to (or be approved from) review: valid tiers,
      * a recorded landed cost, an approved supplier, a usable quote and an
-     * active product.
+     * active product whose chosen variants are all active.
      */
     private function assertReady(Campaign $campaign): void
     {
@@ -524,6 +529,10 @@ class CampaignLifecycle
 
         if ($campaign->product->status !== ProductStatus::Active) {
             throw ApiException::unprocessable('product_not_active', 'product_id');
+        }
+
+        if ($campaign->variants()->where('product_variants.status', '!=', VariantStatus::Active)->exists()) {
+            throw ApiException::unprocessable('variant_not_active', 'product_variant_ids');
         }
     }
 
@@ -560,6 +569,10 @@ class CampaignLifecycle
 
         if (count($variantIds) !== count(array_unique($input['product_variant_ids']))) {
             throw ApiException::unprocessable('variant_not_in_product', 'product_variant_ids');
+        }
+
+        if (ProductVariant::query()->whereIn('id', $variantIds)->where('status', '!=', VariantStatus::Active)->exists()) {
+            throw ApiException::unprocessable('variant_not_active', 'product_variant_ids');
         }
 
         // A quote for one variant cannot price the others.

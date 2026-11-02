@@ -2,6 +2,7 @@
 
 namespace Tests\Concerns;
 
+use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Services\Joins;
@@ -77,6 +78,10 @@ trait InteractsWithCampaigns
      * one transaction and in the lock order campaign, participation,
      * payment: record the authorization, then count the units. A join that
      * can no longer count gets its hold voided after commit.
+     *
+     * Payment statuses only move forward: the same hold reported again
+     * changes nothing, and a hold that arrives after its payment row was
+     * settled (the join ended) is recorded on a row of its own.
      */
     protected function authorizeHold(CampaignParticipation $participation): bool
     {
@@ -84,7 +89,21 @@ trait InteractsWithCampaigns
             Campaign::query()->whereKey($participation->campaign_id)->lockForUpdate()->firstOrFail();
             $participation = CampaignParticipation::query()->whereKey($participation->id)->lockForUpdate()->firstOrFail();
             $payment = PaymentAuthorization::query()->where('participation_id', $participation->id)->latest('id')->lockForUpdate()->firstOrFail();
-            $from = $payment->status;
+
+            if ($payment->status === PaymentStatus::Authorized) {
+                return $participation->status === ParticipationStatus::Authorized;
+            }
+
+            if ($payment->status !== PaymentStatus::PendingAuthorization) {
+                $payment = PaymentAuthorization::create([
+                    'participation_id' => $participation->id,
+                    'authorized_amount_halalas' => $participation->hold_amount_halalas,
+                    'currency' => 'SAR',
+                    'status' => PaymentStatus::PendingAuthorization,
+                    'expires_at' => now()->addDays((int) config('groupbuy.payments.hold_lifetime_days')),
+                ]);
+                app(StatusHistory::class)->record($payment, null, PaymentStatus::PendingAuthorization, Actor::system(), 'late_hold');
+            }
 
             $payment->forceFill([
                 'status' => PaymentStatus::Authorized,
@@ -95,12 +114,17 @@ trait InteractsWithCampaigns
                 'authorized_at' => now(),
                 'provider_status' => 'authorized',
             ])->save();
-            app(StatusHistory::class)->record($payment, $from, PaymentStatus::Authorized, Actor::system());
+            app(StatusHistory::class)->record($payment, PaymentStatus::PendingAuthorization, PaymentStatus::Authorized, Actor::system());
 
             $counted = app(Joins::class)->commitAuthorized($participation, Actor::system());
 
             if (! $counted) {
-                app(Holds::class)->release($payment, RejectionReason::CampaignClosed, Actor::system());
+                $reason = match ($participation->refresh()->status) {
+                    ParticipationStatus::ReservationExpired, ParticipationStatus::PaymentFailed => RejectionReason::ReservationExpired,
+                    ParticipationStatus::Cancelled => RejectionReason::ParticipationCancelled,
+                    default => RejectionReason::CampaignClosed,
+                };
+                app(Holds::class)->release($payment, $reason, Actor::system());
             }
 
             return $counted;
