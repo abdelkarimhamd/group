@@ -55,4 +55,43 @@ return [
         'expiry_alert_days' => 3,
     ],
 
+    'auth' => [
+        // Sign-in codes sent by SMS, for customers and for admins' second step.
+        'otp' => [
+            'length' => 6,
+            'ttl_minutes' => 5,
+            // Wrong codes allowed before the code is spent.
+            'max_attempts' => 5,
+            // Minimum wait before another code can go to the same number.
+            'resend_seconds' => 60,
+            // Codes per phone number and per IP address, per hour.
+            'per_phone_per_hour' => 5,
+            'per_ip_per_hour' => 20,
+            // Code checks per IP address, per minute.
+            'verify_per_ip_per_minute' => 30,
+            // Old challenges (they hold IP addresses) are deleted after this.
+            'prune_after_days' => 30,
+        ],
+
+        // Admin password step: attempts per email and IP address, and per IP
+        // address alone, in each window.
+        'admin_login' => [
+            'per_email_and_ip' => 5,
+            'per_ip' => 20,
+            'window_minutes' => 15,
+        ],
+
+        // How long a sign-in lasts before the person must sign in again.
+        'customer_token_days' => 90,
+        'admin_token_hours' => 12,
+    ],
+
+    'account' => [
+        // Customers must accept this privacy policy version (PDPL) before joining
+        // a campaign. Bump it when the policy changes; everyone is asked again.
+        'privacy_policy_version' => '2026-11',
+
+        'max_addresses' => 20,
+    ],
+
 ];

@@ -24,9 +24,17 @@ cd apps/api
 composer install
 cp .env.example .env
 php artisan key:generate
-php artisan migrate
+php artisan migrate --seed       # --seed writes the admin roles and permissions
 php artisan serve               # http://localhost:8000/api/v1/health
 ```
+
+Sign-in codes are written to `storage/logs/laravel.log` instead of being texted (`SMS_DRIVER=log`) until an SMS provider is chosen. To use the admin portal, create an admin; the command asks for a password:
+
+```bash
+php artisan admin:create you@example.com --name="Your Name" --phone=05XXXXXXXX --role=super_admin
+```
+
+On every deploy, run `php artisan admin:sync-roles` after migrating so the roles match `AdminPermissions`.
 
 Without Docker, create the role and both databases yourself:
 

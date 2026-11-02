@@ -27,7 +27,10 @@ info:
       `{"data": [...], "meta": {"next_cursor": ..., "per_page": ...}}`; pass
       `cursor` to get the next page. `/health` is unwrapped.
     - **Errors.** `{"message": "...", "code": "..."}`, plus `errors` (field to
-      messages) on 422. `message` is localized; branch on `code`.
+      messages) on 422. `message` is localized; branch on `code`. Every endpoint
+      may return `unauthenticated` (401), `forbidden` (403), `not_found` (404),
+      `validation_failed` (422) and `too_many_requests` (429, with `Retry-After`);
+      endpoint-specific codes are listed with each response.
     - **Tracing.** Every response has `X-Request-Id`. Send your own (8-64 of
       `A-Z a-z 0-9 . _ -`) to correlate client and server logs.
 
@@ -140,9 +143,11 @@ paths:
       summary: Send a sign-in code by SMS
       description: |
         Starts sign-in or sign-up. Sends a 6-digit code that expires after
-        5 minutes. Limited per phone number and per IP; a 429 says when to retry.
+        5 minutes. One code per number per minute, 5 per number per hour and
+        20 per IP per hour; a 429 says when to retry. An earlier code stays
+        valid until it expires, so a slow SMS still works after a resend.
       x-epic: E5
-      x-status: mock
+      x-status: live
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -166,6 +171,11 @@ paths:
                   data: {$ref: '#/components/schemas/OtpChallenge'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503':
+          description: '`sms_unavailable`: the code could not be sent. Try again in a few minutes.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
 
   /auth/otp/verify:
     post:
@@ -177,7 +187,7 @@ paths:
         `Authorization: Bearer <token>`. After 5 wrong codes the challenge is
         spent and a new code is needed.
       x-epic: E5
-      x-status: mock
+      x-status: live
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -208,7 +218,8 @@ paths:
         '422':
           description: |
             Wrong or expired code (`code`: `otp_invalid`, `otp_expired`,
-            `otp_attempts_exhausted`), or invalid input.
+            `otp_attempts_exhausted`), a suspended account (`account_blocked`),
+            or invalid input.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
@@ -219,8 +230,9 @@ paths:
       tags: [Auth]
       operationId: logout
       summary: Revoke the current token
+      description: Other devices stay signed in. Tokens otherwise last 90 days.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '204': {description: Signed out.}
@@ -233,7 +245,7 @@ paths:
       operationId: getMe
       summary: The signed-in customer
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '200':
@@ -251,7 +263,7 @@ paths:
       operationId: updateMe
       summary: Update name, email or language
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       requestBody:
         required: true
@@ -285,9 +297,10 @@ paths:
       description: |
         Required before the first join. Stores the policy version and the time.
         Call again when `User.privacy_consent.policy_version` is older than
-        `current_privacy_policy_version`.
+        `current_privacy_policy_version`. Accepting the same version twice is
+        harmless.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       requestBody:
         required: true
@@ -309,7 +322,11 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/User'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '422':
+          description: '`privacy_policy_outdated` when `policy_version` is not the current version, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /me/addresses:
     get:
@@ -317,7 +334,7 @@ paths:
       operationId: listAddresses
       summary: Saved delivery addresses
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '200':
@@ -336,8 +353,9 @@ paths:
       tags: [Account]
       operationId: createAddress
       summary: Add a delivery address
+      description: The first address becomes the default. Sending `is_default` true makes the new address the default instead of the old one. Up to 20 addresses.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       requestBody:
         required: true
@@ -355,7 +373,11 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/Address'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '422':
+          description: '`address_limit_reached`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /me/addresses/{address_id}:
     parameters:
@@ -364,9 +386,12 @@ paths:
       tags: [Account]
       operationId: updateAddress
       summary: Change a delivery address
-      description: Orders keep a copy of the address they were shipped to, so editing never changes past orders.
+      description: |
+        Send the whole address. Leaving out `is_default` keeps the address's
+        current default setting. Orders keep a copy of the address they were
+        shipped to, so editing never changes past orders.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       requestBody:
         required: true
@@ -390,8 +415,9 @@ paths:
       tags: [Account]
       operationId: deleteAddress
       summary: Remove a delivery address
+      description: If it was the default, the most recently added remaining address becomes the default.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '204': {description: Removed.}
@@ -844,9 +870,11 @@ paths:
       tags: [Admin auth]
       operationId: adminLogin
       summary: Admin sign-in, step 1 of 2
-      description: Checks email and password, then sends a code to the admin's phone.
+      description: |
+        Checks email and password, then sends a code to the admin's phone.
+        Limited to 5 attempts per email and IP, and 20 per IP, every 15 minutes.
       x-epic: E5
-      x-status: mock
+      x-status: live
       requestBody:
         required: true
         content:
@@ -868,19 +896,25 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/OtpChallenge'}
         '422':
-          description: '`invalid_credentials` or `account_blocked`.'
+          description: '`invalid_credentials` or `account_blocked`. `account_blocked` is only returned after a correct password.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503':
+          description: '`sms_unavailable`: the code could not be sent. Try again in a few minutes.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
 
   /admin/auth/verify:
     post:
       tags: [Admin auth]
       operationId: adminVerify
       summary: Admin sign-in, step 2 of 2
+      description: Returns a token that lasts 12 hours. After 5 wrong codes, start again from step 1.
       x-epic: E5
-      x-status: mock
+      x-status: live
       requestBody:
         required: true
         content:
@@ -902,7 +936,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/AdminSession'}
         '422':
-          description: '`otp_invalid`, `otp_expired` or `otp_attempts_exhausted`.'
+          description: '`otp_invalid`, `otp_expired`, `otp_attempts_exhausted`, or `account_blocked` if the admin was blocked after step 1.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
@@ -914,7 +948,7 @@ paths:
       operationId: adminLogout
       summary: Revoke the admin token
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{adminToken: []}]
       responses:
         '204': {description: Signed out.}
@@ -927,7 +961,7 @@ paths:
       summary: The signed-in admin, with roles and permissions
       description: The portal hides actions the admin lacks permission for; the API enforces them anyway.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{adminToken: []}]
       responses:
         '200':

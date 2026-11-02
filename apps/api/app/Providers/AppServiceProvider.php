@@ -2,13 +2,31 @@
 
 namespace App\Providers;
 
+use App\Models\AuditLog;
+use App\Models\StatusTransition;
+use App\Modules\Identity\Models\Address;
+use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Identity\Models\OtpChallenge;
+use App\Modules\Identity\Models\PrivacyConsent;
+use App\Modules\Identity\Models\User;
+use App\Modules\Identity\Otp\OtpService;
+use App\Modules\Notifications\Sms\LogSmsSender;
+use App\Modules\Notifications\Sms\SmsSender;
 use App\Support\Audit\AuditLogger;
 use App\Support\Audit\StatusHistory;
+use App\Support\Phone\SaudiMobile;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use InvalidArgumentException;
+use Laravel\Sanctum\PersonalAccessToken;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -16,6 +34,12 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(AuditLogger::class);
         $this->app->singleton(StatusHistory::class);
+        $this->app->singleton(OtpService::class);
+
+        $this->app->singleton(SmsSender::class, fn ($app) => match ($driver = config('services.sms.driver')) {
+            'log' => new LogSmsSender($app->isProduction(), config('services.sms.log_channel')),
+            default => throw new InvalidArgumentException("Unknown SMS driver [{$driver}]."),
+        });
     }
 
     public function boot(): void
@@ -29,5 +53,67 @@ class AppServiceProvider extends ServiceProvider
 
         // Block migrate:fresh, db:wipe and similar commands against production.
         DB::prohibitDestructiveCommands($this->app->isProduction());
+
+        // Polymorphic columns (audit subjects, token owners, role holders) store
+        // these short names, never class names, so classes can move freely.
+        Relation::enforceMorphMap([
+            'user' => User::class,
+            'admin_user' => AdminUser::class,
+            'address' => Address::class,
+            'otp_challenge' => OtpChallenge::class,
+            'privacy_consent' => PrivacyConsent::class,
+            'audit_log' => AuditLog::class,
+            'status_transition' => StatusTransition::class,
+        ]);
+
+        $this->configureTokens();
+        $this->configureRateLimits();
+    }
+
+    /**
+     * A blocked or anonymized account's tokens stop working at once, before
+     * they expire. Which guard accepts which model is set in config/auth.php.
+     */
+    private function configureTokens(): void
+    {
+        Sanctum::authenticateAccessTokensUsing(
+            fn (PersonalAccessToken $token, bool $isValid): bool => $isValid
+                && ($token->tokenable instanceof User || $token->tokenable instanceof AdminUser)
+                && $token->tokenable->isActive(),
+        );
+    }
+
+    /**
+     * Limits in front of sign-in. Numbers come from config('groupbuy.auth').
+     * A 429 carries Retry-After.
+     */
+    private function configureRateLimits(): void
+    {
+        RateLimiter::for('otp-request', function (Request $request): array {
+            $otp = config('groupbuy.auth.otp');
+            $limits = [Limit::perHour((int) $otp['per_ip_per_hour'])->by('ip:'.$request->ip())];
+
+            // Phone limits only apply to valid numbers, so typos get a 422, not a 429.
+            if (($phone = SaudiMobile::normalize($request->input('phone'))) !== null) {
+                $limits[] = Limit::perSecond(1, (int) $otp['resend_seconds'])->by('resend:'.$phone);
+                $limits[] = Limit::perHour((int) $otp['per_phone_per_hour'])->by('phone:'.$phone);
+            }
+
+            return $limits;
+        });
+
+        RateLimiter::for('otp-verify', fn (Request $request): Limit => Limit::perMinute(
+            (int) config('groupbuy.auth.otp.verify_per_ip_per_minute'),
+        )->by('ip:'.$request->ip()));
+
+        RateLimiter::for('admin-login', function (Request $request): array {
+            $config = config('groupbuy.auth.admin_login');
+            $email = is_string($email = $request->input('email')) ? mb_strtolower(trim($email)) : '';
+
+            return [
+                Limit::perMinutes((int) $config['window_minutes'], (int) $config['per_email_and_ip'])->by('email-ip:'.$email.'|'.$request->ip()),
+                Limit::perMinutes((int) $config['window_minutes'], (int) $config['per_ip'])->by('ip:'.$request->ip()),
+            ];
+        });
     }
 }

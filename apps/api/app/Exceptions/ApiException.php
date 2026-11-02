@@ -1,0 +1,50 @@
+<?php
+
+namespace App\Exceptions;
+
+use Illuminate\Http\JsonResponse;
+use RuntimeException;
+
+/**
+ * An expected API failure with a stable `code` for clients to branch on and
+ * a localized `message` for people. Rendered as
+ * {"message": "...", "code": "..."} plus `errors` when a field is at fault.
+ *
+ * Messages come from lang/{ar,en}/messages.php under errors.<code>.
+ */
+class ApiException extends RuntimeException
+{
+    /**
+     * @param  array<string, string>  $headers
+     */
+    public function __construct(
+        public readonly int $status,
+        public readonly string $errorCode,
+        public readonly ?string $field = null,
+        public readonly array $headers = [],
+    ) {
+        parent::__construct($errorCode);
+    }
+
+    public static function unprocessable(string $code, ?string $field = null): self
+    {
+        return new self(422, $code, $field);
+    }
+
+    public static function unavailable(string $code): self
+    {
+        return new self(503, $code);
+    }
+
+    public function render(): JsonResponse
+    {
+        $message = __('messages.errors.'.$this->errorCode);
+        $body = ['message' => $message, 'code' => $this->errorCode];
+
+        if ($this->field !== null) {
+            $body['errors'] = [$this->field => [$message]];
+        }
+
+        return response()->json($body, $this->status, $this->headers);
+    }
+}

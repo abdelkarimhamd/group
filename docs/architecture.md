@@ -39,6 +39,17 @@ Business code is grouped by domain under `apps/api/app/Modules/<Domain>`, added 
 
 A module may call another module's public services, never its tables directly. Shared building blocks live in `app/Support`.
 
+## Identity and sign-in (E5)
+
+- **Two kinds of account, kept apart.** Customers are `users`; staff are `admin_users`. Each has its own Sanctum guard (`customer`, `admin`), and a guard accepts only its own model's tokens, so a customer token is refused on admin routes and the reverse. There are no sessions or cookies: every client sends `Authorization: Bearer`.
+- **Customers** sign in with a Saudi mobile number and a 6-digit SMS code. The first sign-in creates the account. Tokens last 90 days, one per device.
+- **Admins** sign in with email and password, then an SMS code to their phone. Only the code step issues a token, which lasts 12 hours. Sign-ins and sign-outs are audited.
+- **Codes** are stored as an HMAC bound to the challenge ID, expire after 5 minutes, and are spent after 5 wrong tries. Rate limits (per number, per IP, per email) are in `config/groupbuy.php` under `auth`.
+- **Blocking** an account stops its tokens on the next request, before they expire.
+- **Roles and permissions** use spatie/laravel-permission on the `admin` guard. `App\Modules\Identity\Permissions\AdminPermissions` is the source of truth; `admin:sync-roles` writes it to the database. Endpoints check permissions, never role names. Releasing or adjusting money (`approvals.decide`, `refunds.approve`, `ledger.adjust`) belongs to finance alone, not to `super_admin`.
+- **SMS** goes through `App\Modules\Notifications\Sms\SmsSender`. The only driver so far, `log`, writes to the log and refuses to run in production, so production sign-in fails with `sms_unavailable` until a provider is configured.
+- **Phone numbers** are stored in E.164. `App\Support\Phone\SaudiMobile` accepts the ways people type them (05…, 9665…, Arabic-Indic digits).
+
 ## Shared building blocks (`app/Support`)
 
 | Class | Use it for |
@@ -49,13 +60,16 @@ A module may call another module's public services, never its tables directly. S
 | `Audit\StatusHistory` | Record each status change, inside the same transaction as the change. |
 | `RequestContext` | The request ID (logged) and IP and user agent (hidden from logs). It travels into queued jobs. |
 | `Database\AppendOnly` | Add update, delete and truncate triggers to a history table in its migration. |
+| `Phone\SaudiMobile` | Normalize a typed Saudi mobile number to E.164, or reject it. |
+
+API errors are `{"message", "code"}`. Throw `App\Exceptions\ApiException` with a code; its message comes from `lang/{ar,en}/messages.php` under `errors.<code>`. Form requests extend `App\Http\Requests\ApiRequest`, which normalizes phone numbers and Arabic-Indic digits before validation.
 
 ## Conventions
 
 - **Money:** columns end in `_halalas` (or `_minor` for supplier currencies) and are `bigint`. Customer prices include 15% VAT.
 - **Time:** `timestamptz` columns in UTC, and the database session time zone is pinned to UTC in `config/database.php`. Convert to `Asia/Riyadh` only for display.
 - **Client IP:** set `TRUSTED_PROXIES` to the load balancer's addresses in each deployed environment, or audit logs record the balancer's IP instead of the customer's.
-- **Language:** API messages follow `Accept-Language`, Arabic by default. Customer-facing text columns come in `_ar` and `_en` pairs.
+- **Language:** API messages follow `Accept-Language`, Arabic by default. Customer-facing text columns come in `_ar` and `_en` pairs. Models live in their module and are stored in polymorphic columns by short names (`user`, `admin_user`, …) from the morph map in `AppServiceProvider`; add new models there.
 - **Statuses:** a `varchar` column with a CHECK constraint, mirrored by a PHP enum. Each change writes a `status_transitions` row.
 - **History is append-only:** a trigger rejects UPDATE, DELETE and TRUNCATE on history tables. The trigger stops mistakes from the app or a console session, not the table owner, who can drop it. In production, migrations run as an owner role and the app runs as a separate role with only SELECT and INSERT on history tables (plus USAGE on their sequences). The grants are the real boundary.
 - **Business numbers live in `config/groupbuy.php`:** campaign length, hold lifetime, capture cutoff, minimum margin. Each one cites the decision behind it.

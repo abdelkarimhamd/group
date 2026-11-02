@@ -37,7 +37,9 @@ return [
     |
     */
 
-    'guard' => ['web'],
+    // Bearer tokens only. No session or cookie authentication: the website,
+    // admin portal and mobile app all send `Authorization: Bearer`.
+    'guard' => [],
 
     /*
     |--------------------------------------------------------------------------
@@ -50,6 +52,8 @@ return [
     |
     */
 
+    // Each token gets its own expires_at when it is issued (see
+    // config/groupbuy.php: auth.customer_token_days, auth.admin_token_hours).
     'expiration' => null,
 
     /*
