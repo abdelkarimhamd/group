@@ -4,6 +4,7 @@ use App\Modules\Campaign\Console\CampaignTickCommand;
 use App\Modules\Campaign\Console\SweepClosingCommand;
 use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Payments\Console\ExpireHoldsCommand;
+use App\Modules\Payments\Console\RequeueWebhooksCommand;
 use App\Modules\Supplier\Console\ExpireQuotationsCommand;
 use Illuminate\Support\Facades\Schedule;
 
@@ -26,3 +27,6 @@ Schedule::command(SweepClosingCommand::class)->everyFiveMinutes()->withoutOverla
 
 // Card holds past their 14-day expiry become expired; Moyasar never reports it.
 Schedule::command(ExpireHoldsCommand::class)->hourly()->withoutOverlapping()->onOneServer();
+
+// Verified Moyasar webhooks that were stored but never processed are queued again.
+Schedule::command(RequeueWebhooksCommand::class)->everyFiveMinutes()->withoutOverlapping()->onOneServer();

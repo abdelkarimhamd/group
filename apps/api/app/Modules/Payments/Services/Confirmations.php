@@ -87,21 +87,24 @@ class Confirmations
     /**
      * Before reservations expire, ask the provider about the ones whose
      * payment it has already told us about but that are not settled yet, so
-     * a hold that went through is counted instead of voided. Returns how
-     * many were checked.
+     * a hold that went through is counted instead of voided (one found later
+     * is voided as an orphan). Returns how many were checked.
      */
-    public function checkExpiringReservations(?CarbonImmutable $now = null, int $limit = 100): int
+    public function checkExpiringReservations(?CarbonImmutable $now = null, int $limit = Joins::EXPIRY_BATCH): int
     {
         $now ??= CarbonImmutable::now();
+        // The same reservations, in the same order and number, as
+        // Joins::expireReservations() given the same time, so none expires unchecked.
         $due = PaymentAuthorization::query()
             ->where('status', PaymentStatus::PendingAuthorization)
             ->whereNotNull('provider_payment_id')
             ->whereIn('participation_id', CampaignParticipation::query()
                 ->select('id')
                 ->where('status', ParticipationStatus::PendingPayment)
-                ->where('reservation_expires_at', '<=', $now))
+                ->where('reservation_expires_at', '<=', $now)
+                ->orderBy('id')
+                ->limit($limit))
             ->orderBy('id')
-            ->limit($limit)
             ->get();
 
         foreach ($due as $payment) {
@@ -155,6 +158,16 @@ class Confirmations
                 $payment->rejection_reason = RejectionReason::Declined;
                 $payment->save();
                 $this->history->record($payment, PaymentStatus::PendingAuthorization, PaymentStatus::Failed, $actor, RejectionReason::Declined->value);
+
+                return $payment;
+            }
+
+            if (self::holdsMoney($remote) && $payment->status === PaymentStatus::Failed) {
+                // An orphan hold: the row was settled (declined, or released
+                // with its join) before Moyasar finished. Void it at once.
+                $payment->save();
+                Log::warning('payments.orphan_hold', ['payment' => $payment->uuid, 'provider_payment_id' => $remote->id]);
+                VoidPayment::dispatch($payment->id, $actor->type->value, $actor->id)->afterCommit();
 
                 return $payment;
             }
@@ -230,14 +243,28 @@ class Confirmations
      */
     private function acceptOrVoid(CampaignParticipation $participation, PaymentAuthorization $payment, ProviderPayment $remote, Actor $actor): void
     {
-        $problem = $this->problemWith($payment, $remote)
-            ?? ($participation->status === ParticipationStatus::PendingPayment ? null : self::reasonFor($participation->status));
+        // A join that no longer waits for payment decides the reason first,
+        // so a second hold for a join that already counts is always a
+        // duplicate_hold and never replaces the join's payment.
+        $problem = $participation->status === ParticipationStatus::PendingPayment
+            ? $this->problemWith($payment, $remote)
+            : self::reasonFor($participation->status);
 
         $payment->status = PaymentStatus::Authorized;
         $payment->authorized_at = CarbonImmutable::now();
         $payment->rejection_reason = $problem;
         $payment->save();
-        $this->history->record($payment, PaymentStatus::PendingAuthorization, PaymentStatus::Authorized, $actor, $problem?->value);
+        // What Moyasar actually held, kept with the change for the record.
+        $this->history->record($payment, PaymentStatus::PendingAuthorization, PaymentStatus::Authorized, $actor, $problem?->value, [
+            'provider' => [
+                'id' => $remote->id,
+                'status' => $remote->status,
+                'amount_halalas' => $remote->amountHalalas,
+                'currency' => $remote->currency,
+                'source_type' => $remote->sourceType,
+                'scheme' => $remote->scheme,
+            ],
+        ]);
 
         if ($problem !== null) {
             VoidPayment::dispatch($payment->id, $actor->type->value, $actor->id)->afterCommit();

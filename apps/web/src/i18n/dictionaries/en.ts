@@ -402,6 +402,7 @@ export const en: Dictionary = {
     continuePayment: "Continue to payment",
     retryPayment: "Try another card",
     retryExpired: "Your reservation expired, so you can't try again.",
+    retryAlreadyPaid: "Your payment already went through, so there is nothing more to pay.",
     retryInProgress: "The previous payment is still being processed. Try again shortly.",
     viewOrder: "View order",
     viewCampaign: "View campaign",

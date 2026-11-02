@@ -33,6 +33,9 @@ use LogicException;
  */
 class Holds
 {
+    /** Statuses a void can end: a hold, one whose capture failed, or an orphan hold on a failed payment. */
+    private const VOIDABLE = [PaymentStatus::Authorized, PaymentStatus::CaptureFailed, PaymentStatus::Failed];
+
     public function __construct(
         private readonly PaymentGateway $gateway,
         private readonly StatusHistory $history,
@@ -158,8 +161,9 @@ class Holds
     }
 
     /**
-     * Void a hold now: an authorized one, or one whose capture failed. Run
-     * from VoidPayment, outside any transaction.
+     * Void a hold now: an authorized one, one whose capture failed, or an
+     * orphan hold Moyasar placed on a payment already failed here. Run from
+     * VoidPayment, outside any transaction.
      *
      * @throws GatewayException when the outcome is unknown; the job retries
      */
@@ -171,7 +175,7 @@ class Holds
 
         $payment->refresh();
 
-        if (! in_array($payment->status, [PaymentStatus::Authorized, PaymentStatus::CaptureFailed], true) || $payment->provider_payment_id === null) {
+        if (! in_array($payment->status, self::VOIDABLE, true) || $payment->provider_payment_id === null) {
             return;
         }
 
@@ -246,7 +250,7 @@ class Holds
                 'completed_at' => now(),
             ])->save();
 
-            if ($succeeded && in_array($locked->status, [PaymentStatus::Authorized, PaymentStatus::CaptureFailed], true)) {
+            if ($succeeded && in_array($locked->status, self::VOIDABLE, true)) {
                 $from = $locked->status;
                 $locked->status = PaymentStatus::Voided;
                 $locked->voided_at = now();

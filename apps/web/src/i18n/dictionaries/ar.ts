@@ -425,6 +425,7 @@ export const ar = {
     continuePayment: "متابعة الدفع",
     retryPayment: "جرّب بطاقة أخرى",
     retryExpired: "انتهت مدة حجز الوحدات، فلا يمكن إعادة المحاولة.",
+    retryAlreadyPaid: "تمت عملية الدفع بالفعل، فلا يلزم دفع أي مبلغ آخر.",
     retryInProgress: "ما زالت عملية الدفع السابقة قيد المعالجة. حاول بعد قليل.",
     viewOrder: "عرض الطلب",
     viewCampaign: "عرض الحملة",

@@ -104,6 +104,28 @@ class AdminPaymentsTest extends TestCase
     }
 
     #[Test]
+    public function filters_sent_in_a_json_body_are_read_like_the_query(): void
+    {
+        $participation = $this->joined();
+        $this->authorizeHold($participation);
+
+        $this->withToken($this->token)->json('GET', '/api/v1/admin/payments', ['expiring_within_days' => 14])
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $participation->latestPayment->uuid);
+    }
+
+    #[Test]
+    public function a_cursor_with_an_impossible_time_zone_is_refused(): void
+    {
+        $cursor = fn (string $at): string => rtrim(strtr(base64_encode(json_encode(['expires_at' => $at, 'id' => 1, '_pointsToNextItems' => true], JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+
+        $this->admin('/api/v1/admin/payments?expiring_within_days=5&cursor='.$cursor('2026-11-10T09:00:00+03:00'))->assertOk();
+        $this->admin('/api/v1/admin/payments?expiring_within_days=5&cursor='.$cursor('2026-11-10T09:00:00+99:00'))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('cursor');
+    }
+
+    #[Test]
     public function one_payment_shows_every_call_made_to_the_provider(): void
     {
         $gateway = new ScriptedMoyasarGateway;

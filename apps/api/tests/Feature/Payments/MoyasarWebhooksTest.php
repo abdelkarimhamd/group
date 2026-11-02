@@ -10,8 +10,11 @@ use App\Modules\Payments\Jobs\ProcessMoyasarWebhook;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\PaymentWebhookEvent;
 use App\Modules\Payments\Services\Confirmations;
+use App\Modules\Payments\Services\MoyasarWebhooks;
 use Carbon\CarbonImmutable;
+use Illuminate\Bus\UniqueLock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -193,16 +196,87 @@ class MoyasarWebhooksTest extends TestCase
     }
 
     #[Test]
-    public function an_event_whose_retries_ran_out_says_so(): void
+    public function an_event_whose_retries_ran_out_says_so_and_is_queued_again(): void
+    {
+        Queue::fake();
+        $this->webhook(['data' => ['id' => 'fake_authorized_'.$this->payment->uuid]])->assertOk();
+        $event = PaymentWebhookEvent::sole();
+
+        // What the worker does when the last try fails: record why, then free the event.
+        $job = new ProcessMoyasarWebhook($event->id);
+        $job->failed(new GatewayException('Moyasar is unreachable.'));
+        (new UniqueLock(Cache::store()))->release($job);
+
+        $this->assertSame('failed: Moyasar is unreachable.', $event->refresh()->processing_error);
+        $this->assertNull($event->processed_at);
+
+        // The sweep waits a few minutes, then queues it again.
+        $this->assertSame(0, app(MoyasarWebhooks::class)->requeueUnprocessed());
+        $this->travel(5)->minutes();
+        $this->assertSame(1, app(MoyasarWebhooks::class)->requeueUnprocessed());
+        Queue::assertPushed(ProcessMoyasarWebhook::class, 2);
+
+        // This time Moyasar answers.
+        (new ProcessMoyasarWebhook($event->id))->handle(app(Confirmations::class));
+        $this->assertSame([null, 'authorized'], [$event->refresh()->processing_error, $this->participation->refresh()->status->value]);
+        $this->assertNotNull($event->processed_at);
+    }
+
+    #[Test]
+    public function a_resent_event_that_was_never_processed_is_queued_again(): void
+    {
+        Queue::fake();
+        $body = ['data' => ['id' => 'fake_authorized_'.$this->payment->uuid]];
+
+        // While the first job still waits, a resend queues nothing more.
+        $this->webhook($body)->assertOk();
+        $this->webhook($body)->assertOk();
+        Queue::assertPushed(ProcessMoyasarWebhook::class, 1);
+        $this->assertSame(1, PaymentWebhookEvent::count());
+
+        // That job was lost (say Redis went down). Once its lock runs out, a resend queues the event again.
+        $this->travel(61)->minutes();
+        $this->webhook($body)->assertOk();
+        Queue::assertPushed(ProcessMoyasarWebhook::class, 2);
+        $this->assertSame(1, PaymentWebhookEvent::count());
+
+        // Once processed, a resend is only a duplicate.
+        (new ProcessMoyasarWebhook(PaymentWebhookEvent::sole()->id))->handle(app(Confirmations::class));
+        $this->webhook($body)->assertOk();
+        Queue::assertPushed(ProcessMoyasarWebhook::class, 2);
+    }
+
+    #[Test]
+    public function old_events_are_not_queued_again(): void
     {
         Queue::fake();
         $this->webhook(['data' => ['id' => 'pay_1']])->assertOk();
+
+        $this->travel(15)->days();
+
+        $this->assertSame(0, app(MoyasarWebhooks::class)->requeueUnprocessed());
+    }
+
+    #[Test]
+    public function a_body_too_big_to_be_an_event_is_refused_and_not_stored(): void
+    {
+        $this->webhook(['data' => ['id' => 'pay_1', 'padding' => str_repeat('x', 70000)]])->assertStatus(413);
+
+        $this->assertSame(0, PaymentWebhookEvent::count());
+    }
+
+    #[Test]
+    public function odd_text_in_a_genuine_event_is_stored_safely(): void
+    {
+        $this->webhook([
+            'type' => str_repeat('حدث', 40),
+            'data' => ['id' => 'fake_authorized_'.$this->payment->uuid, 'description' => "Blender\u{0000} x1"],
+        ])->assertOk();
+
         $event = PaymentWebhookEvent::sole();
-
-        (new ProcessMoyasarWebhook($event->id))->failed(new GatewayException('Moyasar is unreachable.'));
-
-        $this->assertSame('failed: Moyasar is unreachable.', $event->refresh()->processing_error);
-        $this->assertNotNull($event->processed_at);
+        $this->assertSame(64, mb_strlen($event->event_type));
+        $this->assertSame('Blender x1', $event->payload['data']['description']);
+        $this->assertSame('authorized', $this->participation->refresh()->status->value);
     }
 
     /**

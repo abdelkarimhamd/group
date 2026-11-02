@@ -5,6 +5,7 @@ namespace App\Modules\Campaign\Console;
 use App\Modules\Campaign\Services\CampaignLifecycle;
 use App\Modules\Campaign\Services\Joins;
 use App\Modules\Payments\Services\Confirmations;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 
 /**
@@ -24,9 +25,12 @@ final class CampaignTickCommand extends Command
 
     public function handle(CampaignLifecycle $lifecycle, Joins $joins, Confirmations $confirmations): int
     {
-        $activated = $lifecycle->activateDue();
-        $confirmations->checkExpiringReservations();
-        $expired = $joins->expireReservations();
+        // One time for both reservation steps, so every reservation that
+        // expires was checked with the provider first.
+        $now = CarbonImmutable::now();
+        $activated = $lifecycle->activateDue($now);
+        $confirmations->checkExpiringReservations($now);
+        $expired = $joins->expireReservations($now);
         $closing = $lifecycle->closeDue();
 
         $this->info("Started {$activated}, expired {$expired} reservations, closing {$closing}.");

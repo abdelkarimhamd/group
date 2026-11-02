@@ -61,6 +61,11 @@ final class PaymentController extends Controller
             $participation = CampaignParticipation::query()->whereKey($id)->lockForUpdate()->firstOrFail();
             $now = CarbonImmutable::now();
 
+            // The hold went through: there is nothing to pay again.
+            if (in_array($participation->status, [ParticipationStatus::Authorized, ParticipationStatus::Captured], true)) {
+                throw new ApiException(409, 'already_paid');
+            }
+
             if ($participation->status !== ParticipationStatus::PendingPayment || ! $participation->reservation_expires_at->greaterThan($now)) {
                 throw new ApiException(409, 'reservation_expired');
             }

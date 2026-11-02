@@ -26,8 +26,11 @@ final class AdminListPaymentsRequest extends ApiRequest
         ];
     }
 
+    /**
+     * Read the way validated() reads, so the query string and a JSON body agree.
+     */
     public function expiring(): bool
     {
-        return $this->query('expiring_within_days') !== null;
+        return $this->input('expiring_within_days') !== null;
     }
 }
