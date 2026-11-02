@@ -677,6 +677,8 @@ const ar: Translation<typeof en> = {
       campaign_closed: 'أُغلقت الحملة',
       participation_cancelled: 'أُلغي الانضمام',
       duplicate_hold: 'حجز ثانٍ لنفس الانضمام',
+      capture_declined: 'رُفض التحصيل عند الإغلاق',
+      capture_cutoff_passed: 'فات موعد التحصيل',
     },
     authorizedAt: 'تاريخ الحجز',
     capturedAt: 'تاريخ التحصيل',

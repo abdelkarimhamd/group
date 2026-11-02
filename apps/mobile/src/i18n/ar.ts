@@ -171,6 +171,8 @@ const ar: Translations = {
     rejection_campaign_closed: 'أُغلقت الصفقة قبل اكتمال الدفع.',
     rejection_participation_cancelled: 'أُلغي هذا الاشتراك.',
     rejection_duplicate_hold: 'حُجز المبلغ مرة ثانية لنفس الاشتراك، فألغينا الحجز الزائد.',
+    rejection_capture_declined: 'رفض البنك الخصم عند إغلاق الصفقة، فألغينا الحجز.',
+    rejection_capture_cutoff_passed: 'انتهت مهلة الحجز قبل أن نتمكن من الخصم، فألغيناه.',
   },
   fakePay: {
     title: 'دفع تجريبي',

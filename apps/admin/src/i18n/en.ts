@@ -686,6 +686,8 @@ const en = {
       campaign_closed: 'Campaign closed',
       participation_cancelled: 'Join cancelled',
       duplicate_hold: 'Second hold for the same join',
+      capture_declined: 'Capture declined at close',
+      capture_cutoff_passed: 'Capture cutoff passed',
     },
     authorizedAt: 'Held at',
     capturedAt: 'Captured at',

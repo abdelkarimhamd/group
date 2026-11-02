@@ -3577,8 +3577,8 @@ components:
 
     PaymentRejectionReason:
       type: string
-      description: Why a payment was voided or failed on our side.
-      enum: [declined, amount_mismatch, currency_mismatch, method_not_allowed, not_authorize_only, reservation_expired, campaign_closed, participation_cancelled, duplicate_hold]
+      description: Why a payment was voided or failed on our side. `capture_declined` and `capture_cutoff_passed` are holds that could not be captured when the campaign closed (the join was left out and the hold voided).
+      enum: [declined, amount_mismatch, currency_mismatch, method_not_allowed, not_authorize_only, reservation_expired, campaign_closed, participation_cancelled, duplicate_hold, capture_declined, capture_cutoff_passed]
 
     Payment:
       type: object
