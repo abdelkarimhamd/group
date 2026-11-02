@@ -389,8 +389,10 @@ export interface paths {
         /**
          * Try another card after a decline
          * @description Starts a new payment attempt for the same reserved units and hold
-         *     amount. Allowed while the participation is `pending_payment` and its
-         *     reservation has not expired.
+         *     amount. Allowed while the participation is `pending_payment`, its
+         *     reservation has not expired, and the last attempt failed or its hold
+         *     was refused (`rejection_reason` set; that hold is voided). The
+         *     reservation keeps its original expiry.
          */
         post: operations["retryParticipationPayment"];
         delete?: never;
@@ -417,6 +419,12 @@ export interface paths {
          *     only if it is `authorized` for exactly the hold amount in SAR, by an
          *     allowed method, while the reservation is valid. Anything else is voided
          *     and `rejection_reason` says why. Safe to call more than once.
+         *
+         *     A hold that arrives after the join can no longer count it (the
+         *     reservation expired or the campaign moved past settling its joins)
+         *     is voided too. If the form was submitted twice and both holds went
+         *     through, the second is recorded with `duplicate_hold` and voided; it
+         *     never replaces the participation's `payment`.
          */
         post: operations["syncPayment"];
         delete?: never;
@@ -475,9 +483,15 @@ export interface paths {
         put?: never;
         /**
          * Moyasar payment events
-         * @description Called by Moyasar, not by clients. The event is verified as Moyasar
-         *     documents (open question Q5), stored once per event ID, and answered at
-         *     once. A queued job then fetches the payment from Moyasar and applies it.
+         * @description Called by Moyasar, not by clients. The event's `secret_token` must
+         *     match the token set on the webhook in the Moyasar dashboard (open
+         *     question Q5). Every event is stored, with the token redacted; a
+         *     verified event is processed once per event ID and resends are
+         *     ignored, unless the stored event was never processed, which queues
+         *     it again. The answer is immediate: a queued job fetches the payment
+         *     from Moyasar and applies it exactly as the sync endpoint does, never
+         *     trusting the event body. Bodies over 64 KB are refused (413) and not
+         *     stored.
          */
         post: operations["receiveMoyasarWebhook"];
         delete?: never;
@@ -1309,7 +1323,8 @@ export interface paths {
         };
         /**
          * Payment holds and charges
-         * @description `expiring_within_days=3` gives the hold-expiry alert list.
+         * @description Newest first. `expiring_within_days=3` gives the hold-expiry alert
+         *     list: `authorized` holds only, soonest expiry first.
          */
         get: operations["adminListPayments"];
         put?: never;
@@ -1998,7 +2013,7 @@ export interface components {
          * @description Why a payment was voided or failed on our side.
          * @enum {string}
          */
-        PaymentRejectionReason: "declined" | "amount_mismatch" | "currency_mismatch" | "method_not_allowed" | "not_authorize_only" | "reservation_expired" | "campaign_closed" | "participation_cancelled";
+        PaymentRejectionReason: "declined" | "amount_mismatch" | "currency_mismatch" | "method_not_allowed" | "not_authorize_only" | "reservation_expired" | "campaign_closed" | "participation_cancelled" | "duplicate_hold";
         Payment: {
             /** Format: uuid */
             id: string;
@@ -3684,7 +3699,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
-            /** @description `reservation_expired`, or `payment_in_progress` when the previous attempt has not failed. */
+            /** @description `already_paid` when the participation is already `authorized` or `captured`; `reservation_expired` when it is otherwise no longer `pending_payment` or its reservation ran out; or `payment_in_progress` when the previous attempt has neither failed nor been refused. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3693,6 +3708,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            429: components["responses"]["TooManyRequests"];
         };
     };
     syncPayment: {
@@ -3733,13 +3749,23 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
-            /** @description `provider_payment_mismatch`: that Moyasar payment does not belong to this payment. */
+            /** @description `provider_payment_mismatch`: Moyasar has no such payment, or it does not belong to this payment. */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            /** @description `payment_provider_unavailable`: Moyasar could not be reached. Try again shortly; the webhook will also settle it. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -3833,6 +3859,14 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Body too large to be a Moyasar event. Not stored. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            429: components["responses"]["TooManyRequests"];
         };
     };
     adminLogin: {
@@ -5378,6 +5412,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     adminGetPayment: {

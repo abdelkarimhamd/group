@@ -723,10 +723,12 @@ paths:
       summary: Try another card after a decline
       description: |
         Starts a new payment attempt for the same reserved units and hold
-        amount. Allowed while the participation is `pending_payment` and its
-        reservation has not expired.
+        amount. Allowed while the participation is `pending_payment`, its
+        reservation has not expired, and the last attempt failed or its hold
+        was refused (`rejection_reason` set; that hold is voided). The
+        reservation keeps its original expiry.
       x-epic: E9
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '201':
@@ -741,10 +743,11 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409':
-          description: '`reservation_expired`, or `payment_in_progress` when the previous attempt has not failed.'
+          description: '`already_paid` when the participation is already `authorized` or `captured`; `reservation_expired` when it is otherwise no longer `pending_payment` or its reservation ran out; or `payment_in_progress` when the previous attempt has neither failed nor been refused.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
 
   /payments/{payment_id}/sync:
     parameters:
@@ -759,8 +762,14 @@ paths:
         only if it is `authorized` for exactly the hold amount in SAR, by an
         allowed method, while the reservation is valid. Anything else is voided
         and `rejection_reason` says why. Safe to call more than once.
+
+        A hold that arrives after the join can no longer count it (the
+        reservation expired or the campaign moved past settling its joins)
+        is voided too. If the form was submitted twice and both holds went
+        through, the second is recorded with `duplicate_hold` and voided; it
+        never replaces the participation's `payment`.
       x-epic: E9
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
@@ -792,10 +801,16 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422':
-          description: '`provider_payment_mismatch`: that Moyasar payment does not belong to this payment.'
+          description: '`provider_payment_mismatch`: Moyasar has no such payment, or it does not belong to this payment.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503':
+          description: '`payment_provider_unavailable`: Moyasar could not be reached. Try again shortly; the webhook will also settle it.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
 
   # ---------------------------------------------------------------- Orders
   /me/orders:
@@ -858,11 +873,17 @@ paths:
       operationId: receiveMoyasarWebhook
       summary: Moyasar payment events
       description: |
-        Called by Moyasar, not by clients. The event is verified as Moyasar
-        documents (open question Q5), stored once per event ID, and answered at
-        once. A queued job then fetches the payment from Moyasar and applies it.
+        Called by Moyasar, not by clients. The event's `secret_token` must
+        match the token set on the webhook in the Moyasar dashboard (open
+        question Q5). Every event is stored, with the token redacted; a
+        verified event is processed once per event ID and resends are
+        ignored, unless the stored event was never processed, which queues
+        it again. The answer is immediate: a queued job fetches the payment
+        from Moyasar and applies it exactly as the sync endpoint does, never
+        trusting the event body. Bodies over 64 KB are refused (413) and not
+        stored.
       x-epic: E9
-      x-status: mock
+      x-status: live
       requestBody:
         required: true
         content:
@@ -874,6 +895,8 @@ paths:
       responses:
         '200': {description: 'Accepted, or a duplicate that was ignored.'}
         '401': {description: Verification failed. Logged and never processed.}
+        '413': {description: Body too large to be a Moyasar event. Not stored.}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
 
   # ---------------------------------------------------------------- Admin auth
   /admin/auth/login:
@@ -2393,9 +2416,11 @@ paths:
       tags: [Admin payments]
       operationId: adminListPayments
       summary: Payment holds and charges
-      description: '`expiring_within_days=3` gives the hold-expiry alert list.'
+      description: |
+        Newest first. `expiring_within_days=3` gives the hold-expiry alert
+        list: `authorized` holds only, soonest expiry first.
       x-epic: E9
-      x-status: mock
+      x-status: live
       x-permission: payments.view
       security: [{adminToken: []}]
       parameters:
@@ -2426,6 +2451,7 @@ paths:
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
 
   /admin/payments/{payment_id}:
     parameters:
@@ -2435,7 +2461,7 @@ paths:
       operationId: adminGetPayment
       summary: One payment with every provider call
       x-epic: E9
-      x-status: mock
+      x-status: live
       x-permission: payments.view
       security: [{adminToken: []}]
       responses:
@@ -3527,7 +3553,7 @@ components:
     PaymentRejectionReason:
       type: string
       description: Why a payment was voided or failed on our side.
-      enum: [declined, amount_mismatch, currency_mismatch, method_not_allowed, not_authorize_only, reservation_expired, campaign_closed, participation_cancelled]
+      enum: [declined, amount_mismatch, currency_mismatch, method_not_allowed, not_authorize_only, reservation_expired, campaign_closed, participation_cancelled, duplicate_hold]
 
     Payment:
       type: object

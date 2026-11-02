@@ -2,6 +2,7 @@
 
 use App\Modules\Campaign\Console\CampaignTickCommand;
 use App\Modules\Identity\Models\OtpChallenge;
+use App\Modules\Payments\Console\RequeueWebhooksCommand;
 use App\Modules\Supplier\Console\ExpireQuotationsCommand;
 use Illuminate\Support\Facades\Schedule;
 
@@ -17,3 +18,6 @@ Schedule::command(ExpireQuotationsCommand::class)->dailyAt('00:05')->timezone('A
 // Campaigns going live, closing at their deadline, and unpaid reservations
 // expiring. One server at a time, never overlapping itself.
 Schedule::command(CampaignTickCommand::class)->everyMinute()->withoutOverlapping()->onOneServer();
+
+// Verified Moyasar webhooks that were stored but never processed are queued again.
+Schedule::command(RequeueWebhooksCommand::class)->everyFiveMinutes()->withoutOverlapping()->onOneServer();

@@ -76,14 +76,17 @@ final class CursorPage
     }
 
     /**
-     * An ISO 8601 date and time as the paginator writes it, with a real date.
+     * An ISO 8601 date and time as the paginator writes it, with a real date
+     * and a real UTC offset (at most 14 hours).
      */
     private static function isTimestamp(mixed $value): bool
     {
-        if (! is_string($value) || preg_match('/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d{1,6})?(Z|[+-]\d{2}:?\d{2})?$/', $value, $m) !== 1) {
+        if (! is_string($value) || preg_match('/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d{1,6})?(?:Z|[+-](\d{2}):?(\d{2}))?$/', $value, $m) !== 1) {
             return false;
         }
 
-        return checkdate((int) $m[2], (int) $m[3], (int) $m[1]) && (int) $m[4] < 24 && (int) $m[5] < 60 && (int) $m[6] < 60;
+        $offsetOk = ! isset($m[8]) || $m[8] === '' || ((int) $m[8] <= 14 && (int) $m[9] < 60);
+
+        return checkdate((int) $m[2], (int) $m[3], (int) $m[1]) && (int) $m[4] < 24 && (int) $m[5] < 60 && (int) $m[6] < 60 && $offsetOk;
     }
 }

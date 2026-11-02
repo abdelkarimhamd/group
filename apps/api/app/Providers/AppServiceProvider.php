@@ -138,6 +138,14 @@ class AppServiceProvider extends ServiceProvider
             (int) config('groupbuy.campaigns.joins_per_minute'),
         )->by('user:'.$request->user()?->getAuthIdentifier()));
 
+        RateLimiter::for('payment-sync', fn (Request $request): Limit => Limit::perMinute(
+            (int) config('groupbuy.payments.syncs_per_minute'),
+        )->by('user:'.$request->user()?->getAuthIdentifier()));
+
+        RateLimiter::for('webhooks', fn (Request $request): Limit => Limit::perMinute(
+            (int) config('groupbuy.payments.webhooks_per_ip_per_minute'),
+        )->by('ip:'.$request->ip()));
+
         RateLimiter::for('otp-verify', fn (Request $request): Limit => Limit::perMinute(
             (int) config('groupbuy.auth.otp.verify_per_ip_per_minute'),
         )->by('ip:'.$request->ip()));

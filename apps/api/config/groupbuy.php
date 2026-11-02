@@ -80,6 +80,20 @@ return [
 
         // Finance and ops are alerted this many days before a hold expires.
         'expiry_alert_days' => 3,
+
+        // Payment checks after the payment form, per customer per minute.
+        // A customer needs one or two; the limit stops a script hammering Moyasar.
+        'syncs_per_minute' => 20,
+
+        // Webhook requests per sending IP per minute. Moyasar sends one per
+        // payment event; the limit only stops floods of forged events.
+        'webhooks_per_ip_per_minute' => 300,
+
+        // Largest webhook body stored. Moyasar's events are a few kilobytes.
+        'webhook_max_bytes' => 65536,
+
+        // A verified webhook still unprocessed after this long is queued again.
+        'webhook_requeue_after_minutes' => 5,
     ],
 
     'auth' => [

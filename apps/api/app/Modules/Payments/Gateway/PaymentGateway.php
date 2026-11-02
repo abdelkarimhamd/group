@@ -15,7 +15,8 @@ interface PaymentGateway
     /**
      * The payment as the provider sees it now.
      *
-     * @throws GatewayException when the provider cannot be reached or does not know the payment
+     * @throws ProviderPaymentNotFound when the provider has no such payment
+     * @throws GatewayException when the provider cannot be reached
      */
     public function fetch(string $providerPaymentId): ProviderPayment;
 

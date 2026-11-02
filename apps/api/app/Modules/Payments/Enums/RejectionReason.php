@@ -16,4 +16,5 @@ enum RejectionReason: string
     case ReservationExpired = 'reservation_expired';
     case CampaignClosed = 'campaign_closed';
     case ParticipationCancelled = 'participation_cancelled';
+    case DuplicateHold = 'duplicate_hold';
 }
