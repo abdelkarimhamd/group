@@ -986,7 +986,14 @@ export interface paths {
         /** Campaigns in every status */
         get: operations["adminListCampaigns"];
         put?: never;
-        /** Create a draft campaign */
+        /**
+         * Create a draft campaign
+         * @description The quotation must belong to the product, not be rejected or expired,
+         *     and its supplier must not be blocked. A quotation for one variant can
+         *     only price a campaign for that variant. Errors are 422 with codes
+         *     `quotation_not_for_product`, `quotation_not_usable`, `supplier_blocked`,
+         *     `variant_not_in_product` or `quotation_not_for_variants`.
+         */
         post: operations["adminCreateCampaign"];
         delete?: never;
         options?: never;
@@ -1012,7 +1019,10 @@ export interface paths {
         head?: never;
         /**
          * Edit a draft
-         * @description Only in `draft`. Send the `lock_version` you read; a stale one returns 409 `stale_campaign`.
+         * @description Only in `draft`, otherwise 409 `invalid_transition`. Send the
+         *     `lock_version` you read; a stale one returns 409 `stale_campaign`.
+         *     The body replaces the editable fields: an omitted optional field goes
+         *     back to its default. The same 422 checks as create apply.
          */
         patch: operations["adminUpdateCampaign"];
         trace?: never;
@@ -1029,9 +1039,11 @@ export interface paths {
         get?: never;
         /**
          * Save a new tier set
-         * @description Only in `draft`. Each save stores a new full version; old versions are
-         *     kept. Tiers must cover 1 to `max_qty` with no gaps or overlaps, and the
-         *     price must never rise with quantity. `reason` is required from version 2.
+         * @description Only in `draft`. Send the campaign's `lock_version`; a stale one
+         *     returns 409 `stale_campaign`. Each save stores a new full version; old
+         *     versions are kept. Tiers must cover 1 to `max_qty` with no gaps or
+         *     overlaps, and the price must never rise with quantity. `reason` is
+         *     required from version 2.
          */
         put: operations["adminReplaceCampaignTiers"];
         post?: never;
@@ -1052,7 +1064,10 @@ export interface paths {
         };
         /**
          * Margin per tier against the 15% floor
-         * @description What the approval screen shows. Approval is blocked when any tier fails, unless an admin with `campaigns.override_margin` approves with a reason.
+         * @description What the approval screen shows. Approval is blocked when any tier
+         *     fails, unless an admin with `campaigns.override_margin` approves with a
+         *     reason. Before approval the landed cost comes from the quotation; from
+         *     approval on it is the snapshot taken then.
          */
         get: operations["adminGetCampaignMargin"];
         put?: never;
@@ -1095,11 +1110,13 @@ export interface paths {
         put?: never;
         /**
          * Approve and lock the terms
-         * @description Needs `campaigns.approve`. Locks tiers, target and maximum, sets
+         * @description Needs `campaigns.approve`. Re-runs the submit checks, then locks tiers,
+         *     target and maximum, snapshots the landed cost, sets
          *     `deadline_at = starts_at + 7 days` (moving `starts_at` to now if it has
          *     passed), and schedules the campaign. A failing margin check returns 422
          *     `margin_below_floor` unless `override_reason` is sent, which needs
-         *     `campaigns.override_margin`.
+         *     `campaigns.override_margin` (403 without it). When every tier passes,
+         *     `override_reason` is ignored.
          */
         post: operations["adminApproveCampaign"];
         delete?: never;
@@ -1160,8 +1177,9 @@ export interface paths {
         /**
          * Use the one deadline extension
          * @description Allowed once, while `active`, before the deal is confirmed, and only to
-         *     a date at least 3 days before the earliest hold expires. A blocked
-         *     request returns 422 `extension_not_allowed` with the latest allowed date.
+         *     a date at least 3 days before the earliest hold expires (holds still
+         *     waiting for authorization count). A blocked request returns 422
+         *     `extension_not_allowed` with the current `window` in the body.
          */
         post: operations["adminExtendCampaign"];
         delete?: never;
@@ -1183,9 +1201,12 @@ export interface paths {
         put?: never;
         /**
          * Cancel a campaign
-         * @description Before any capture, cancels at once and voids every hold. Once any
-         *     capture succeeded, money must go back, so this opens an approval
-         *     request for a second admin with the finance role (202) instead.
+         * @description Allowed from `draft`, `pending_approval`, `scheduled`, `active`, and
+         *     `closing` before captures start. Cancels at once, releases every join
+         *     and voids every hold. Once any capture succeeded, money must go back,
+         *     so this will open an approval request for a second admin with the
+         *     finance role (202) instead; until that flow ships (E10) it answers 409
+         *     `invalid_transition`.
          */
         post: operations["adminCancelCampaign"];
         delete?: never;
@@ -2481,6 +2502,7 @@ export interface components {
             min_margin_bp: number;
             passes: boolean;
             landed_cost_per_unit: components["schemas"]["Money"];
+            /** @description Per unit, worked out on the highest tier price so it is never understated. */
             payment_fee_estimate: components["schemas"]["Money"];
             delivery_cost_estimate: components["schemas"]["Money"];
             tiers: {
@@ -2573,8 +2595,11 @@ export interface components {
                 code: string;
             };
             provider_payment_id: string | null;
-            /** @enum {string} */
-            source_type: "creditcard" | "applepay";
+            /**
+             * @description Null until Moyasar reports the payment.
+             * @enum {string|null}
+             */
+            source_type: "creditcard" | "applepay" | null;
             /** @enum {string|null} */
             scheme: "mada" | "visa" | "mastercard" | null;
             card_last4: string | null;
@@ -3412,6 +3437,7 @@ export interface operations {
                     };
                 };
             };
+            422: components["responses"]["ValidationFailed"];
         };
     };
     getCampaign: {
@@ -3509,8 +3535,8 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /**
              * @description `price_changed` (body has `current_unit_price`), `sold_out` (not
-             *     enough units left), or `campaign_not_joinable` (not active, or the
-             *     deadline passed).
+             *     enough units left; body has `remaining_qty`), or
+             *     `campaign_not_joinable` (not active, or the deadline passed).
              */
             409: {
                 headers: {
@@ -3522,7 +3548,8 @@ export interface operations {
             };
             /**
              * @description `per_customer_limit_exceeded`, `variant_not_in_campaign`,
-             *     `address_not_found`, or invalid input.
+             *     `address_not_found`, a `client_request_id` already used for another
+             *     campaign, or invalid input.
              */
             422: {
                 headers: {
@@ -4840,6 +4867,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     adminCreateCampaign: {
@@ -4963,7 +4991,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            /** @description `tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `price_rises_with_quantity`, or invalid input. */
+            /** @description `tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`, a missing `reason` from version 2, or invalid input. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -5026,7 +5054,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
-            /** @description `tiers_missing`, `landed_cost_missing` or `supplier_not_approved`. */
+            /** @description `tiers_missing`, a tier error (`tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`), `landed_cost_missing`, `supplier_not_approved`, `quotation_not_usable` or `product_not_active`. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -5060,7 +5088,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
-            /** @description `margin_below_floor` (body includes `margin`), or invalid input. */
+            /** @description `margin_below_floor` (body includes `margin`), one of the submit checks, or invalid input. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -5281,6 +5309,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     adminListCampaignEvents: {
@@ -5313,6 +5342,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     adminListPayments: {

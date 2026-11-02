@@ -75,8 +75,8 @@ export function PaymentDetailPage() {
                 value: (
                   <Ltr>
                     {p.scheme ? t(`payments.schemes.${p.scheme}`) : '—'}
-                    {p.card_last4 ? ` •${p.card_last4}` : ''} (
-                    {t(`payments.sources.${p.source_type}`)})
+                    {p.card_last4 ? ` •${p.card_last4}` : ''}
+                    {p.source_type ? ` (${t(`payments.sources.${p.source_type}`)})` : ''}
                   </Ltr>
                 ),
               },
