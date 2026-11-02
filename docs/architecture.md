@@ -111,6 +111,13 @@ A module may call another module's public services, never its tables directly. S
 - **Operations** find orders by status, campaign, order number or the customer's phone as they type it (`GET /admin/orders`).
 - **Refund requests** (`Payments\Services\Refunds`, `POST /admin/refunds`) lock the payment and refuse more than was captured less what is refunded or already asked for (`refund_exceeds_captured`). A full refund within `void_after_capture_minutes` of the capture is a `void`, anything else a `refund`. Each request gets its idempotency key (`refund:{uuid}`) when it is written and waits as `pending_approval` with a `manual_refund` approval request: support can ask, finance decides. Approving it, sending it to Moyasar and issuing the credit note are E15.
 
+## Supplier purchase orders (E12)
+
+- **One per successful campaign**, created by the closing job in the transaction that moves the campaign to `purchasing` (`Orders\Services\PurchaseOrders::createForCampaign`), whether captures reached the target or an admin chose to proceed below it. A unique `campaign_id` makes a second one impossible. Its lines are the captured units of each variant, at the unit cost and currency the supplier reconfirmed. PO numbers are `PO-{yymm in Riyadh}-NNNN` from a sequence.
+- **Money.** The total is in the supplier's currency. Its SAR value (`total_halalas`, for the ledger) is the total at `fx_rate_to_sar`, converted with `Money::convertTo` (exact decimal rate, integer arithmetic, half away from zero). The rate is the quote's when the order is in the quote's currency and 1 for SAR; otherwise it stays null until an admin records it. Changing the currency drops a rate that no longer applies.
+- **Moving forward.** `PATCH /admin/purchase-orders/{id}` records the Alibaba order number, total, currency, rate and freight. `POST .../status` moves the order to `placed`, `supplier_confirmed`, `paid` or `shipped`; steps may be skipped, never undone, and only while the campaign is `purchasing`. Past `draft` the order needs its Alibaba order number and a SAR value, and once shipped a freight tracking reference (`purchase_order_incomplete`; CHECK constraints back this up). Leaving `draft` moves the campaign's confirmed customer orders to `processing`; `shipped` moves the campaign to `fulfilling` (a `supplier_shipped` campaign event). Lock order: campaign, purchase order, customer orders. Every step writes a status history row (with the admin's note) and an audit entry.
+- **Later.** `received` comes from the warehouse receipt (E13). `cancelled` comes with a campaign cancelled through finance (E15), which refunds every capture.
+
 ## Shared building blocks (`app/Support`)
 
 | Class | Use it for |

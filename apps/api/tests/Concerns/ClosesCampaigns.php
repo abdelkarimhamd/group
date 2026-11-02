@@ -45,9 +45,10 @@ trait ClosesCampaigns
     /**
      * A customer joins at the price shown now and their hold goes through.
      *
+     * @param  array<string, mixed>  $overrides  join input, such as another product_variant_id
      * @return array{CampaignParticipation, string} The join and the customer's token.
      */
-    protected function paidJoin(Campaign $campaign, int $qty, ?string $token = null, mixed $address = null): array
+    protected function paidJoin(Campaign $campaign, int $qty, ?string $token = null, mixed $address = null, array $overrides = []): array
     {
         if ($token === null) {
             [, $token, $address] = $this->customerReadyToJoin();
@@ -55,22 +56,25 @@ trait ClosesCampaigns
 
         $campaign->refresh();
         $price = $campaign->tierSet()->current($campaign->committed_qty)->unitPriceHalalas;
-        $participation = $this->joinAs($token, $campaign, $address, ['quantity' => $qty, 'shown_unit_price_halalas' => $price]);
+        $participation = $this->joinAs($token, $campaign, $address, $overrides + ['quantity' => $qty, 'shown_unit_price_halalas' => $price]);
         $this->assertTrue($this->authorizeHold($participation));
 
         return [$participation->refresh(), $token];
     }
 
     /**
-     * Past the deadline, the supplier confirms and every hold is captured.
+     * Past the deadline, the supplier confirms (40.00 USD a unit unless
+     * $decision says otherwise) and every hold is captured.
+     *
+     * @param  array<string, mixed>  $decision
      */
-    protected function captureAll(Campaign $campaign): void
+    protected function captureAll(Campaign $campaign, array $decision = []): void
     {
         $this->travelTo($campaign->deadline_at);
         $this->artisan('campaigns:tick')->assertSuccessful();
 
         [$admin] = $this->adminWithToken(AdminRole::CampaignManager);
-        app(Closing::class)->recordSupplierDecision($campaign->uuid, [
+        app(Closing::class)->recordSupplierDecision($campaign->uuid, $decision + [
             'decision' => 'confirmed',
             'unit_cost_minor' => 4000,
             'currency' => 'USD',

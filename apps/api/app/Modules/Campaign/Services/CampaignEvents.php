@@ -64,6 +64,9 @@ final class CampaignEvents
     /** closing -> purchasing. */
     public const CAPTURES_COMPLETED = 'captures_completed';
 
+    /** The supplier purchase order was shipped: purchasing -> fulfilling. */
+    public const SUPPLIER_SHIPPED = 'supplier_shipped';
+
     /** closing -> failed. */
     public const FAILED = 'failed';
 

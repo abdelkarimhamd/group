@@ -15,6 +15,7 @@ use App\Modules\Identity\Http\Controllers\AdminAccountsController;
 use App\Modules\Identity\Http\Controllers\AdminAuthController;
 use App\Modules\Identity\Http\Controllers\CustomerAuthController;
 use App\Modules\Orders\Http\Controllers\AdminOrderController;
+use App\Modules\Orders\Http\Controllers\AdminPurchaseOrderController;
 use App\Modules\Orders\Http\Controllers\MyOrderController;
 use App\Modules\Payments\Http\Controllers\AdminPaymentController;
 use App\Modules\Payments\Http\Controllers\AdminRefundController;
@@ -170,6 +171,12 @@ Route::prefix('v1')->name('v1.')->group(function () {
             Route::get('orders/{order}', [AdminOrderController::class, 'show'])->whereUuid('order')->can('orders.view')->name('orders.show');
             Route::get('refunds', [AdminRefundController::class, 'index'])->can('payments.view')->name('refunds.index');
             Route::post('refunds', [AdminRefundController::class, 'store'])->can('refunds.request')->name('refunds.store');
+
+            // Supplier purchase orders (E12)
+            Route::get('purchase-orders', [AdminPurchaseOrderController::class, 'index'])->can('purchasing.view')->name('purchase-orders.index');
+            Route::get('purchase-orders/{purchaseOrder}', [AdminPurchaseOrderController::class, 'show'])->whereUuid('purchaseOrder')->can('purchasing.view')->name('purchase-orders.show');
+            Route::patch('purchase-orders/{purchaseOrder}', [AdminPurchaseOrderController::class, 'update'])->whereUuid('purchaseOrder')->can('purchasing.edit')->name('purchase-orders.update');
+            Route::post('purchase-orders/{purchaseOrder}/status', [AdminPurchaseOrderController::class, 'advance'])->whereUuid('purchaseOrder')->can('purchasing.edit')->name('purchase-orders.advance');
         });
     });
 });

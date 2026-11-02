@@ -1539,7 +1539,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Supplier purchase orders */
+    /**
+     * Supplier purchase orders
+     * @description Newest first. The closing job creates one, as a draft, when a campaign moves to purchasing.
+     */
     get: operations['adminListPurchaseOrders'];
     put?: never;
     post?: never;
@@ -1565,7 +1568,15 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    /** Record Alibaba order details and freight */
+    /**
+     * Record Alibaba order details and freight
+     * @description Fields sent change; the rest keep their value. Changing the currency
+     *     clears a rate that no longer applies (a SAR order's rate is 1), and
+     *     `total_sar` follows the total and the rate. Past `draft` the Alibaba
+     *     order number and the rate cannot be cleared, nor the freight tracking
+     *     reference once shipped (`purchase_order_incomplete`). A received or
+     *     cancelled order cannot change (409).
+     */
     patch: operations['adminUpdatePurchaseOrder'];
     trace?: never;
   };
@@ -1584,7 +1595,12 @@ export interface paths {
      * Move a purchase order forward
      * @description `placed`, `supplier_confirmed`, `paid`, then `shipped`, which needs a
      *     freight tracking reference and moves the campaign to `fulfilling`.
-     *     `received` is set by recording an inbound receipt.
+     *     `received` is set by recording an inbound receipt. Steps may be
+     *     skipped but never undone, and only while the campaign is purchasing
+     *     (409 otherwise). Past `draft` the order needs its Alibaba order number
+     *     and a SAR value (`purchase_order_incomplete`, 422). Leaving `draft`
+     *     moves the campaign's confirmed customer orders to `processing`.
+     *     `occurred_at` (default now, never in the future) sets the step's time.
      */
     post: operations['adminAdvancePurchaseOrder'];
     delete?: never;
@@ -2701,7 +2717,7 @@ export interface components {
       /** Format: uuid */
       id: string;
       /**
-       * @description For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, failed, cancelled.
+       * @description For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, supplier_shipped, failed, cancelled.
        * @example price_changed
        */
       event_type: string;
@@ -2931,9 +2947,12 @@ export interface components {
       /** Format: uuid */
       supplier_quotation_id: string;
       alibaba_order_ref: string | null;
+      /** @description In the supplier's currency. Starts as the captured units at the unit cost the supplier reconfirmed. */
       total: components['schemas']['Money'];
-      fx_rate_to_sar: string;
-      total_sar: components['schemas']['Money'];
+      /** @description Exact decimal. The quote's rate when the order is in the quote's currency, 1 for SAR; otherwise null until recorded. */
+      fx_rate_to_sar: string | null;
+      /** @description The total at the recorded rate, rounded to the halala; null while the rate is unknown. */
+      total_sar: components['schemas']['Money'] | null;
       status: components['schemas']['PurchaseOrderStatus'];
       lines: {
         product_variant: components['schemas']['AdminVariant'];
@@ -2947,10 +2966,13 @@ export interface components {
       supplier_confirmed_at: string | null;
       /** Format: date-time */
       paid_at: string | null;
+      /** Format: date-time */
+      shipped_at: string | null;
       freight_forwarder: string | null;
       freight_tracking_ref: string | null;
       /** Format: date */
       eta: string | null;
+      /** @description Warehouse receipts (fulfilment, E13); empty until then. */
       receipts: components['schemas']['InboundReceipt'][];
     };
     InboundReceiptInput: {
@@ -5935,6 +5957,7 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
     };
   };
   adminGetPurchaseOrder: {
@@ -5993,6 +6016,7 @@ export interface operations {
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
+      409: components['responses']['InvalidTransition'];
       422: components['responses']['ValidationFailed'];
     };
   };

@@ -142,6 +142,41 @@ final class Money implements JsonSerializable
     }
 
     /**
+     * Convert at an exact decimal rate such as "3.75000000" (units of
+     * $to per unit of this currency, at most 10 digits and 8 decimals),
+     * rounded to the nearest minor unit, half away from zero. Integer
+     * arithmetic only: 120,000 cents at 3.75 is 450,000 halalas.
+     */
+    public function convertTo(Currency $to, string $rate): self
+    {
+        if (! preg_match('/^([0-9]{1,10})(?:\.([0-9]{1,8}))?$/', $rate, $parts)) {
+            throw new InvalidArgumentException("Invalid exchange rate [{$rate}].");
+        }
+
+        if ($this->currency->decimals() !== $to->decimals()) {
+            throw new InvalidArgumentException('Currencies with different minor units need a scaled rate.');
+        }
+
+        $scale = 100_000_000;
+        $whole = (int) $parts[1];
+        $fraction = (int) str_pad($parts[2] ?? '', 8, '0');
+        $absolute = self::checked(abs($this->minor));
+
+        // absolute x fraction / 10^8, split so no product can overflow:
+        // absolute = high x 10^8 + low.
+        $high = intdiv($absolute, $scale);
+        $low = $absolute % $scale;
+        $lowProduct = $low * $fraction;
+        $converted = self::checked(self::checked($absolute * $whole) + self::checked($high * $fraction) + intdiv($lowProduct, $scale));
+
+        if (2 * ($lowProduct % $scale) >= $scale) {
+            $converted = self::checked($converted + 1);
+        }
+
+        return new self($this->minor < 0 ? -$converted : $converted, $to);
+    }
+
+    /**
      * @return array{amount_minor: int, currency: string, formatted: string}
      */
     public function jsonSerialize(): array
