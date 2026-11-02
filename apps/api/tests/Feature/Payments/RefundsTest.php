@@ -90,8 +90,10 @@ class RefundsTest extends TestCase
     {
         $this->travel(3)->hours();
 
-        $this->requestRefund(['amount_halalas' => 12000, 'reason' => 'defective', 'customer_order_id' => $this->order->uuid])
+        // Order IDs match whatever their case.
+        $this->requestRefund(['amount_halalas' => 12000, 'reason' => 'defective', 'customer_order_id' => strtoupper($this->order->uuid)])
             ->assertCreated()
+            ->assertJsonPath('data.customer_order_id', $this->order->uuid)
             ->assertJsonPath('data.method', 'refund');
         $this->requestRefund(['amount_halalas' => 24001, 'reason' => 'shortage'])
             ->assertUnprocessable()
