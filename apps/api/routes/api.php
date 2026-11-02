@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Modules\Identity\Http\Controllers\AccountController;
 use App\Modules\Identity\Http\Controllers\AddressController;
+use App\Modules\Identity\Http\Controllers\AdminAccountsController;
 use App\Modules\Identity\Http\Controllers\AdminAuthController;
 use App\Modules\Identity\Http\Controllers\CustomerAuthController;
 use Illuminate\Support\Facades\Route;
@@ -44,6 +45,14 @@ Route::prefix('v1')->name('v1.')->group(function () {
         Route::middleware('auth:admin')->group(function () {
             Route::post('auth/logout', [AdminAuthController::class, 'logout'])->name('auth.logout');
             Route::get('me', [AdminAuthController::class, 'me'])->name('me');
+            Route::post('me/password', [AdminAuthController::class, 'changePassword'])
+                ->middleware('throttle:admin-password')->name('me.password');
+
+            // Each route checks the permission its contract operation names in x-permission.
+            Route::get('admins', [AdminAccountsController::class, 'index'])->can('admins.manage')->name('admins.index');
+            Route::post('admins', [AdminAccountsController::class, 'store'])->can('admins.manage')->name('admins.store');
+            Route::patch('admins/{admin}', [AdminAccountsController::class, 'update'])->whereUuid('admin')
+                ->can('admins.manage')->name('admins.update');
         });
     });
 });

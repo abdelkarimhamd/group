@@ -4,9 +4,11 @@ namespace App\Modules\Identity\Http\Controllers;
 
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
+use App\Modules\Identity\Admins\AdminAccounts;
 use App\Modules\Identity\Enums\OtpPurpose;
 use App\Modules\Identity\Http\Requests\AdminLoginRequest;
 use App\Modules\Identity\Http\Requests\AdminVerifyRequest;
+use App\Modules\Identity\Http\Requests\ChangePasswordRequest;
 use App\Modules\Identity\Http\Resources\AdminUserResource;
 use App\Modules\Identity\Http\Resources\OtpChallengeResource;
 use App\Modules\Identity\Models\AdminUser;
@@ -121,6 +123,17 @@ final class AdminAuthController extends Controller
     public function me(Request $request): AdminUserResource
     {
         return AdminUserResource::make($request->user());
+    }
+
+    public function changePassword(ChangePasswordRequest $request, AdminAccounts $accounts): Response
+    {
+        $accounts->changeOwnPassword(
+            $request->user(),
+            $request->validated('current_password'),
+            $request->validated('password'),
+        );
+
+        return response()->noContent();
     }
 
     /**

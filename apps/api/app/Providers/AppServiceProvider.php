@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\AuditLog;
 use App\Models\StatusTransition;
+use App\Modules\Identity\Admins\AdminAccounts;
 use App\Modules\Identity\Models\Address;
 use App\Modules\Identity\Models\AdminUser;
 use App\Modules\Identity\Models\OtpChallenge;
@@ -35,6 +36,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AuditLogger::class);
         $this->app->singleton(StatusHistory::class);
         $this->app->singleton(OtpService::class);
+        $this->app->singleton(AdminAccounts::class);
 
         $this->app->singleton(SmsSender::class, fn ($app) => match ($driver = config('services.sms.driver')) {
             'log' => new LogSmsSender($app->isProduction(), config('services.sms.log_channel')),
@@ -105,6 +107,11 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('otp-verify', fn (Request $request): Limit => Limit::perMinute(
             (int) config('groupbuy.auth.otp.verify_per_ip_per_minute'),
         )->by('ip:'.$request->ip()));
+
+        RateLimiter::for('admin-password', fn (Request $request): Limit => Limit::perMinutes(
+            (int) config('groupbuy.auth.admin_login.window_minutes'),
+            (int) config('groupbuy.auth.admin_login.per_email_and_ip'),
+        )->by('admin:'.$request->user()?->getAuthIdentifier()));
 
         RateLimiter::for('admin-login', function (Request $request): array {
             $config = config('groupbuy.auth.admin_login');

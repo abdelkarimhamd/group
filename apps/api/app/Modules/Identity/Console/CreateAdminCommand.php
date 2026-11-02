@@ -2,21 +2,18 @@
 
 namespace App\Modules\Identity\Console;
 
+use App\Modules\Identity\Admins\AdminAccounts;
 use App\Modules\Identity\Enums\AdminRole;
-use App\Modules\Identity\Models\AdminUser;
-use App\Modules\Identity\Permissions\AdminPermissions;
 use App\Support\Actor;
-use App\Support\Audit\AuditLogger;
 use App\Support\Phone\SaudiMobile;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
 /**
  * Creates an admin from the command line. This is how the first admin is
- * made; admins.manage in the portal comes later. The password is asked for
- * interactively so it never lands in shell history.
+ * made; after that, admins with admins.manage can add others in the portal.
+ * The password is asked for interactively so it never lands in shell history.
  */
 final class CreateAdminCommand extends Command
 {
@@ -28,7 +25,7 @@ final class CreateAdminCommand extends Command
 
     protected $description = 'Create an admin who can sign in to the admin portal';
 
-    public function handle(): int
+    public function handle(AdminAccounts $accounts): int
     {
         $input = [
             'email' => mb_strtolower(trim((string) $this->argument('email'))),
@@ -57,25 +54,13 @@ final class CreateAdminCommand extends Command
             return self::FAILURE;
         }
 
-        AdminPermissions::sync();
-
-        $admin = DB::transaction(function () use ($input): AdminUser {
-            $admin = AdminUser::create([
-                'email' => $input['email'],
-                'name' => $input['name'],
-                'phone_e164' => $input['phone'],
-                'password' => $input['password'],
-            ]);
-            $admin->syncRoles($input['roles']);
-
-            app(AuditLogger::class)->record(Actor::system(), 'admin.create', $admin, after: [
-                'email' => $admin->email,
-                'roles' => $input['roles'],
-                'via' => 'console',
-            ]);
-
-            return $admin;
-        });
+        $admin = $accounts->create([
+            'email' => $input['email'],
+            'name' => $input['name'],
+            'phone' => $input['phone'],
+            'password' => $input['password'],
+            'roles' => array_values(array_unique($input['roles'])),
+        ], Actor::system(), via: 'console');
 
         $this->info("Created admin {$admin->email} with roles: ".implode(', ', $input['roles']).'.');
 

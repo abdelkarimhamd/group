@@ -112,8 +112,8 @@ class AdminSignInTest extends TestCase
             ->assertJsonPath('data.admin.roles', ['finance']);
 
         $permissions = $response->json('data.admin.permissions');
-        $this->assertContains('refunds.approve', $permissions);
         $this->assertContains('approvals.decide', $permissions);
+        $this->assertContains('campaigns.approve', $permissions);
         $this->assertNotContains('catalog.edit', $permissions);
 
         $token = PersonalAccessToken::findToken($response->json('data.token'));
@@ -191,7 +191,7 @@ class AdminSignInTest extends TestCase
             ->assertJsonPath('data.roles', ['operations', 'support'])
             ->assertJsonPath('data.permissions', fn (array $permissions) => in_array('fulfilment.edit', $permissions, true)
                 && in_array('refunds.request', $permissions, true)
-                && ! in_array('refunds.approve', $permissions, true));
+                && ! in_array('approvals.decide', $permissions, true));
     }
 
     #[Test]
