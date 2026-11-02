@@ -1,0 +1,15 @@
+# Lint rules for the API contract (apps/api/openapi/v1.yaml).
+extends:
+  - recommended
+
+rules:
+  # Every operation is reached by clients through an operationId-based client.
+  operation-operationId: error
+  operation-summary: error
+  # Not every operation needs a 4xx: health and webhooks answer 2xx/5xx.
+  operation-4xx-response: off
+  # Local and mock servers are plain http.
+  no-server-example.com: off
+  no-http-verbs-in-paths: off
+  info-license: off
+  security-defined: off

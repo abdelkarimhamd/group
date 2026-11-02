@@ -53,4 +53,16 @@ vendor/bin/pint                 # code style
 - Payment, campaign and order states live on their own records. One is never used as a stand-in for another.
 - Every pull request that touches money, holds or campaign quantities needs a human review before merge.
 
+## API contract and mock server
+
+The API contract is [`apps/api/openapi/v1.yaml`](apps/api/openapi/v1.yaml). Frontends can build against a mock that answers every endpoint in it, on http://localhost:4010:
+
+```bash
+docker compose --profile mock up api-mock
+# or, without Docker:
+npx @stoplight/prism-cli@5 mock apps/api/openapi/v1.yaml
+```
+
+Add `-d` to the Prism command for varied fake data, and send a `Prefer: code=409` header to get a specific documented response. Lint the contract with `npx @redocly/cli@1 lint apps/api/openapi/v1.yaml`.
+
 More detail: [docs/architecture.md](docs/architecture.md).

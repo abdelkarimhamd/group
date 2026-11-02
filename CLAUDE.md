@@ -11,6 +11,7 @@ Read `README.md` and `docs/architecture.md` first. The product rules come from t
 - Every provider call (authorize, capture, void, refund) carries a unique idempotency key and is logged before it is sent.
 - History tables are append-only. Protect new ones with `AppendOnly::protect()` in their migration.
 - Write status changes and their `StatusHistory` row in the same transaction.
+- Every API change updates `apps/api/openapi/v1.yaml` in the same pull request. Shipping an endpoint means flipping its `x-status` from `mock` to `live`; the contract tests enforce both directions.
 
 ## Commands (from `apps/api`)
 
