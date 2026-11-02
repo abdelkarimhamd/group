@@ -91,8 +91,8 @@ final class AdminQuotationController extends AdminController
 
             $this->fill($model, $request);
 
-            if ($request->has('status')) {
-                $model->status = QuotationStatus::from($request->validated('status'));
+            if (($status = $request->validated('status')) !== null) {
+                $model->status = QuotationStatus::from($status);
             }
 
             [$before, $after] = Changes::pending($model);
@@ -172,7 +172,8 @@ final class AdminQuotationController extends AdminController
     private function fill(SupplierQuotation $quotation, QuotationRequest $request): void
     {
         $supplier = Supplier::query()->where('uuid', $request->validated('supplier_id'))->firstOrFail();
-        $status = $request->has('status') ? QuotationStatus::from($request->validated('status')) : $quotation->status;
+        // On create `status` has no rule, so a sent value is ignored rather than trusted.
+        $status = ($value = $request->validated('status')) === null ? $quotation->status : QuotationStatus::from($value);
         $accepting = $status === QuotationStatus::Accepted;
 
         if ($supplier->status === SupplierStatus::Blocked && (! $quotation->exists || $accepting)) {

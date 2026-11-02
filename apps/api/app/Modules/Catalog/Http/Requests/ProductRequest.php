@@ -42,7 +42,7 @@ final class ProductRequest extends ApiRequest
             ...$rules,
             'variants' => ['sometimes', 'array', 'list', 'max:50'],
             'variants.*' => ['array'],
-            ...VariantRules::for('variants.*.', withStatus: false, distinct: true),
+            ...VariantRules::for('variants.*.', distinct: true),
         ];
     }
 }

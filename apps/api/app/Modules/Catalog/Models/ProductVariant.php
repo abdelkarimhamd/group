@@ -48,6 +48,11 @@ class ProductVariant extends Model
     {
         return [
             'status' => VariantStatus::class,
+            // Cast so a value validated from a form field ("2") is returned as 2.
+            'weight_grams' => 'integer',
+            'length_mm' => 'integer',
+            'width_mm' => 'integer',
+            'height_mm' => 'integer',
         ];
     }
 

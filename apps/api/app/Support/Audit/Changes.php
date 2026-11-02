@@ -20,8 +20,17 @@ final class Changes
         $before = $after = [];
 
         foreach ($keys as $key) {
-            $before[$key] = $model->exists ? $model->getOriginal($key) : null;
-            $after[$key] = $model->getAttribute($key);
+            $old = $model->exists ? $model->getOriginal($key) : null;
+            $new = $model->getAttribute($key);
+
+            // JSON columns come back from jsonb with their keys reordered; the
+            // same map in another order is not a change (array == ignores order).
+            if ($model->exists && is_array($old) && is_array($new) && $old == $new) {
+                continue;
+            }
+
+            $before[$key] = $old;
+            $after[$key] = $new;
         }
 
         return [$before, $after];

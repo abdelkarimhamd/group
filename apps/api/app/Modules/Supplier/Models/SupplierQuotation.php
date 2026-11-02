@@ -71,6 +71,12 @@ class SupplierQuotation extends Model
             'fx_rate_to_sar' => 'decimal:8',
             'landed_cost_breakdown' => 'array',
             'status' => QuotationStatus::class,
+            // Cast so a value validated from a form field ("2") is returned as 2.
+            'moq' => 'integer',
+            'unit_cost_minor' => 'integer',
+            'lead_time_days' => 'integer',
+            'landed_cost_basis_qty' => 'integer',
+            'landed_cost_per_unit_halalas' => 'integer',
         ];
     }
 
@@ -136,7 +142,12 @@ class SupplierQuotation extends Model
             $total = $total->plus(Money::sar($breakdown[$part]));
         }
 
-        $this->landed_cost_breakdown = $breakdown;
+        // jsonb keeps its own key order, so compare ignoring order (==) and
+        // leave an unchanged breakdown alone rather than mark it dirty.
+        if (! $this->exists || $this->landed_cost_breakdown != $breakdown) {
+            $this->landed_cost_breakdown = $breakdown;
+        }
+
         $this->landed_cost_per_unit_halalas = $total->minor;
     }
 

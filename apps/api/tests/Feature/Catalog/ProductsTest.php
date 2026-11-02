@@ -40,6 +40,7 @@ class ProductsTest extends TestCase
             'variants' => [
                 ['sku' => 'BL-500-BLK', 'name_ar' => 'أسود', 'name_en' => 'Black', 'option_values' => ['color' => 'black'], 'weight_grams' => 1800],
                 ['sku' => 'BL-500-WHT', 'name_ar' => 'أبيض', 'name_en' => 'White'],
+                ['sku' => 'BL-500-RED', 'name_ar' => 'أحمر', 'name_en' => 'Red', 'status' => 'archived', 'weight_grams' => '1750'],
             ],
         ]))
             ->assertCreated()
@@ -48,6 +49,8 @@ class ProductsTest extends TestCase
             ->assertJsonPath('data.variants.0.sku', 'BL-500-BLK')
             ->assertJsonPath('data.variants.0.option_values', ['color' => 'black'])
             ->assertJsonPath('data.variants.1.status', 'active')
+            ->assertJsonPath('data.variants.2.status', 'archived')
+            ->assertJsonPath('data.variants.2.weight_grams', 1750)
             ->assertJsonPath('data.images', [])
             ->json('data');
 
@@ -55,7 +58,7 @@ class ProductsTest extends TestCase
         $this->assertStringContainsString('"option_values":{}', $this->withToken($this->token)->getJson("/api/v1/admin/products/{$product['id']}")->getContent());
 
         $audit = AuditLog::where('action', 'product.create')->sole();
-        $this->assertSame(['BL-500-BLK', 'BL-500-WHT'], $audit->after['variants']);
+        $this->assertSame(['BL-500-BLK', 'BL-500-WHT', 'BL-500-RED'], $audit->after['variants']);
     }
 
     #[Test]
@@ -173,7 +176,8 @@ class ProductsTest extends TestCase
             'file' => UploadedFile::fake()->image('blender.jpg', 800, 800),
             'product_variant_id' => $variant->uuid,
             'alt_ar' => 'خلاط أسود',
-            'sort_order' => 2,
+            // Multipart fields arrive as strings.
+            'sort_order' => '2',
         ], ['Accept' => 'application/json'])
             ->assertCreated()
             ->assertJsonPath('data.product_variant_id', $variant->uuid)

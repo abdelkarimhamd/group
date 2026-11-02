@@ -242,6 +242,48 @@ class QuotationsTest extends TestCase
         $this->withToken($this->token)->getJson('/api/v1/admin/quotations/0195f8a4-0000-7000-8000-000000000000')->assertNotFound();
     }
 
+    #[Test]
+    public function a_status_sent_on_create_is_ignored(): void
+    {
+        $this->withToken($this->token)->postJson('/api/v1/admin/quotations', $this->input(['status' => 'accepted']))
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'draft');
+
+        $this->withToken($this->token)->postJson('/api/v1/admin/quotations', $this->input(['status' => null]))
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'draft');
+    }
+
+    #[Test]
+    public function saving_a_quote_unchanged_writes_no_audit_entry(): void
+    {
+        $quote = $this->withToken($this->token)->postJson('/api/v1/admin/quotations', $this->input())->assertCreated()->json('data');
+
+        // jsonb hands the breakdown back with its keys reordered; that is not a change.
+        $this->withToken($this->token)->patchJson("/api/v1/admin/quotations/{$quote['id']}", $this->input())
+            ->assertOk()
+            ->assertJsonPath('data.landed_cost_per_unit.amount_minor', 6140);
+
+        $this->assertSame(0, AuditLog::where('action', 'quotation.update')->count());
+
+        $this->withToken($this->token)->patchJson("/api/v1/admin/quotations/{$quote['id']}", $this->input([
+            'landed_cost_breakdown' => [...$this->input()['landed_cost_breakdown'], 'freight_halalas' => 900],
+        ]))->assertOk()->assertJsonPath('data.landed_cost_per_unit.amount_minor', 6240);
+
+        $audit = AuditLog::where('action', 'quotation.update')->sole();
+        $this->assertSame(800, $audit->before['landed_cost_breakdown']['freight']);
+        $this->assertSame(900, $audit->after['landed_cost_breakdown']['freight']);
+    }
+
+    #[Test]
+    public function numbers_sent_as_form_strings_come_back_as_numbers(): void
+    {
+        $this->withToken($this->token)->postJson('/api/v1/admin/quotations', $this->input(['moq' => '150', 'lead_time_days' => '20']))
+            ->assertCreated()
+            ->assertJsonPath('data.moq', 150)
+            ->assertJsonPath('data.lead_time_days', 20);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>

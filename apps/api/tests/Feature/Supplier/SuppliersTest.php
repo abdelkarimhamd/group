@@ -135,6 +135,35 @@ class SuppliersTest extends TestCase
         $this->withToken($support)->getJson('/api/v1/admin/suppliers')->assertForbidden();
     }
 
+    #[Test]
+    public function moving_an_approved_supplier_to_another_store_needs_a_new_review(): void
+    {
+        $approved = Supplier::factory()->approved()->create();
+
+        // Other details can change without a new review.
+        $this->withToken($this->token)
+            ->patchJson("/api/v1/admin/suppliers/{$approved->uuid}", $this->input(['name' => 'Renamed Co.', 'alibaba_store_url' => $approved->alibaba_store_url, 'country' => $approved->country]))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'approved');
+
+        $this->withToken($this->token)
+            ->patchJson("/api/v1/admin/suppliers/{$approved->uuid}", $this->input(['alibaba_store_url' => 'https://another-store.en.alibaba.com']))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'prospect')
+            ->assertJsonPath('data.reviewed_by', null)
+            ->assertJsonPath('data.reviewed_at', null);
+
+        $history = StatusTransition::where('subject_type', 'supplier')->sole();
+        $this->assertSame(['approved', 'prospect'], [$history->from_status, $history->to_status]);
+
+        // Editing never lifts a block.
+        $blocked = Supplier::factory()->blocked()->create();
+        $this->withToken($this->token)
+            ->patchJson("/api/v1/admin/suppliers/{$blocked->uuid}", $this->input(['alibaba_store_url' => 'https://fresh-start.en.alibaba.com']))
+            ->assertOk()
+            ->assertJsonPath('data.status', 'blocked');
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>

@@ -65,9 +65,23 @@ final class AdminSupplierController extends AdminController
         $updated = DB::transaction(function () use ($request, $supplier): Supplier {
             $model = Supplier::query()->where('uuid', $supplier)->lockForUpdate()->firstOrFail();
             $model->fill([...SupplierRequest::CLEARED_IF_MISSING, ...$request->validated()]);
+            $from = $model->status;
+
+            // An approval belongs to the Alibaba store that was reviewed. Pointing
+            // the record at another store (or country) sends it back for review.
+            // A block stays: editing must never lift one.
+            if ($from === SupplierStatus::Approved && $model->isDirty(['alibaba_store_url', 'country'])) {
+                $model->status = SupplierStatus::Prospect;
+                $model->reviewed_by_admin_id = null;
+                $model->reviewed_at = null;
+            }
 
             [$before, $after] = Changes::pending($model);
             $model->save();
+
+            if ($model->status !== $from) {
+                $this->history->record($model, $from, $model->status, $this->actor($request), 'store changed; needs a new review');
+            }
 
             if ($after !== []) {
                 $this->audit->record($this->actor($request), 'supplier.update', $model, $before, $after);

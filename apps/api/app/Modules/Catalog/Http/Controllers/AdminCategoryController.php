@@ -9,6 +9,7 @@ use App\Modules\Catalog\Http\Resources\AdminCategoryResource;
 use App\Modules\Catalog\Models\Category;
 use App\Support\Audit\AuditLogger;
 use App\Support\Audit\Changes;
+use App\Support\Database\UniqueViolation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +27,7 @@ final class AdminCategoryController extends AdminController
 
     public function store(CategoryRequest $request): JsonResponse
     {
-        $category = DB::transaction(function () use ($request): Category {
+        $category = UniqueViolation::asValidationError(fn (): Category => DB::transaction(function () use ($request): Category {
             $category = new Category($request->safe()->except('parent_id'));
             $category->parent_id = $this->parentId($request->validated('parent_id'));
 
@@ -35,18 +36,19 @@ final class AdminCategoryController extends AdminController
             $this->audit->record($this->actor($request), 'category.create', $category, after: $after);
 
             return $category;
-        });
+        }), ['categories_slug_unique' => 'slug']);
 
         return AdminCategoryResource::make($category->load('parent'))->response()->setStatusCode(201);
     }
 
     public function update(CategoryRequest $request, string $category): AdminCategoryResource
     {
-        $updated = DB::transaction(function () use ($request, $category): Category {
+        $updated = UniqueViolation::asValidationError(fn (): Category => DB::transaction(function () use ($request, $category): Category {
             // One tree change at a time, so two moves cannot form a loop between them.
             DB::statement("SELECT pg_advisory_xact_lock(hashtext('categories.tree'))");
             $model = Category::query()->where('uuid', $category)->lockForUpdate()->firstOrFail();
-            $model->fill($request->safe()->except('parent_id'));
+            // A category is sent whole: a missing sort_order goes back to 0.
+            $model->fill(['sort_order' => 0, ...$request->safe()->except('parent_id')]);
             $model->parent_id = $this->parentId($request->validated('parent_id'));
 
             if ($model->parent_id !== null && $this->wouldCycle($model)) {
@@ -61,7 +63,7 @@ final class AdminCategoryController extends AdminController
             }
 
             return $model;
-        });
+        }), ['categories_slug_unique' => 'slug']);
 
         return AdminCategoryResource::make($updated->load('parent'));
     }

@@ -16,8 +16,10 @@ use App\Modules\Catalog\Models\ProductVariant;
 use App\Support\Audit\AuditLogger;
 use App\Support\Audit\Changes;
 use App\Support\Audit\StatusHistory;
+use App\Support\Database\UniqueViolation;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 final class AdminProductController extends AdminController
@@ -49,14 +51,17 @@ final class AdminProductController extends AdminController
 
     public function store(ProductRequest $request): JsonResponse
     {
-        $product = DB::transaction(function () use ($request): Product {
+        $product = UniqueViolation::asValidationError(fn (): Product => DB::transaction(function () use ($request): Product {
             $product = new Product($request->safe()->except(['category_id', 'variants']));
             $product->category_id = $this->categoryId($request->validated('category_id'));
             $product->created_by_admin_id = $this->admin($request)->id;
             $product->save();
 
+            // The product starts as a draft, so archived variants here break no rule.
             foreach ($request->validated('variants', []) as $input) {
-                $product->variants()->create($input);
+                $variant = $product->variants()->make(Arr::except($input, ['status']));
+                $variant->status = VariantStatus::from($input['status'] ?? VariantStatus::Active->value);
+                $variant->save();
             }
 
             $this->audit->record($this->actor($request), 'product.create', $product, after: [
@@ -66,7 +71,7 @@ final class AdminProductController extends AdminController
             ]);
 
             return $product;
-        });
+        }), ['product_variants_sku_unique' => 'variants']);
 
         return AdminProductResource::make($product->load(AdminProductResource::RELATIONS))->response()->setStatusCode(201);
     }

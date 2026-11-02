@@ -5,7 +5,9 @@ namespace Tests\Feature\Catalog;
 use App\Models\AuditLog;
 use App\Modules\Catalog\Models\Category;
 use App\Modules\Identity\Enums\AdminRole;
+use App\Support\Database\UniqueViolation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\InteractsWithIdentity;
 use Tests\TestCase;
@@ -111,6 +113,40 @@ class CategoriesTest extends TestCase
         }
 
         $this->assertNull($root->fresh()->parent_id);
+    }
+
+    #[Test]
+    public function a_category_sent_without_sort_order_goes_back_to_zero(): void
+    {
+        $category = Category::factory()->create(['slug' => 'kitchen', 'sort_order' => 4]);
+
+        $this->withToken($this->token)
+            ->patchJson("/api/v1/admin/categories/{$category->uuid}", ['slug' => 'kitchen', 'name_ar' => 'المطبخ', 'name_en' => 'Kitchen'])
+            ->assertOk()
+            ->assertJsonPath('data.sort_order', 0);
+
+        // A number typed into a form arrives as a string and still comes back as a number.
+        $this->withToken($this->token)
+            ->patchJson("/api/v1/admin/categories/{$category->uuid}", ['slug' => 'kitchen', 'name_ar' => 'المطبخ', 'name_en' => 'Kitchen', 'sort_order' => '3'])
+            ->assertOk()
+            ->assertJsonPath('data.sort_order', 3);
+    }
+
+    #[Test]
+    public function a_slug_taken_at_the_same_moment_is_a_validation_error(): void
+    {
+        Category::factory()->create(['slug' => 'kitchen']);
+
+        // The form check passed for both requests; the database catches the second.
+        try {
+            UniqueViolation::asValidationError(
+                fn () => Category::factory()->create(['slug' => 'kitchen']),
+                ['categories_slug_unique' => 'slug'],
+            );
+            $this->fail('A duplicate slug was saved.');
+        } catch (ValidationException $e) {
+            $this->assertSame(['slug'], array_keys($e->errors()));
+        }
     }
 
     #[Test]

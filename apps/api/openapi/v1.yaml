@@ -1225,8 +1225,9 @@ paths:
       operationId: adminUpdateCategory
       summary: Update a category
       description: |
-        Send the whole category. A category cannot be moved under itself or one
-        of its own subcategories (422 `category_cycle`).
+        Send the whole category; a missing `sort_order` goes back to 0. A
+        category cannot be moved under itself or one of its own subcategories
+        (422 `category_cycle`).
       x-epic: E6
       x-status: live
       x-permission: catalog.edit
@@ -1599,7 +1600,12 @@ paths:
       tags: [Admin suppliers]
       operationId: adminUpdateSupplier
       summary: Update a supplier's details
-      description: Send the whole supplier; optional fields left out are cleared. Approving or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
+      description: |
+        Send the whole supplier; optional fields left out are cleared. Approving
+        or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
+        Changing the store URL or country of an approved supplier sends it back
+        to `prospect`, because the review was of the old store. A blocked
+        supplier stays blocked.
       x-epic: E6
       x-status: live
       x-permission: suppliers.edit
@@ -3794,17 +3800,19 @@ components:
       type: object
       required: [sku, name_ar, name_en]
       properties:
-        sku: {type: string, maxLength: 64}
+        sku: {type: string, maxLength: 64, pattern: '^[A-Za-z0-9._/-]+$'}
         name_ar: {type: string, maxLength: 100}
         name_en: {type: string, maxLength: 100}
         option_values:
           type: object
-          additionalProperties: {type: string}
-        weight_grams: {type: integer, minimum: 0, nullable: true}
-        length_mm: {type: integer, minimum: 0, nullable: true}
-        width_mm: {type: integer, minimum: 0, nullable: true}
-        height_mm: {type: integer, minimum: 0, nullable: true}
-        status: {type: string, enum: [active, archived]}
+          maxProperties: 10
+          description: Keys are lowercase identifiers matching `^[a-z][a-z0-9_]{0,49}$`, such as `color`.
+          additionalProperties: {type: string, maxLength: 100}
+        weight_grams: {type: integer, minimum: 0, maximum: 10000000, nullable: true}
+        length_mm: {type: integer, minimum: 0, maximum: 10000000, nullable: true}
+        width_mm: {type: integer, minimum: 0, maximum: 10000000, nullable: true}
+        height_mm: {type: integer, minimum: 0, maximum: 10000000, nullable: true}
+        status: {type: string, enum: [active, archived], description: 'Defaults to `active` on create; left out on update, it keeps its current value.'}
 
     AdminVariant:
       allOf:

@@ -15,9 +15,9 @@ final class VariantRules
     /**
      * @return array<string, mixed>
      */
-    public static function for(string $prefix = '', ?string $ignoreVariantUuid = null, bool $withStatus = true, bool $distinct = false): array
+    public static function for(string $prefix = '', ?string $ignoreVariantUuid = null, bool $distinct = false): array
     {
-        $rules = [
+        return [
             $prefix.'sku' => [
                 'required', 'string', 'max:64', 'regex:/^[A-Za-z0-9._\/-]+$/',
                 ...($distinct ? ['distinct:ignore_case'] : []),
@@ -31,13 +31,8 @@ final class VariantRules
             $prefix.'length_mm' => ['nullable', 'integer', 'min:0', 'max:10000000'],
             $prefix.'width_mm' => ['nullable', 'integer', 'min:0', 'max:10000000'],
             $prefix.'height_mm' => ['nullable', 'integer', 'min:0', 'max:10000000'],
+            $prefix.'status' => ['sometimes', Rule::enum(VariantStatus::class)],
         ];
-
-        if ($withStatus) {
-            $rules[$prefix.'status'] = ['sometimes', Rule::enum(VariantStatus::class)];
-        }
-
-        return $rules;
     }
 
     /**

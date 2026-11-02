@@ -30,6 +30,17 @@ class ProductImage extends Model
 {
     use HasUuids;
 
+    /**
+     * Integer columns are cast so a value validated from a form field such as
+     * "2" is returned as 2, as the contract types it.
+     */
+    protected function casts(): array
+    {
+        return [
+            'sort_order' => 'integer',
+        ];
+    }
+
     /** @var array<string, mixed> */
     protected $attributes = [
         'sort_order' => 0,

@@ -13,6 +13,7 @@ use App\Modules\Catalog\Models\ProductVariant;
 use App\Support\Audit\AuditLogger;
 use App\Support\Audit\Changes;
 use App\Support\Audit\StatusHistory;
+use App\Support\Database\UniqueViolation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -29,7 +30,7 @@ final class AdminVariantController extends AdminController
 
     public function store(VariantRequest $request, string $product): JsonResponse
     {
-        $variant = DB::transaction(function () use ($request, $product): ProductVariant {
+        $variant = UniqueViolation::asValidationError(fn (): ProductVariant => DB::transaction(function () use ($request, $product): ProductVariant {
             $parent = Product::query()->where('uuid', $product)->lockForUpdate()->firstOrFail();
 
             $variant = $parent->variants()->make($request->safe()->except('status'));
@@ -40,14 +41,14 @@ final class AdminVariantController extends AdminController
             $this->audit->record($this->actor($request), 'product_variant.create', $variant, after: $after);
 
             return $variant;
-        });
+        }), ['product_variants_sku_unique' => 'sku']);
 
         return AdminVariantResource::make($variant)->response()->setStatusCode(201);
     }
 
     public function update(VariantRequest $request, string $variant): AdminVariantResource
     {
-        $updated = DB::transaction(function () use ($request, $variant): ProductVariant {
+        $updated = UniqueViolation::asValidationError(fn (): ProductVariant => DB::transaction(function () use ($request, $variant): ProductVariant {
             $productId = ProductVariant::query()->where('uuid', $variant)->valueOrFail('product_id');
             $product = Product::query()->whereKey($productId)->lockForUpdate()->firstOrFail();
             $model = ProductVariant::query()->where('uuid', $variant)->firstOrFail();
@@ -76,7 +77,7 @@ final class AdminVariantController extends AdminController
             }
 
             return $model;
-        });
+        }), ['product_variants_sku_unique' => 'sku']);
 
         return AdminVariantResource::make($updated);
     }
