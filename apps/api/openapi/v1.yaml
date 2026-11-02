@@ -633,7 +633,7 @@ paths:
       summary: My joins
       description: Newest first. Includes joins whose payment failed, so the customer can see what happened.
       x-epic: E11
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
@@ -656,6 +656,7 @@ paths:
                     items: {$ref: '#/components/schemas/Participation'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
 
   /me/participations/{participation_id}:
     parameters:
@@ -665,7 +666,7 @@ paths:
       operationId: getMyParticipation
       summary: One join
       x-epic: E11
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
@@ -690,11 +691,12 @@ paths:
       operationId: cancelMyParticipation
       summary: Cancel a join before close
       description: |
-        Allowed while `can_cancel` is true: the campaign is `active` and the
-        deal is not yet confirmed (proposed rule, open question Q16). The hold
-        is released and the units go back on sale.
+        Allowed while `can_cancel` is true: the campaign is `active`, its
+        deadline has not passed and the deal is not yet confirmed (proposed
+        rule, open question Q16). The hold is released and the units go back
+        on sale.
       x-epic: E11
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '200':
@@ -713,6 +715,7 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
 
   /me/participations/{participation_id}/payments:
     parameters:
@@ -820,7 +823,7 @@ paths:
       summary: My orders
       description: An order exists once its hold is captured. Newest first.
       x-epic: E11
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
@@ -840,6 +843,7 @@ paths:
                     items: {$ref: '#/components/schemas/Order'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
 
   /me/orders/{order_id}:
     parameters:
@@ -849,7 +853,7 @@ paths:
       operationId: getMyOrder
       summary: One order with tracking and invoices
       x-epic: E11
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
@@ -2509,7 +2513,7 @@ paths:
       operationId: adminListRefunds
       summary: Refunds
       x-epic: E11
-      x-status: mock
+      x-status: live
       x-permission: payments.view
       security: [{adminToken: []}]
       parameters:
@@ -2533,16 +2537,21 @@ paths:
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
     post:
       tags: [Admin refunds and approvals]
       operationId: adminRequestRefund
       summary: Request a refund
       description: |
         For returns within 7 days of delivery, shortages, damage or late
-        delivery. Never more than captured minus already refunded. Starts as
-        `pending_approval` until a second admin with the finance role approves.
+        delivery. Never more than captured minus what is already refunded or
+        waiting to be. Starts as `pending_approval` with a `manual_refund`
+        approval request, until a second admin with the finance role approves.
+        `method` is `void` for a full refund within 2 hours of capture
+        (`groupbuy.payments.void_after_capture_minutes`), otherwise `refund`.
+        Without `customer_order_id` the refund is linked to the payment's order.
       x-epic: E11
-      x-status: mock
+      x-status: live
       x-permission: refunds.request
       security: [{adminToken: []}]
       requestBody:
@@ -2563,7 +2572,7 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '422':
-          description: '`refund_exceeds_captured`, `payment_not_captured`, or invalid input.'
+          description: '`refund_exceeds_captured`, `payment_not_captured`, `payment_not_found`, `order_not_for_payment`, or invalid input.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
@@ -2665,7 +2674,7 @@ paths:
       operationId: adminListOrders
       summary: Customer orders
       x-epic: E11
-      x-status: mock
+      x-status: live
       x-permission: orders.view
       security: [{adminToken: []}]
       parameters:
@@ -2696,6 +2705,7 @@ paths:
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
 
   /admin/orders/{order_id}:
     parameters:
@@ -2705,7 +2715,7 @@ paths:
       operationId: adminGetOrder
       summary: One order
       x-epic: E11
-      x-status: mock
+      x-status: live
       x-permission: orders.view
       security: [{adminToken: []}]
       responses:
@@ -3680,7 +3690,7 @@ components:
         invoice_number: {type: string, example: INV-2026-000123}
         issued_at: {type: string, format: date-time}
         total: {$ref: '#/components/schemas/Money'}
-        pdf_url: {type: string, format: uri, nullable: true, description: Short-lived signed link.}
+        pdf_url: {type: string, format: uri, nullable: true, description: Short-lived signed link. Null until the PDF is rendered and stored (comes with the storage integration).}
 
     ShipmentStatus:
       type: string

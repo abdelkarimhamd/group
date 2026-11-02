@@ -8,6 +8,7 @@ use App\Modules\Payments\Enums\RejectionReason;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -41,6 +42,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CarbonImmutable $created_at
  * @property CarbonImmutable $updated_at
  * @property-read CampaignParticipation $participation
+ * @property-read Collection<int, Refund> $refunds
  */
 class PaymentAuthorization extends Model
 {
@@ -122,5 +124,13 @@ class PaymentAuthorization extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(PaymentTransaction::class)->orderBy('id');
+    }
+
+    /**
+     * @return HasMany<Refund, $this>
+     */
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(Refund::class)->orderBy('id');
     }
 }

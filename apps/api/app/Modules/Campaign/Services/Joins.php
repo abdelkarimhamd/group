@@ -209,6 +209,79 @@ class Joins
     }
 
     /**
+     * The customer cancels their join (proposed rule, Q16): only while the
+     * campaign is active and the deal is not yet confirmed. Reserved or
+     * committed units go back on sale, the hold is released (voided after
+     * commit), and a tier the campaign falls back below is recorded.
+     *
+     * @throws ApiException 409 cancellation_not_allowed
+     */
+    public function cancelByCustomer(User $user, string $uuid): CampaignParticipation
+    {
+        return DB::transaction(function () use ($user, $uuid): CampaignParticipation {
+            $campaignId = CampaignParticipation::query()->where('uuid', $uuid)->where('user_id', $user->id)->firstOrFail()->campaign_id;
+            $campaign = Campaign::query()->whereKey($campaignId)->lockForUpdate()->firstOrFail();
+            $participation = CampaignParticipation::query()->where('uuid', $uuid)->lockForUpdate()->firstOrFail();
+
+            $cancellable = in_array($participation->status, [ParticipationStatus::PendingPayment, ParticipationStatus::Authorized], true)
+                && $campaign->isJoinable()
+                && $campaign->deal_confirmed_at === null;
+
+            if (! $cancellable) {
+                throw new ApiException(409, 'cancellation_not_allowed');
+            }
+
+            $actor = Actor::user($user->id);
+
+            if ($participation->status === ParticipationStatus::PendingPayment) {
+                $this->releaseUnits($campaign, $participation, ParticipationStatus::Cancelled, $actor, 'customer_cancelled');
+                $campaign->refresh();
+                $this->events->record($campaign, CampaignEvents::JOIN_CANCELLED, $actor, ['participation_id' => $participation->uuid, 'quantity' => $participation->qty, 'was' => 'pending_payment']);
+
+                return $participation;
+            }
+
+            $tiers = $this->tierSet($campaign->id, (int) $campaign->current_tier_version);
+            $priceBefore = $tiers->current($campaign->committed_qty);
+
+            $freed = DB::update(
+                'UPDATE campaigns SET committed_qty = committed_qty - ?, updated_at = ? WHERE id = ? AND committed_qty >= ?',
+                [$participation->qty, CarbonImmutable::now(), $campaign->id, $participation->qty],
+            );
+
+            if ($freed !== 1) {
+                throw new LogicException("Campaign {$campaign->id} has fewer committed units than participation {$participation->id} holds.");
+            }
+
+            $campaign->refresh();
+            $participation->status = ParticipationStatus::Cancelled;
+            $participation->cancel_reason = 'customer_cancelled';
+            $participation->save();
+            $this->history->record($participation, ParticipationStatus::Authorized, ParticipationStatus::Cancelled, $actor, 'customer_cancelled');
+
+            foreach ($participation->payments()->whereIn('status', [PaymentStatus::PendingAuthorization, PaymentStatus::Authorized])->get() as $payment) {
+                $this->holds->release($payment, RejectionReason::ParticipationCancelled, $actor);
+            }
+
+            $this->events->record($campaign, CampaignEvents::JOIN_CANCELLED, $actor, ['participation_id' => $participation->uuid, 'quantity' => $participation->qty, 'was' => 'authorized']);
+            $priceAfter = $tiers->current($campaign->committed_qty);
+
+            if ($priceAfter->minQty !== $priceBefore->minQty) {
+                $this->events->record($campaign, CampaignEvents::PRICE_CHANGED, $actor, [
+                    'from_unit_price_halalas' => $priceBefore->unitPriceHalalas,
+                    'to_unit_price_halalas' => $priceAfter->unitPriceHalalas,
+                    'tier' => ['min_qty' => $priceAfter->minQty, 'max_qty' => $priceAfter->maxQty],
+                    'tier_version' => $campaign->current_tier_version,
+                ]);
+            }
+
+            CampaignProgressChanged::dispatch($campaign->id);
+
+            return $participation;
+        });
+    }
+
+    /**
      * Reservations whose 15 minutes ran out without an authorized payment
      * free their units: `payment_failed` when the last card tried was
      * declined or its hold refused, `reservation_expired` otherwise. campaigns:tick asks the
@@ -270,9 +343,11 @@ class Joins
         $participation->save();
         $this->history->record($participation, $from, $to, $actor, $reason);
 
-        $rejection = in_array($to, [ParticipationStatus::ReservationExpired, ParticipationStatus::PaymentFailed], true)
-            ? RejectionReason::ReservationExpired
-            : RejectionReason::CampaignClosed;
+        $rejection = match ($to) {
+            ParticipationStatus::ReservationExpired, ParticipationStatus::PaymentFailed => RejectionReason::ReservationExpired,
+            ParticipationStatus::Cancelled => RejectionReason::ParticipationCancelled,
+            default => RejectionReason::CampaignClosed,
+        };
 
         foreach ($participation->payments()->whereIn('status', [PaymentStatus::PendingAuthorization, PaymentStatus::Authorized])->get() as $payment) {
             $this->holds->release($payment, $rejection, $actor);

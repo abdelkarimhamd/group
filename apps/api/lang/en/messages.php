@@ -62,6 +62,11 @@ return [
         'reservation_expired' => 'Your reserved units were released. Join again to try another card.',
         'payment_in_progress' => 'Your last payment is still being processed. Wait for it to finish before trying another card.',
         'already_paid' => 'This join is already paid: its card hold went through.',
+        'cancellation_not_allowed' => 'This join can no longer be cancelled: the deal is confirmed or the campaign has closed.',
+        'payment_not_found' => 'We could not find that payment.',
+        'payment_not_captured' => 'Only a captured payment can be refunded.',
+        'order_not_for_payment' => 'That order was not paid with this payment.',
+        'refund_exceeds_captured' => 'The refund is more than what is left of the captured amount.',
         'payment_provider_unavailable' => 'We could not check your payment right now. We will update it shortly.',
     ],
 

@@ -31,6 +31,9 @@ final class CampaignEvents
 
     public const JOINED = 'joined';
 
+    /** A customer cancelled their join before the deal was confirmed (E11). */
+    public const JOIN_CANCELLED = 'join_cancelled';
+
     public const DEAL_CONFIRMED = 'deal_confirmed';
 
     public const PRICE_CHANGED = 'price_changed';

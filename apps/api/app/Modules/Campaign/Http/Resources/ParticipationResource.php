@@ -2,7 +2,6 @@
 
 namespace App\Modules\Campaign\Http\Resources;
 
-use App\Modules\Campaign\Enums\CampaignStatus;
 use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Payments\Http\Resources\PaymentResource;
@@ -18,7 +17,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 class ParticipationResource extends JsonResource
 {
     public const RELATIONS = [
-        'campaign.currentTiers', 'campaign.product.images.variant', 'variant', 'latestPayment.participation.campaign',
+        'campaign.currentTiers', 'campaign.product.images.variant', 'variant', 'latestPayment.participation.campaign', 'order',
     ];
 
     /**
@@ -42,13 +41,13 @@ class ParticipationResource extends JsonResource
             'final_unit_price' => $captured && $this->final_unit_price_halalas !== null ? Money::sar($this->final_unit_price_halalas) : null,
             'capture_amount' => $captured && $this->capture_amount_halalas !== null ? Money::sar($this->capture_amount_halalas) : null,
             'reservation_expires_at' => $this->reservation_expires_at->toIso8601ZuluString(),
-            // Proposed rule (Q16): only while active and before the deal is confirmed.
+            // Proposed rule (Q16): only while active, before the deadline and
+            // before the deal is confirmed.
             'can_cancel' => in_array($this->status, [ParticipationStatus::PendingPayment, ParticipationStatus::Authorized], true)
-                && $campaign->status === CampaignStatus::Active
+                && $campaign->isJoinable()
                 && $campaign->deal_confirmed_at === null,
             'payment' => $this->latestPayment === null ? null : PaymentResource::make($this->latestPayment)->resolve($request),
-            // Customer orders arrive with E11.
-            'order_id' => null,
+            'order_id' => $this->order?->uuid,
             'created_at' => $this->created_at->toIso8601ZuluString(),
         ];
     }

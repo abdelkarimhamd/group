@@ -6,6 +6,7 @@ use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Identity\Models\Address;
 use App\Modules\Identity\Models\User;
+use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -46,6 +47,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property-read User $user
  * @property-read ProductVariant $variant
  * @property-read PaymentAuthorization|null $latestPayment
+ * @property-read CustomerOrder|null $order
  */
 class CampaignParticipation extends Model
 {
@@ -134,5 +136,15 @@ class CampaignParticipation extends Model
     {
         return $this->hasOne(PaymentAuthorization::class, 'participation_id')
             ->ofMany(['id' => 'max'], fn (Builder $query) => $query->attempts());
+    }
+
+    /**
+     * The order made once the hold was captured.
+     *
+     * @return HasOne<CustomerOrder, $this>
+     */
+    public function order(): HasOne
+    {
+        return $this->hasOne(CustomerOrder::class, 'participation_id');
     }
 }

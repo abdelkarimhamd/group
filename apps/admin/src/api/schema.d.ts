@@ -364,9 +364,10 @@ export interface paths {
     put?: never;
     /**
      * Cancel a join before close
-     * @description Allowed while `can_cancel` is true: the campaign is `active` and the
-     *     deal is not yet confirmed (proposed rule, open question Q16). The hold
-     *     is released and the units go back on sale.
+     * @description Allowed while `can_cancel` is true: the campaign is `active`, its
+     *     deadline has not passed and the deal is not yet confirmed (proposed
+     *     rule, open question Q16). The hold is released and the units go back
+     *     on sale.
      */
     post: operations['cancelMyParticipation'];
     delete?: never;
@@ -1383,8 +1384,12 @@ export interface paths {
     /**
      * Request a refund
      * @description For returns within 7 days of delivery, shortages, damage or late
-     *     delivery. Never more than captured minus already refunded. Starts as
-     *     `pending_approval` until a second admin with the finance role approves.
+     *     delivery. Never more than captured minus what is already refunded or
+     *     waiting to be. Starts as `pending_approval` with a `manual_refund`
+     *     approval request, until a second admin with the finance role approves.
+     *     `method` is `void` for a full refund within 2 hours of capture
+     *     (`groupbuy.payments.void_after_capture_minutes`), otherwise `refund`.
+     *     Without `customer_order_id` the refund is linked to the payment's order.
      */
     post: operations['adminRequestRefund'];
     delete?: never;
@@ -2171,7 +2176,7 @@ export interface components {
       total: components['schemas']['Money'];
       /**
        * Format: uri
-       * @description Short-lived signed link.
+       * @description Short-lived signed link. Null until the PDF is rendered and stored (comes with the storage integration).
        */
       pdf_url: string | null;
     };
@@ -3759,6 +3764,7 @@ export interface operations {
         };
       };
       401: components['responses']['Unauthenticated'];
+      422: components['responses']['ValidationFailed'];
     };
   };
   getMyParticipation: {
@@ -3823,6 +3829,7 @@ export interface operations {
           'application/json': components['schemas']['Error'];
         };
       };
+      429: components['responses']['TooManyRequests'];
     };
   };
   retryParticipationPayment: {
@@ -3949,6 +3956,7 @@ export interface operations {
         };
       };
       401: components['responses']['Unauthenticated'];
+      422: components['responses']['ValidationFailed'];
     };
   };
   getMyOrder: {
@@ -5636,6 +5644,7 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
     };
   };
   adminRequestRefund: {
@@ -5664,7 +5673,7 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
-      /** @description `refund_exceeds_captured`, `payment_not_captured`, or invalid input. */
+      /** @description `refund_exceeds_captured`, `payment_not_captured`, `payment_not_found`, `order_not_for_payment`, or invalid input. */
       422: {
         headers: {
           [name: string]: unknown;
@@ -5797,6 +5806,7 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
     };
   };
   adminGetOrder: {
