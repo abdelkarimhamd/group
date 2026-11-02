@@ -128,9 +128,10 @@ class CountingJoinsTest extends TestCase
         // The fifth unit was reserved before the maximum was reached; its payment completes now.
         $this->assertTrue($this->authorizeHold($late));
 
+        // The last join to settle woke the closing job, which counted all five units.
         $campaign->refresh();
-        $this->assertSame(['closing', 'max_reached', 'settling_joins', 5, 0], [
-            $campaign->status->value, $campaign->close_reason->value, $campaign->closing_step->value, $campaign->committed_qty, $campaign->reserved_qty,
+        $this->assertSame(['closing', 'max_reached', 'awaiting_supplier', 5, 0, 5], [
+            $campaign->status->value, $campaign->close_reason->value, $campaign->closing_step->value, $campaign->committed_qty, $campaign->reserved_qty, $campaign->final_qty,
         ]);
         $this->assertSame(['max_reached', 'closed'], $campaign->events()->whereIn('event_type', ['max_reached', 'closed'])->orderBy('id')->pluck('event_type')->all());
         Event::assertDispatchedTimes(CampaignClosingStarted::class, 1);
@@ -168,8 +169,8 @@ class CountingJoinsTest extends TestCase
         $this->assertTrue($this->authorizeHold($late));
 
         $campaign->refresh();
-        $this->assertSame(['closing', 'deadline', 'settling_joins', 3, 0], [
-            $campaign->status->value, $campaign->close_reason->value, $campaign->closing_step->value, $campaign->committed_qty, $campaign->reserved_qty,
+        $this->assertSame(['closing', 'deadline', 'awaiting_supplier', 3, 0, 3], [
+            $campaign->status->value, $campaign->close_reason->value, $campaign->closing_step->value, $campaign->committed_qty, $campaign->reserved_qty, $campaign->final_qty,
         ]);
         $this->assertTrue($campaign->closed_at->equalTo($campaign->deadline_at));
         $this->assertSame(['closed'], $campaign->events()->whereIn('event_type', ['max_reached', 'closed'])->pluck('event_type')->all());

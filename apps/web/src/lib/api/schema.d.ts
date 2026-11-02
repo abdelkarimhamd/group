@@ -1216,12 +1216,16 @@ export interface paths {
         put?: never;
         /**
          * Cancel a campaign
-         * @description Allowed from `draft`, `pending_approval`, `scheduled`, `active`, and
-         *     `closing` before captures start. Cancels at once, releases every join
-         *     and voids every hold. Once any capture succeeded, money must go back,
-         *     so this will open an approval request for a second admin with the
-         *     finance role (202) instead; until that flow ships (E10) it answers 409
-         *     `invalid_transition`.
+         * @description From `draft`, `pending_approval`, `scheduled`, `active`, and
+         *     `closing` at `settling_joins` or `awaiting_supplier`, it cancels at
+         *     once (200): every join is released and every hold voided. Once
+         *     captures have started (`closing` at `capturing` or `needs_admin`, or
+         *     `purchasing`), money may have to go back, so it opens a
+         *     `campaign_cancellation` approval request for a second admin with the
+         *     finance role instead (202) and changes nothing else; asking again
+         *     returns the request already waiting. Approving it (refunds, order
+         *     cancellation) comes with the approvals flow. `fulfilling` and ended
+         *     campaigns answer 409 `invalid_transition`.
          */
         post: operations["adminCancelCampaign"];
         delete?: never;
@@ -1243,9 +1247,17 @@ export interface paths {
         put?: never;
         /**
          * Record the supplier's reconfirmation before capture
-         * @description Only while `closing_step` is `awaiting_supplier`. `confirmed` resumes
-         *     closing and starts captures; `rejected` fails the campaign and voids
-         *     every hold.
+         * @description Only while `closing_step` is `awaiting_supplier` and before
+         *     `supplier_decision_due_at` (409 `supplier_decision_overdue` after it;
+         *     the closing sweep then fails the campaign). `confirmed` records the
+         *     unit cost (in `currency`, the quotation's currency when left out),
+         *     stock and quotation reference in a `supplier_confirmed` event, moves
+         *     `closing_step` to `capturing` and starts captures. `available_qty`
+         *     below `final_qty` is 422 `supplier_stock_short`: a supplier that
+         *     cannot supply every unit is recorded as `rejected`. `rejected` fails
+         *     the campaign (`end_reason` `supplier_rejected`) and voids every hold.
+         *     Captures run in the background, so the campaign returned may already
+         *     have moved on.
          */
         post: operations["adminRecordSupplierDecision"];
         delete?: never;
@@ -1267,7 +1279,11 @@ export interface paths {
         put?: never;
         /**
          * Proceed or cancel when captures fell short
-         * @description Only while `closing_step` is `needs_admin` (captured units below target or supplier MOQ).
+         * @description Only while `closing_step` is `needs_admin` (captured units below the
+         *     target or the supplier's MOQ). `proceed` buys the captured units: the
+         *     campaign moves to `purchasing`. `cancel` opens a
+         *     `campaign_cancellation` approval request for a second admin with the
+         *     finance role (202) and changes nothing else until it is approved.
          */
         post: operations["adminDecideBelowTarget"];
         delete?: never;
@@ -1938,7 +1954,7 @@ export interface components {
              * @description Set when the deadline was extended.
              */
             original_deadline_at: string | null;
-            /** @description Set when the campaign closes successfully; everyone pays this. */
+            /** @description Set once the campaign has succeeded (purchasing, fulfilling or completed); everyone pays this. Null while closing and for a failed or cancelled campaign. */
             final_unit_price: components["schemas"]["Money"] | null;
             /**
              * @description When a customer may cancel a join (proposed rule, open question Q16). Show it before payment.
@@ -1988,8 +2004,9 @@ export interface components {
             hold_unit_price: components["schemas"]["Money"];
             /** @description The most the customer can be charged. Show that the final charge may be lower. */
             hold_amount: components["schemas"]["Money"];
+            /** @description The price every participant paid. Null until this join's hold is captured. */
             final_unit_price: components["schemas"]["Money"] | null;
-            /** @description Set at close. The rest of the hold is released, never charged. */
+            /** @description What was charged. Null until this join's hold is captured, and for a join released or left out at close. The rest of the hold is released, never charged. */
             capture_amount: components["schemas"]["Money"] | null;
             /** Format: date-time */
             reservation_expires_at: string;
@@ -2010,10 +2027,10 @@ export interface components {
          */
         PaymentStatus: "pending_authorization" | "authorized" | "failed" | "voided" | "expired" | "captured" | "capture_failed" | "partially_refunded" | "refunded";
         /**
-         * @description Why a payment was voided or failed on our side.
+         * @description Why a payment was voided or failed on our side. `capture_declined` and `capture_cutoff_passed` are holds that could not be captured when the campaign closed (the join was left out and the hold voided).
          * @enum {string}
          */
-        PaymentRejectionReason: "declined" | "amount_mismatch" | "currency_mismatch" | "method_not_allowed" | "not_authorize_only" | "reservation_expired" | "campaign_closed" | "participation_cancelled" | "duplicate_hold";
+        PaymentRejectionReason: "declined" | "amount_mismatch" | "currency_mismatch" | "method_not_allowed" | "not_authorize_only" | "reservation_expired" | "campaign_closed" | "participation_cancelled" | "duplicate_hold" | "capture_declined" | "capture_cutoff_passed";
         Payment: {
             /** Format: uuid */
             id: string;
@@ -2496,6 +2513,7 @@ export interface components {
              */
             supplier_decision_due_at: string | null;
             captured_qty: number | null;
+            /** @description The admin's reason for a cancellation; for a failure, one of target_missed, supplier_rejected, no_supplier_decision or captures_failed. */
             end_reason: string | null;
             /** @description Null until the first tier set is saved. */
             tier_version: number | null;
@@ -2553,20 +2571,23 @@ export interface components {
         SupplierDecisionInput: {
             /** @enum {string} */
             decision: "confirmed" | "rejected";
-            /** @description Required when confirmed. */
+            /** @description Required when confirmed. In the minor unit of `currency`. */
             unit_cost_minor?: number;
-            /** @enum {string} */
-            currency?: "USD" | "CNY" | "SAR";
+            /**
+             * @description The supplier's currency; the quotation's when left out.
+             * @enum {string|null}
+             */
+            currency?: "USD" | "CNY" | "SAR" | null;
             /** @description Required when confirmed; must cover the final quantity. */
             available_qty?: number;
-            quotation_reference?: string;
+            quotation_reference?: string | null;
             note?: string | null;
         };
         CampaignEvent: {
             /** Format: uuid */
             id: string;
             /**
-             * @description For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed, max_reached, tiers_changed, extended, closed, supplier_confirmed, captures_completed, failed.
+             * @description For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, failed, cancelled.
              * @example price_changed
              */
             event_type: string;
@@ -5272,8 +5293,24 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            409: components["responses"]["InvalidTransition"];
-            422: components["responses"]["ValidationFailed"];
+            /** @description `invalid_transition` (not awaiting the supplier) or `supplier_decision_overdue`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `supplier_stock_short`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
         };
     };
     adminDecideBelowTarget: {

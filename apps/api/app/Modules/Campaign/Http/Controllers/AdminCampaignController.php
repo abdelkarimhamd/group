@@ -8,17 +8,22 @@ use App\Modules\Campaign\Enums\CampaignStatus;
 use App\Modules\Campaign\Enums\ClosingStep;
 use App\Modules\Campaign\Http\Requests\AdminListCampaignsRequest;
 use App\Modules\Campaign\Http\Requests\ApproveCampaignRequest;
+use App\Modules\Campaign\Http\Requests\BelowTargetDecisionRequest;
 use App\Modules\Campaign\Http\Requests\CampaignRequest;
 use App\Modules\Campaign\Http\Requests\ExtendCampaignRequest;
 use App\Modules\Campaign\Http\Requests\ListCampaignEventsRequest;
 use App\Modules\Campaign\Http\Requests\ListParticipationsRequest;
 use App\Modules\Campaign\Http\Requests\ReasonRequest;
+use App\Modules\Campaign\Http\Requests\SupplierDecisionRequest;
 use App\Modules\Campaign\Http\Requests\TierSetRequest;
 use App\Modules\Campaign\Http\Resources\AdminCampaignResource;
 use App\Modules\Campaign\Http\Resources\AdminParticipationResource;
 use App\Modules\Campaign\Http\Resources\CampaignEventResource;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Services\CampaignLifecycle;
+use App\Modules\Campaign\Services\Closing;
+use App\Modules\Finance\Http\Resources\ApprovalRequestResource;
+use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Pricing\MarginCalculator;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,7 +32,7 @@ use Illuminate\Http\Request;
 
 /**
  * Campaigns in the admin portal. Each action is a guarded status change in
- * CampaignLifecycle; every one is audited.
+ * CampaignLifecycle, or a closing decision in Closing; every one is audited.
  */
 final class AdminCampaignController extends AdminController
 {
@@ -116,9 +121,28 @@ final class AdminCampaignController extends AdminController
         ));
     }
 
-    public function cancel(ReasonRequest $request, string $campaign): AdminCampaignResource
+    /**
+     * 200 with the campaign when it is cancelled at once; 202 with the
+     * approval request when captures have started and finance must approve.
+     */
+    public function cancel(ReasonRequest $request, string $campaign): AdminCampaignResource|JsonResponse
     {
-        return $this->respond($this->lifecycle->cancel($campaign, $request->validated('reason'), $this->admin($request)));
+        return $this->respondOrWait($this->lifecycle->cancel($campaign, $request->validated('reason'), $this->admin($request)));
+    }
+
+    public function supplierDecision(SupplierDecisionRequest $request, Closing $closing, string $campaign): AdminCampaignResource
+    {
+        return $this->respond($closing->recordSupplierDecision($campaign, $request->validated(), $this->admin($request)));
+    }
+
+    public function belowTargetDecision(BelowTargetDecisionRequest $request, Closing $closing, string $campaign): AdminCampaignResource|JsonResponse
+    {
+        return $this->respondOrWait($closing->decideBelowTarget(
+            $campaign,
+            $request->validated('decision'),
+            $request->validated('reason'),
+            $this->admin($request),
+        ));
     }
 
     public function participations(ListParticipationsRequest $request, string $campaign): JsonResponse
@@ -149,5 +173,14 @@ final class AdminCampaignController extends AdminController
     private function respond(Campaign $campaign): AdminCampaignResource
     {
         return AdminCampaignResource::make($campaign->fresh(AdminCampaignResource::RELATIONS));
+    }
+
+    private function respondOrWait(Campaign|ApprovalRequest $result): AdminCampaignResource|JsonResponse
+    {
+        if ($result instanceof Campaign) {
+            return $this->respond($result);
+        }
+
+        return ApprovalRequestResource::make($result->load(ApprovalRequestResource::RELATIONS))->response()->setStatusCode(202);
     }
 }

@@ -159,6 +159,10 @@ const en = {
     rejection_campaign_closed: 'The deal closed before the payment finished.',
     rejection_participation_cancelled: 'This join was cancelled.',
     rejection_duplicate_hold: 'A second hold was made for this join, so we cancelled it.',
+    rejection_capture_declined:
+      'Your bank declined the charge when the deal closed, so we released the hold.',
+    rejection_capture_cutoff_passed:
+      'The hold ran out of time before the deal could charge it, so we released it.',
   },
   fakePay: {
     title: 'Test payment',

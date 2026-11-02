@@ -2,6 +2,8 @@
 
 namespace App\Modules\Payments\Services;
 
+use App\Modules\Campaign\Models\Campaign;
+use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
 use App\Modules\Payments\Enums\TransactionStatus;
@@ -13,6 +15,7 @@ use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\PaymentTransaction;
 use App\Support\Actor;
 use App\Support\Audit\StatusHistory;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LogicException;
@@ -30,8 +33,8 @@ use LogicException;
  */
 class Holds
 {
-    /** Statuses a void can end: a hold, or an orphan hold on a failed payment. */
-    private const VOIDABLE = [PaymentStatus::Authorized, PaymentStatus::Failed];
+    /** Statuses a void can end: a hold, one whose capture failed, or an orphan hold on a failed payment. */
+    private const VOIDABLE = [PaymentStatus::Authorized, PaymentStatus::CaptureFailed, PaymentStatus::Failed];
 
     public function __construct(
         private readonly PaymentGateway $gateway,
@@ -72,9 +75,105 @@ class Holds
     }
 
     /**
-     * Void a hold now: an authorized one, or an orphan hold Moyasar placed
-     * on a payment already failed here. Run from VoidPayment, outside any
-     * transaction.
+     * A hold that could not be captured at close (declined, or past its
+     * capture cutoff): authorized -> capture_failed, voided after commit.
+     * Call inside the transaction that records it, with the campaign and
+     * participation locked first (lock order).
+     */
+    public function captureFailed(PaymentAuthorization $payment, RejectionReason $reason, Actor $actor): void
+    {
+        if (app('db.transactions')->callbackApplicableTransactions()->isEmpty()) {
+            throw new LogicException('Record a failed capture inside a transaction.');
+        }
+
+        $payment = PaymentAuthorization::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
+        if ($payment->status !== PaymentStatus::Authorized) {
+            return;
+        }
+
+        $payment->status = PaymentStatus::CaptureFailed;
+        $payment->rejection_reason = $reason;
+        $payment->save();
+        $this->history->record($payment, PaymentStatus::Authorized, PaymentStatus::CaptureFailed, $actor, $reason->value);
+
+        VoidPayment::dispatch($payment->id, $actor->type->value, $actor->id)->afterCommit();
+    }
+
+    /**
+     * Holds past their expiry: authorized and capture_failed payments become
+     * `expired` (spec, Expiry clock). One being voided gets one last void
+     * attempt first. Returns how many expired.
+     */
+    public function expireDue(?CarbonImmutable $now = null, int $limit = 500): int
+    {
+        if (app('db.transactions')->callbackApplicableTransactions()->isNotEmpty()) {
+            throw new LogicException('Never call the payment provider inside a database transaction.');
+        }
+
+        $now ??= CarbonImmutable::now();
+        $due = PaymentAuthorization::query()
+            ->whereIn('status', [PaymentStatus::Authorized, PaymentStatus::CaptureFailed])
+            ->where('expires_at', '<=', $now)
+            ->orderBy('expires_at')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+
+        $expired = 0;
+
+        foreach ($due as $payment) {
+            if ($payment->status === PaymentStatus::CaptureFailed || $payment->rejection_reason !== null) {
+                try {
+                    $this->void($payment, Actor::system());
+                } catch (\Throwable $e) {
+                    Log::warning('payments.void.last_attempt_failed', ['payment' => $payment->uuid, 'error' => $e->getMessage()]);
+                }
+            }
+
+            $expired += DB::transaction(function () use ($payment, $now): int {
+                // Lock order: campaign, participation, payment.
+                $campaignId = CampaignParticipation::query()->whereKey($payment->participation_id)->value('campaign_id');
+                Campaign::query()->whereKey($campaignId)->lockForUpdate()->firstOrFail();
+                $participation = CampaignParticipation::query()->whereKey($payment->participation_id)->lockForUpdate()->firstOrFail();
+                $locked = PaymentAuthorization::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
+                if (! in_array($locked->status, [PaymentStatus::Authorized, PaymentStatus::CaptureFailed], true) || $locked->expires_at->greaterThan($now)) {
+                    return 0;
+                }
+
+                // A capture was sent and its outcome is still unknown, so
+                // Moyasar may have taken the money. It stays authorized for
+                // finance while the capture job keeps asking (spec, Capture
+                // step 8); expiring it would drop a charged customer.
+                if ($locked->status === PaymentStatus::Authorized && $this->captureInFlight($locked)) {
+                    Log::critical('payments.hold.expiry_blocked_by_capture', ['payment' => $locked->uuid, 'participation' => $participation->uuid]);
+
+                    return 0;
+                }
+
+                $from = $locked->status;
+                $locked->status = PaymentStatus::Expired;
+                $locked->save();
+                $this->history->record($locked, $from, PaymentStatus::Expired, Actor::system(), 'hold_expired');
+
+                // A live hold should never run out: the extension rule and the
+                // capture cutoff keep it capturable through close.
+                if ($from === PaymentStatus::Authorized && $locked->rejection_reason === null) {
+                    Log::critical('payments.hold.expired_uncaptured', ['payment' => $locked->uuid, 'participation' => $participation->uuid, 'participation_status' => $participation->status->value]);
+                }
+
+                return 1;
+            });
+        }
+
+        return $expired;
+    }
+
+    /**
+     * Void a hold now: an authorized one, one whose capture failed, or an
+     * orphan hold Moyasar placed on a payment already failed here. Run from
+     * VoidPayment, outside any transaction.
      *
      * @throws GatewayException when the outcome is unknown; the job retries
      */
@@ -114,6 +213,15 @@ class Holds
             // A refused void is left for daily reconciliation; retrying will not change the answer.
             Log::warning('payments.void.refused', ['payment' => $payment->uuid, 'error' => $result->errorCode]);
         }
+    }
+
+    private function captureInFlight(PaymentAuthorization $payment): bool
+    {
+        return PaymentTransaction::query()
+            ->where('idempotency_key', Captures::attemptKey($payment))
+            ->where('status', TransactionStatus::Pending)
+            ->where('attempts', '>', 0)
+            ->exists();
     }
 
     /**

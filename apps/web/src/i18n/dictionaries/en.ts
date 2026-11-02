@@ -281,6 +281,8 @@ export const en: Dictionary = {
       campaign_closed: "The campaign closed before the payment finished, so we cancelled it.",
       participation_cancelled: "This join was cancelled, so we cancelled the payment.",
       duplicate_hold: "This card was charged a second time for the same join, so we cancelled the extra hold.",
+      capture_declined: "Your bank declined the charge when the deal closed, so we released the hold.",
+      capture_cutoff_passed: "The hold ran out of time before the deal could charge it, so we released it.",
     },
     tryAnotherCard: "Try another card",
     viewJoin: "View my join",

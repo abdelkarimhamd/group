@@ -142,6 +142,8 @@ Route::prefix('v1')->name('v1.')->group(function () {
                 Route::get('extension-window', [AdminCampaignController::class, 'extensionWindow'])->can('campaigns.view')->name('extension-window');
                 Route::post('extend', [AdminCampaignController::class, 'extend'])->can('campaigns.extend')->name('extend');
                 Route::post('cancel', [AdminCampaignController::class, 'cancel'])->can('campaigns.cancel')->name('cancel');
+                Route::post('supplier-decision', [AdminCampaignController::class, 'supplierDecision'])->can('campaigns.close')->name('supplier-decision');
+                Route::post('below-target-decision', [AdminCampaignController::class, 'belowTargetDecision'])->can('campaigns.close')->name('below-target-decision');
                 Route::get('participations', [AdminCampaignController::class, 'participations'])->can('campaigns.view')->name('participations');
                 Route::get('events', [AdminCampaignController::class, 'events'])->can('campaigns.view')->name('events');
             });

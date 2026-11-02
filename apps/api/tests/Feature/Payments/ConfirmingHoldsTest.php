@@ -407,13 +407,15 @@ class ConfirmingHoldsTest extends TestCase
     #[Test]
     public function a_hold_while_the_campaign_settles_its_joins_still_counts(): void
     {
-        $this->campaign->forceFill(['status' => 'closing', 'closing_step' => 'settling_joins', 'close_reason' => 'deadline'])->save();
+        $this->campaign->forceFill(['status' => 'closing', 'closing_step' => 'settling_joins', 'close_reason' => 'deadline', 'min_target_qty' => 1])->save();
 
         $this->sync($this->payment, 'fake_authorized_'.$this->payment->uuid)
             ->assertOk()
             ->assertJsonPath('data.status', 'authorized');
 
-        $this->assertSame(1, $this->campaign->refresh()->committed_qty);
+        // It was the last join in flight, so closing moved on and counted it.
+        $this->campaign->refresh();
+        $this->assertSame([1, 1, 'awaiting_supplier'], [$this->campaign->committed_qty, $this->campaign->final_qty, $this->campaign->closing_step->value]);
     }
 
     #[Test]

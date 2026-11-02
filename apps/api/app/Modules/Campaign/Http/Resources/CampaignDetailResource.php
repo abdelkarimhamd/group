@@ -2,6 +2,7 @@
 
 namespace App\Modules\Campaign\Http\Resources;
 
+use App\Modules\Campaign\Enums\CampaignStatus;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Catalog\Enums\VariantStatus;
 use App\Modules\Catalog\Http\Resources\CategoryResource;
@@ -49,7 +50,10 @@ class CampaignDetailResource extends CampaignSummaryResource
             ], $tiers?->tiers ?? []),
             'per_customer_max_qty' => $this->per_customer_max_qty,
             'original_deadline_at' => $this->original_deadline_at?->toIso8601ZuluString(),
-            'final_unit_price' => $this->final_unit_price_halalas === null ? null : Money::sar($this->final_unit_price_halalas),
+            // Fixed at settling, but only the price paid once the campaign has succeeded.
+            'final_unit_price' => $this->final_unit_price_halalas !== null && in_array($this->status, [CampaignStatus::Purchasing, CampaignStatus::Fulfilling, CampaignStatus::Completed], true)
+                ? Money::sar($this->final_unit_price_halalas)
+                : null,
             'cancellation_rule' => (string) config('groupbuy.campaigns.cancellation_rule'),
         ];
     }
