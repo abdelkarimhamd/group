@@ -20,6 +20,10 @@ apps/mobile (Expo) ──┘                │                 ──> Redis (q
 - In the test suite, every response from an `/api/v1` route is checked against the contract, and a coverage test fails if a route is missing from the contract, if a served route is still marked `mock`, or if a `live` operation has no route.
 - An API change and its contract change go in the same pull request. When an endpoint ships, flip its `x-status` to `live` in that pull request.
 
+## Customer website
+
+`apps/web` is a Next.js app that renders on the server and calls the API from there, with the customer's token kept in an httpOnly cookie. The browser calls the API directly only for public reads (campaign progress polling). Types come from the contract (`npm run api:types`), and CI fails if they drift. Its browser tests run against a stateful fixture API behind Prism in proxy mode, so a request that breaks the contract fails the build. Details: [apps/web/README.md](../apps/web/README.md).
+
 ## Domain modules
 
 Business code is grouped by domain under `apps/api/app/Modules/<Domain>`, added as each epic starts:
