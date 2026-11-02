@@ -10,6 +10,9 @@ use App\Http\Requests\ApiRequest;
  */
 final class AddressRequest extends ApiRequest
 {
+    /** Fields an update clears when the client leaves them out. */
+    public const OPTIONAL = ['additional_no', 'short_address', 'lat', 'lng'];
+
     protected array $phoneFields = ['recipient_phone'];
 
     protected array $digitFields = ['building_no', 'postal_code', 'additional_no', 'short_address'];

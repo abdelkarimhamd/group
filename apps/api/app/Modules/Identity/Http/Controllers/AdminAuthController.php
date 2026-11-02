@@ -16,6 +16,7 @@ use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Identity\Otp\OtpService;
 use App\Support\Actor;
 use App\Support\Audit\AuditLogger;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -23,6 +24,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 /**
@@ -40,9 +42,11 @@ final class AdminAuthController extends Controller
     {
         $admin = AdminUser::query()->where('email', mb_strtolower(trim($request->validated('email'))))->first();
 
-        // Check a password even when the email is unknown, so response time
-        // does not reveal which emails belong to admins.
-        $passwordMatches = Hash::check($request->validated('password'), $admin->password ?? $this->dummyHash());
+        // Check a password even when the email is unknown, and fetch the dummy
+        // hash either way, so response time does not reveal which emails
+        // belong to admins.
+        $dummy = $this->dummyHash();
+        $passwordMatches = Hash::check($request->validated('password'), $admin->password ?? $dummy);
 
         if ($admin === null || ! $passwordMatches) {
             Log::notice('Admin sign-in refused', ['reason' => 'invalid_credentials', 'admin_id' => $admin?->id]);
@@ -56,6 +60,8 @@ final class AdminAuthController extends Controller
 
             throw ApiException::unprocessable('account_blocked');
         }
+
+        $this->limitCodes($admin);
 
         if (Hash::needsRehash($admin->password)) {
             $admin->password = $request->validated('password');
@@ -134,6 +140,39 @@ final class AdminAuthController extends Controller
         );
 
         return response()->noContent();
+    }
+
+    /**
+     * Codes to an admin's phone get the same limits as customer codes
+     * (groupbuy.auth.otp): one per resend_seconds and per_phone_per_hour an
+     * hour, whatever the caller's IP. Counted only after a correct password,
+     * so someone without it cannot use up the admin's codes.
+     *
+     * @throws ThrottleRequestsException
+     */
+    private function limitCodes(AdminUser $admin): void
+    {
+        $otp = config('groupbuy.auth.otp');
+        $limits = [
+            'admin-otp:resend:'.$admin->id => [1, (int) $otp['resend_seconds']],
+            'admin-otp:hour:'.$admin->id => [(int) $otp['per_phone_per_hour'], 3600],
+        ];
+
+        foreach ($limits as $key => [$max, $decaySeconds]) {
+            if (RateLimiter::tooManyAttempts($key, $max)) {
+                Log::notice('Admin sign-in refused', ['reason' => 'too_many_codes', 'admin_id' => $admin->id]);
+
+                throw new ThrottleRequestsException(headers: [
+                    'Retry-After' => RateLimiter::availableIn($key),
+                    'X-RateLimit-Limit' => $max,
+                    'X-RateLimit-Remaining' => 0,
+                ]);
+            }
+        }
+
+        foreach ($limits as $key => [, $decaySeconds]) {
+            RateLimiter::hit($key, $decaySeconds);
+        }
     }
 
     /**

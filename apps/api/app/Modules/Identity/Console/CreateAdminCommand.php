@@ -4,7 +4,6 @@ namespace App\Modules\Identity\Console;
 
 use App\Modules\Identity\Admins\AdminAccounts;
 use App\Modules\Identity\Enums\AdminRole;
-use App\Support\Actor;
 use App\Support\Phone\SaudiMobile;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
@@ -36,14 +35,15 @@ final class CreateAdminCommand extends Command
         ];
 
         $validator = Validator::make($input, [
-            'email' => ['required', 'email', 'max:191', Rule::unique('admin_users', 'email')],
+            'email' => ['required', 'email:filter', 'max:191', Rule::unique('admin_users', 'email')],
             'name' => ['required', 'string', 'max:100'],
-            'phone' => ['required'],
+            'phone' => ['required', Rule::unique('admin_users', 'phone_e164')],
             'roles' => ['required', 'array', 'min:1'],
             'roles.*' => [Rule::enum(AdminRole::class)],
             'password' => ['required', 'string', 'min:12', 'max:200'],
         ], [
             'phone.required' => 'The phone must be a Saudi mobile number, for example 0512345678.',
+            'phone.unique' => 'Another admin already uses this phone number.',
         ]);
 
         if ($validator->fails()) {
@@ -60,7 +60,7 @@ final class CreateAdminCommand extends Command
             'phone' => $input['phone'],
             'password' => $input['password'],
             'roles' => array_values(array_unique($input['roles'])),
-        ], Actor::system(), via: 'console');
+        ], by: null);
 
         $this->info("Created admin {$admin->email} with roles: ".implode(', ', $input['roles']).'.');
 

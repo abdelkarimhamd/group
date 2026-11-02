@@ -69,6 +69,45 @@ class AddressesTest extends TestCase
     }
 
     #[Test]
+    public function an_update_cannot_leave_the_customer_without_a_default(): void
+    {
+        $first = $this->create();
+        $this->create();
+
+        $this->withToken($this->token)
+            ->patchJson("/api/v1/me/addresses/{$first['id']}", $this->input(['is_default' => false]))
+            ->assertOk()
+            ->assertJsonPath('data.is_default', true);
+
+        $this->assertSame(1, Address::where('is_default', true)->count());
+    }
+
+    #[Test]
+    public function an_update_replaces_the_whole_address(): void
+    {
+        $address = $this->create();
+        $required = array_diff_key($this->input(), array_flip(['additional_no', 'short_address', 'lat', 'lng']));
+
+        $this->withToken($this->token)
+            ->patchJson("/api/v1/me/addresses/{$address['id']}", $required)
+            ->assertOk()
+            ->assertJsonPath('data.additional_no', null)
+            ->assertJsonPath('data.short_address', null)
+            ->assertJsonPath('data.lat', null)
+            ->assertJsonPath('data.lng', null);
+
+        // Clearing one coordinate clears both, never leaving half a location.
+        $this->withToken($this->token)
+            ->patchJson("/api/v1/me/addresses/{$address['id']}", [...$required, 'lat' => 24.7136, 'lng' => 46.6753])
+            ->assertOk();
+        $this->withToken($this->token)
+            ->patchJson("/api/v1/me/addresses/{$address['id']}", [...$required, 'lat' => null])
+            ->assertOk()
+            ->assertJsonPath('data.lat', null)
+            ->assertJsonPath('data.lng', null);
+    }
+
+    #[Test]
     public function an_update_can_move_the_default(): void
     {
         $first = $this->create();

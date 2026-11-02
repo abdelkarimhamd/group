@@ -15,7 +15,7 @@ final class VerifyOtpRequest extends ApiRequest
     {
         return [
             'challenge_id' => ['required', 'string', 'uuid'],
-            'code' => ['required', 'string', 'regex:/^[0-9]{6}$/'],
+            'code' => ['required', 'string', 'regex:/^[0-9]{'.(int) config('groupbuy.auth.otp.length').'}$/'],
             'device_name' => ['required', 'string', 'max:100'],
         ];
     }

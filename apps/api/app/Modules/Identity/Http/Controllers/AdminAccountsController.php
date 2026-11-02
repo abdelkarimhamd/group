@@ -10,7 +10,6 @@ use App\Modules\Identity\Http\Requests\ListAdminsRequest;
 use App\Modules\Identity\Http\Requests\UpdateAdminRequest;
 use App\Modules\Identity\Http\Resources\AdminUserResource;
 use App\Modules\Identity\Models\AdminUser;
-use App\Support\Actor;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -39,7 +38,7 @@ final class AdminAccountsController extends Controller
             'phone' => $request->validated('phone'),
             'password' => $request->validated('password'),
             'roles' => $request->validated('roles'),
-        ], Actor::admin($request->user()->id), via: 'portal');
+        ], $request->user());
 
         return AdminUserResource::make($admin)->response()->setStatusCode(201);
     }

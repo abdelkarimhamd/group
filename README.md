@@ -34,7 +34,11 @@ Sign-in codes are written to `storage/logs/laravel.log` instead of being texted 
 php artisan admin:create you@example.com --name="Your Name" --phone=05XXXXXXXX --role=super_admin
 ```
 
+Finance admins are created and changed only here (`--role=finance`, or `php artisan admin:update`), because the portal never lets an admin grant permissions they lack, and only finance approves money movements.
+
 On every deploy, run `php artisan admin:sync-roles` after migrating so the roles match `AdminPermissions`.
+
+Until the first production deploy, migrations already on `main` may still be edited rather than followed by new ones. If `migrate` fails after you pull, rebuild your local database with `php artisan migrate:fresh --seed`.
 
 Without Docker, create the role and both databases yourself:
 

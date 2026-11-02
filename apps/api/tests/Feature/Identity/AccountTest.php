@@ -81,6 +81,13 @@ class AccountTest extends TestCase
         $this->withToken($this->token)->patchJson('/api/v1/me', ['locale' => 'fr', 'email' => 'not-an-email'])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['locale', 'email']);
+
+        // Only addresses the contract's `format: email` accepts are stored and echoed back.
+        foreach (['user@localhost', 'نورة@example.com'] as $email) {
+            $this->withToken($this->token)->patchJson('/api/v1/me', ['email' => $email])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('email');
+        }
     }
 
     #[Test]

@@ -99,7 +99,7 @@ final class OtpService
                 return ['otp_attempts_exhausted', null];
             }
 
-            if ($challenge->expires_at->isPast()) {
+            if (! $challenge->expires_at->isFuture()) {
                 return ['otp_expired', null];
             }
 

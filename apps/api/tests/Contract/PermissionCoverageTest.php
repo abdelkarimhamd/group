@@ -70,6 +70,28 @@ class PermissionCoverageTest extends TestCase
         $this->assertSame([], array_values(array_diff(array_keys(AdminPermissions::ALL), $used)), 'Permissions no operation uses.');
     }
 
+    /**
+     * A field permission comes on top of the operation's own permission, so a
+     * role holding only the field permission could never use it.
+     */
+    #[Test]
+    public function every_role_with_a_field_permission_can_use_the_operation(): void
+    {
+        $problems = [];
+
+        foreach ($this->adminOperations() as $key => $operation) {
+            foreach ($operation['x-field-permissions'] ?? [] as $field => $extra) {
+                foreach (AdminPermissions::roles() as $role => $permissions) {
+                    if (in_array($extra, $permissions, true) && ! in_array($operation['x-permission'], $permissions, true)) {
+                        $problems[] = "{$key}: {$role} holds {$extra} for `{$field}` but not {$operation['x-permission']}";
+                    }
+                }
+            }
+        }
+
+        $this->assertSame([], $problems);
+    }
+
     #[Test]
     public function the_contract_enums_match_the_catalogue(): void
     {

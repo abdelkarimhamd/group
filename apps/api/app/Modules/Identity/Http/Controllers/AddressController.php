@@ -65,9 +65,16 @@ final class AddressController extends Controller
             $this->lock($user);
 
             $model = $this->find($user, $address);
-            $model->fill($request->safe()->except('is_default'));
 
-            $this->save($user, $model, $request->has('is_default') ? $request->boolean('is_default') : $model->is_default);
+            // An update sends the whole address: optional fields left out are cleared.
+            $model->fill([
+                ...array_fill_keys(AddressRequest::OPTIONAL, null),
+                ...$request->safe()->except('is_default'),
+            ]);
+
+            // The default only moves when another address is made the default,
+            // so a customer with addresses always has one.
+            $this->save($user, $model, $model->is_default || $request->boolean('is_default'));
 
             return $model;
         });

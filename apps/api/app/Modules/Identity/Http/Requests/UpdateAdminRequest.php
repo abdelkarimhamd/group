@@ -19,7 +19,7 @@ final class UpdateAdminRequest extends ApiRequest
     {
         return [
             'name' => ['sometimes', 'required', 'string', 'max:100'],
-            'phone' => ['sometimes', 'required', 'string', $this->saudiMobileRule()],
+            'phone' => ['sometimes', 'required', 'string', $this->saudiMobileRule(), Rule::unique('admin_users', 'phone_e164')->ignore($this->route('admin'), 'uuid')],
             'roles' => ['sometimes', 'required', 'array', 'min:1'],
             'roles.*' => ['required', 'string', 'distinct', Rule::enum(AdminRole::class)],
             'status' => ['sometimes', 'required', Rule::enum(AdminStatus::class)],

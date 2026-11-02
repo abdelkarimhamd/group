@@ -22,6 +22,8 @@ return [
         'privacy_policy_outdated' => 'The privacy policy has changed. Please read and accept the current version.',
         'address_limit_reached' => 'You have reached the maximum number of saved addresses. Remove one to add another.',
         'nothing_to_update' => 'Send at least one field to change.',
+        'cannot_grant_role' => 'You can only give roles whose permissions you hold yourself.',
+        'cannot_manage_admin' => 'This admin has permissions you do not hold. You can block them; any other change must be made on the server.',
         'cannot_change_own_access' => 'You cannot change your own roles, status or password here. Ask another admin, or change your password from your profile.',
     ],
 

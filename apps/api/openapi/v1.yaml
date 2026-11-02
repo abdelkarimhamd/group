@@ -13,8 +13,8 @@ info:
     - `x-permission` (admin operations): the permission the admin needs, from
       `AdminUser.permissions`. Without it the API answers 403 `forbidden`. The
       admin portal hides actions the signed-in admin lacks.
-      `x-field-permissions` names extra permissions needed to send particular
-      fields, for example a supplier's `status`.
+      `x-field-permissions` names an extra permission needed to send a
+      particular field, on top of `x-permission`.
 
     ## Conventions
 
@@ -394,9 +394,11 @@ paths:
       operationId: updateAddress
       summary: Change a delivery address
       description: |
-        Send the whole address. Leaving out `is_default` keeps the address's
-        current default setting. Orders keep a copy of the address they were
-        shipped to, so editing never changes past orders.
+        Send the whole address: optional fields left out are cleared.
+        `is_default: true` makes this the default address. The default only
+        moves to another address, so `false` (or leaving it out) never unsets
+        it. Orders keep a copy of the address they were shipped to, so editing
+        never changes past orders.
       x-epic: E5
       x-status: live
       security: [{customerToken: []}]
@@ -1051,7 +1053,13 @@ paths:
       tags: [Admin users]
       operationId: adminCreateAdmin
       summary: Add an admin
-      description: The new admin signs in with this email and password, then a code texted to `phone`.
+      description: |
+        The new admin signs in with this email and password, then a code
+        texted to `phone`. Each admin needs their own phone number.
+
+        You can only grant roles whose permissions you hold yourself
+        (403 `cannot_grant_role`). A super admin therefore cannot create a
+        finance admin here; that is done on the server with `admin:create`.
       x-epic: E5
       x-status: live
       x-permission: admins.manage
@@ -1072,7 +1080,11 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/AdminUser'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
-        '403': {$ref: '#/components/responses/Forbidden'}
+        '403':
+          description: '`forbidden` without `admins.manage`, or `cannot_grant_role`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
 
   /admin/admins/{admin_id}:
@@ -1083,10 +1095,17 @@ paths:
       operationId: adminUpdateAdmin
       summary: Change an admin's details, roles or status, or reset their password
       description: |
-        Send only the fields to change. Blocking an admin or setting a new
-        password signs them out everywhere. Nobody can change their own roles,
-        status or password here (`cannot_change_own_access`); use
+        Send only the fields to change. Blocking an admin, setting a new
+        password or changing their phone signs them out everywhere and cancels
+        any sign-in in progress. Nobody can change their own roles, status or
+        password here (`cannot_change_own_access`); use
         `POST /admin/me/password` for your own password.
+
+        You can only grant roles whose permissions you hold yourself
+        (403 `cannot_grant_role`). An admin who holds a permission you lack,
+        such as a finance admin for a super admin, can only be blocked here;
+        any other change answers 403 `cannot_manage_admin` and is done on the
+        server with `admin:update`.
       x-epic: E5
       x-status: live
       x-permission: admins.manage
@@ -1107,7 +1126,11 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/AdminUser'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
-        '403': {$ref: '#/components/responses/Forbidden'}
+        '403':
+          description: '`forbidden` without `admins.manage`, `cannot_grant_role` or `cannot_manage_admin`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422':
           description: '`cannot_change_own_access`, or invalid input.'
@@ -1524,26 +1547,56 @@ paths:
     patch:
       tags: [Admin suppliers]
       operationId: adminUpdateSupplier
-      summary: Update or review a supplier
-      description: Setting `status` to `approved` records the reviewer and time. Only approved suppliers can back a campaign. Changing `status` also needs `suppliers.approve`.
+      summary: Update a supplier's details
+      description: Approving or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
       x-epic: E6
       x-status: mock
       x-permission: suppliers.edit
-      x-field-permissions: {status: suppliers.approve}
       security: [{adminToken: []}]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              allOf:
-                - $ref: '#/components/schemas/SupplierInput'
-                - type: object
-                  properties:
-                    status: {type: string, enum: [prospect, approved, blocked]}
+            schema: {$ref: '#/components/schemas/SupplierInput'}
       responses:
         '200':
           description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Supplier'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/suppliers/{supplier_id}/review:
+    parameters:
+      - $ref: '#/components/parameters/SupplierId'
+    post:
+      tags: [Admin suppliers]
+      operationId: adminReviewSupplier
+      summary: Approve, block or reopen a supplier
+      description: |
+        Records the decision, the reviewer and the time. Only approved
+        suppliers can back a campaign. Kept apart from editing so that the
+        people who add suppliers (`suppliers.edit`) and the people who approve
+        them (`suppliers.approve`) can be different.
+      x-epic: E6
+      x-status: mock
+      x-permission: suppliers.approve
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SupplierReviewInput'}
+      responses:
+        '200':
+          description: The supplier after the decision.
           content:
             application/json:
               schema:
@@ -1884,7 +1937,7 @@ paths:
       tags: [Admin campaigns]
       operationId: adminGetCampaignMargin
       summary: Margin per tier against the 15% floor
-      description: What the approval screen shows. Approval is blocked when any tier fails, unless a `super_admin` overrides.
+      description: What the approval screen shows. Approval is blocked when any tier fails, unless an admin with `campaigns.override_margin` approves with a reason.
       x-epic: E8
       x-status: mock
       x-permission: campaigns.view
@@ -1942,10 +1995,12 @@ paths:
         Needs `campaigns.approve`. Locks tiers, target and maximum, sets
         `deadline_at = starts_at + 7 days` (moving `starts_at` to now if it has
         passed), and schedules the campaign. A failing margin check returns 422
-        `margin_below_floor` unless `override_reason` is sent by a `super_admin`.
+        `margin_below_floor` unless `override_reason` is sent, which needs
+        `campaigns.override_margin`.
       x-epic: E7
       x-status: mock
       x-permission: campaigns.approve
+      x-field-permissions: {override_reason: campaigns.override_margin}
       security: [{adminToken: []}]
       requestBody:
         required: false
@@ -1958,7 +2013,7 @@ paths:
                   type: string
                   maxLength: 1000
                   nullable: true
-                  description: Only for a `super_admin` approving below the margin floor. Audited.
+                  description: Only for approving below the margin floor; needs `campaigns.override_margin`. Audited.
       responses:
         '200': {$ref: '#/components/responses/AdminCampaignResult'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
@@ -3166,7 +3221,9 @@ components:
         short_address: {type: string, pattern: '^[A-Z]{4}[0-9]{4}$', nullable: true, example: RRRD2929}
         lat: {type: number, format: double, minimum: -90, maximum: 90, nullable: true}
         lng: {type: number, format: double, minimum: -180, maximum: 180, nullable: true}
-        is_default: {type: boolean, default: false}
+        is_default:
+          type: boolean
+          description: True makes this the default address. The first address is always the default.
 
     Address:
       allOf:
@@ -3510,7 +3567,9 @@ components:
       description: |
         What an admin may do. Each admin operation names the one it needs in
         `x-permission`. `approvals.decide` belongs to finance only, not to
-        super_admin, so releasing money always takes finance.
+        super_admin, so releasing money always takes finance; nobody can grant
+        a role with permissions they lack, so a super admin cannot make
+        themselves finance.
       enum:
         - catalog.view
         - catalog.edit
@@ -3521,6 +3580,7 @@ components:
         - campaigns.edit
         - pricing.edit
         - campaigns.approve
+        - campaigns.override_margin
         - campaigns.extend
         - campaigns.cancel
         - campaigns.close
@@ -3690,6 +3750,14 @@ components:
         country: {type: string, pattern: '^[A-Z]{2}$', example: CN}
         contact_name: {type: string, maxLength: 100, nullable: true}
         contact_channel: {type: string, maxLength: 200, nullable: true, example: 'Alibaba chat'}
+        quality_rating: {type: integer, minimum: 1, maximum: 5, nullable: true}
+        review_notes: {type: string, maxLength: 5000, nullable: true}
+
+    SupplierReviewInput:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [prospect, approved, blocked]}
         quality_rating: {type: integer, minimum: 1, maximum: 5, nullable: true}
         review_notes: {type: string, maxLength: 5000, nullable: true}
 

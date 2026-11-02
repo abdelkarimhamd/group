@@ -26,7 +26,8 @@ final class AdminPermissions
 {
     /**
      * Every permission, with what it allows. Each admin operation in
-     * openapi/v1.yaml names the one it needs in `x-permission`, and a contract
+     * openapi/v1.yaml names the one it needs in `x-permission` (and any extra
+     * one a particular field needs in `x-field-permissions`), and a contract
      * test keeps this list and the contract in step.
      */
     public const ALL = [
@@ -39,6 +40,7 @@ final class AdminPermissions
         'campaigns.edit' => 'Create, edit and submit draft campaigns',
         'pricing.edit' => 'Set price tiers',
         'campaigns.approve' => 'Approve a campaign to go live, or send it back',
+        'campaigns.override_margin' => 'Approve a campaign below the margin floor, giving a reason',
         'campaigns.extend' => 'Use the one allowed deadline extension',
         'campaigns.cancel' => 'Ask to cancel a campaign (needs an approval)',
         'campaigns.close' => 'Record the supplier reconfirmation and below-target decisions',

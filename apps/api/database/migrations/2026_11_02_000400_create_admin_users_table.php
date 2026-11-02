@@ -18,7 +18,8 @@ return new class extends Migration
             $table->string('email', 191)->unique();
             $table->string('password');
             $table->string('name', 100);
-            $table->string('phone_e164', 16);
+            // Unique: one phone is never the second factor for two accounts.
+            $table->string('phone_e164', 16)->unique();
             $table->string('status', 16)->default('active');
             $table->timestampTz('last_login_at')->nullable();
             $table->timestampsTz();

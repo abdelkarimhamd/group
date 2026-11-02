@@ -25,9 +25,9 @@ final class CreateAdminRequest extends ApiRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email', 'max:191', Rule::unique('admin_users', 'email')],
+            'email' => ['required', 'string', 'email:filter', 'max:191', Rule::unique('admin_users', 'email')],
             'name' => ['required', 'string', 'max:100'],
-            'phone' => ['required', 'string', $this->saudiMobileRule()],
+            'phone' => ['required', 'string', $this->saudiMobileRule(), Rule::unique('admin_users', 'phone_e164')],
             'roles' => ['required', 'array', 'min:1'],
             'roles.*' => ['required', 'string', 'distinct', Rule::enum(AdminRole::class)],
             'password' => ['required', 'string', 'min:12', 'max:200'],

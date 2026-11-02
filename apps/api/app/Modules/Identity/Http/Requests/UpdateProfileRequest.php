@@ -14,7 +14,7 @@ final class UpdateProfileRequest extends ApiRequest
     {
         return [
             'name' => ['sometimes', 'nullable', 'string', 'max:100'],
-            'email' => ['sometimes', 'nullable', 'string', 'email', 'max:191'],
+            'email' => ['sometimes', 'nullable', 'string', 'email:filter', 'max:191'],
             'locale' => ['sometimes', 'string', 'in:'.implode(',', config('groupbuy.locales'))],
         ];
     }

@@ -58,6 +58,7 @@ return [
     'auth' => [
         // Sign-in codes sent by SMS, for customers and for admins' second step.
         'otp' => [
+            // Changing the length also means changing the code pattern in openapi/v1.yaml.
             'length' => 6,
             'ttl_minutes' => 5,
             // Wrong codes allowed before the code is spent.
@@ -73,9 +74,10 @@ return [
             'prune_after_days' => 30,
         ],
 
-        // Admin password step: attempts per email and IP address, and per IP
-        // address alone, in each window.
+        // Admin password step: attempts per email (from any IP address), per
+        // email and IP address, and per IP address alone, in each window.
         'admin_login' => [
+            'per_email' => 10,
             'per_email_and_ip' => 5,
             'per_ip' => 20,
             'window_minutes' => 15,

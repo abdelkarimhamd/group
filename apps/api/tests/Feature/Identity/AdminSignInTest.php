@@ -92,6 +92,45 @@ class AdminSignInTest extends TestCase
     }
 
     #[Test]
+    public function password_attempts_are_limited_per_email_from_any_ip(): void
+    {
+        $perEmail = (int) config('groupbuy.auth.admin_login.per_email');
+
+        for ($i = 0; $i < $perEmail; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.'.($i + 1)])
+                ->login('sara@example.com', 'guess-'.$i)
+                ->assertStatus(422);
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.1.1'])
+            ->login('sara@example.com', 'password')
+            ->assertStatus(429);
+    }
+
+    #[Test]
+    public function codes_to_an_admin_are_limited_whatever_the_ip(): void
+    {
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.1'])->login('sara@example.com', 'password')->assertStatus(202);
+
+        // A second code inside the resend wait is refused, even from another IP.
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.2'])->login('sara@example.com', 'password')
+            ->assertStatus(429)
+            ->assertJsonPath('code', 'too_many_requests')
+            ->assertHeader('Retry-After');
+
+        $perHour = (int) config('groupbuy.auth.otp.per_phone_per_hour');
+
+        for ($i = 1; $i < $perHour; $i++) {
+            $this->travel((int) config('groupbuy.auth.otp.resend_seconds'))->seconds();
+            $this->withServerVariables(['REMOTE_ADDR' => '10.0.1.'.$i])->login('sara@example.com', 'password')->assertStatus(202);
+        }
+
+        $this->travel((int) config('groupbuy.auth.otp.resend_seconds'))->seconds();
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.2.1'])->login('sara@example.com', 'password')->assertStatus(429);
+        $this->assertCount($perHour, $this->sms->sent);
+    }
+
+    #[Test]
     public function an_sms_outage_is_a_503(): void
     {
         $this->sms->failing = true;
@@ -171,12 +210,18 @@ class AdminSignInTest extends TestCase
     public function an_outdated_password_hash_is_upgraded_at_sign_in(): void
     {
         $this->admin->forceFill(['password' => Hash::make('password', ['rounds' => 4])])->save();
+        $old = $this->admin->fresh()->password;
+
+        // The hasher reads its cost when first built, so rebuild it after the change.
         config(['hashing.bcrypt.rounds' => 5]);
+        Hash::forgetDrivers();
+        $this->assertTrue(Hash::needsRehash($old));
 
         $this->login('sara@example.com', 'password')->assertStatus(202);
 
         $hash = $this->admin->fresh()->password;
-        $this->assertFalse(Hash::needsRehash($hash));
+        $this->assertNotSame($old, $hash);
+        $this->assertSame(5, password_get_info($hash)['options']['cost']);
         $this->assertTrue(Hash::check('password', $hash));
     }
 

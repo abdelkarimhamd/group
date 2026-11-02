@@ -2,6 +2,7 @@
 
 namespace App\Exceptions;
 
+use Illuminate\Contracts\Debug\ShouldntReport;
 use Illuminate\Http\JsonResponse;
 use RuntimeException;
 
@@ -11,8 +12,10 @@ use RuntimeException;
  * {"message": "...", "code": "..."} plus `errors` when a field is at fault.
  *
  * Messages come from lang/{ar,en}/messages.php under errors.<code>.
+ * These are expected outcomes, so they are not reported as errors; log
+ * anything worth knowing where it is thrown.
  */
-class ApiException extends RuntimeException
+class ApiException extends RuntimeException implements ShouldntReport
 {
     /**
      * @param  array<string, string>  $headers

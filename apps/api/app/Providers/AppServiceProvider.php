@@ -118,6 +118,7 @@ class AppServiceProvider extends ServiceProvider
             $email = is_string($email = $request->input('email')) ? mb_strtolower(trim($email)) : '';
 
             return [
+                Limit::perMinutes((int) $config['window_minutes'], (int) $config['per_email'])->by('email:'.$email),
                 Limit::perMinutes((int) $config['window_minutes'], (int) $config['per_email_and_ip'])->by('email-ip:'.$email.'|'.$request->ip()),
                 Limit::perMinutes((int) $config['window_minutes'], (int) $config['per_ip'])->by('ip:'.$request->ip()),
             ];
