@@ -194,9 +194,10 @@ export interface paths {
          * Register a Firebase push token
          * @description Mobile app only. Call it after sign-in and whenever Firebase issues a
          *     new token. Registering the same token again just refreshes it; a
-         *     token registered from another account moves to that account. The
-         *     customer's 10 most recently seen devices are kept. Push messages
-         *     carry `notification_id` and `template` in their data.
+         *     token registered from another account moves to that account. Signing
+         *     out (`POST /auth/logout`) removes it, so the device stops getting the
+         *     account's messages. The customer's 10 most recently seen devices are
+         *     kept. Push messages carry `notification_id` and `template` in their data.
          */
         post: operations["registerDeviceToken"];
         delete?: never;

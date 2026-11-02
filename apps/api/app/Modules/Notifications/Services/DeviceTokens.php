@@ -7,23 +7,25 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 /**
- * The customer's push targets. A token belongs to whoever signed in on the
- * device last: registering it again refreshes it, from another account
- * moves it. Only the most recently seen devices are kept.
+ * The customer's push targets. A token belongs to the sign-in on the
+ * device that registered it last: registering it again refreshes it, from
+ * another account moves it, and signing out removes it (foreign key to the
+ * access token). Only the most recently seen devices are kept.
  */
 final class DeviceTokens
 {
-    public function register(User $user, string $platform, string $token): void
+    public function register(User $user, ?int $accessTokenId, string $platform, string $token): void
     {
         $now = CarbonImmutable::now();
 
-        DB::transaction(function () use ($user, $platform, $token, $now): void {
+        DB::transaction(function () use ($user, $accessTokenId, $platform, $token, $now): void {
             DB::statement(
-                'INSERT INTO device_tokens (user_id, platform, fcm_token, token_hash, last_seen_at, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)
+                'INSERT INTO device_tokens (user_id, personal_access_token_id, platform, fcm_token, token_hash, last_seen_at, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (token_hash) DO UPDATE
-                 SET user_id = EXCLUDED.user_id, platform = EXCLUDED.platform, last_seen_at = EXCLUDED.last_seen_at, updated_at = EXCLUDED.updated_at',
-                [$user->id, $platform, $token, hash('sha256', $token), $now, $now, $now],
+                 SET user_id = EXCLUDED.user_id, personal_access_token_id = EXCLUDED.personal_access_token_id, platform = EXCLUDED.platform,
+                     last_seen_at = EXCLUDED.last_seen_at, updated_at = EXCLUDED.updated_at',
+                [$user->id, $accessTokenId, $platform, $token, hash('sha256', $token), $now, $now, $now],
             );
 
             DB::delete(

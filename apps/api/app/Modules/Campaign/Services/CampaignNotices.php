@@ -2,12 +2,14 @@
 
 namespace App\Modules\Campaign\Services;
 
+use App\Modules\Campaign\Enums\CampaignStatus;
 use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Identity\Models\User;
 use App\Modules\Notifications\Enums\NotificationTemplate;
 use App\Modules\Notifications\Services\Notifier;
+use App\Modules\Payments\Models\PaymentAuthorization;
 
 /**
  * What customers are told about their joins (spec, E14). Each call queues
@@ -22,10 +24,11 @@ final class CampaignNotices
 
     public function joined(Campaign $campaign, CampaignParticipation $participation): void
     {
-        $this->aboutJoin(NotificationTemplate::Joined, $campaign, $participation, [
+        $closing = $campaign->status === CampaignStatus::Closing;
+
+        $this->aboutJoin($closing ? NotificationTemplate::JoinedClosing : NotificationTemplate::Joined, $campaign, $participation, [
             'qty' => $participation->qty,
-            'deadline_at' => $campaign->deadline_at?->toIso8601ZuluString(),
-        ]);
+        ] + ($closing ? [] : ['deadline_at' => $campaign->deadline_at?->toIso8601ZuluString()]), NotificationTemplate::Joined);
     }
 
     /**
@@ -37,8 +40,28 @@ final class CampaignNotices
         $this->aboutJoin($template, $campaign, $participation);
     }
 
+    /**
+     * A hold that came through after the join stopped counting was voided.
+     * One message per hold.
+     */
+    public function holdVoided(Campaign $campaign, CampaignParticipation $participation, PaymentAuthorization $payment): void
+    {
+        $user = User::query()->findOrFail($participation->user_id);
+
+        $this->notifier->send($user, NotificationTemplate::HoldVoided, $payment, [
+            'campaign' => self::title($campaign),
+            'hold_halalas' => $payment->authorized_amount_halalas,
+        ], "hold_voided:payment_authorization:{$payment->id}");
+    }
+
     public function dealConfirmed(Campaign $campaign): void
     {
+        if ($campaign->status === CampaignStatus::Closing) {
+            $this->toEveryoneHolding(NotificationTemplate::DealConfirmedClosing, $campaign, [], NotificationTemplate::DealConfirmed);
+
+            return;
+        }
+
         $this->toEveryoneHolding(NotificationTemplate::DealConfirmed, $campaign, [
             'deadline_at' => $campaign->deadline_at?->toIso8601ZuluString(),
         ]);
@@ -54,20 +77,20 @@ final class CampaignNotices
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function aboutJoin(NotificationTemplate $template, Campaign $campaign, CampaignParticipation $participation, array $payload = []): void
+    private function aboutJoin(NotificationTemplate $template, Campaign $campaign, CampaignParticipation $participation, array $payload = [], ?NotificationTemplate $dedupeAs = null): void
     {
         $user = User::query()->findOrFail($participation->user_id);
 
         $this->notifier->send($user, $template, $participation, [
             'campaign' => self::title($campaign),
             'hold_halalas' => $participation->hold_amount_halalas,
-        ] + $payload, "{$template->value}:campaign_participation:{$participation->id}");
+        ] + $payload, ($dedupeAs ?? $template)->value.":campaign_participation:{$participation->id}");
     }
 
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function toEveryoneHolding(NotificationTemplate $template, Campaign $campaign, array $payload): void
+    private function toEveryoneHolding(NotificationTemplate $template, Campaign $campaign, array $payload, ?NotificationTemplate $dedupeAs = null): void
     {
         $users = User::query()
             ->whereIn('id', CampaignParticipation::query()
@@ -78,7 +101,7 @@ final class CampaignNotices
             ->get();
 
         foreach ($users as $user) {
-            $this->notifier->send($user, $template, $campaign, ['campaign' => self::title($campaign)] + $payload, "{$template->value}:campaign:{$campaign->id}:user:{$user->id}");
+            $this->notifier->send($user, $template, $campaign, ['campaign' => self::title($campaign)] + $payload, ($dedupeAs ?? $template)->value.":campaign:{$campaign->id}:user:{$user->id}");
         }
     }
 

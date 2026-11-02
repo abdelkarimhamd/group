@@ -8,6 +8,7 @@ use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Services\Joins;
 use App\Modules\Identity\Enums\AdminRole;
 use App\Modules\Identity\Models\Address;
+use App\Modules\Notifications\Models\Notification;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Services\Confirmations;
@@ -223,6 +224,7 @@ class ConfirmingHoldsTest extends TestCase
 
         $this->assertSame(['pay_1'], $gateway->voids);
         $this->assertSame([0, 1], [$this->campaign->refresh()->committed_qty, $this->campaign->reserved_qty]);
+        $this->assertSame([], $this->heldVoidedMessages());
 
         // The customer can try another card while the reservation lasts.
         $retry = $this->retry()->assertCreated()->json('data.id');
@@ -273,6 +275,11 @@ class ConfirmingHoldsTest extends TestCase
         $row = PaymentAuthorization::query()->where('uuid', $late)->sole();
         $this->assertSame('fake_authorized_'.$this->payment->uuid, $row->provider_payment_id);
         $this->assertSame(['pending_authorization', 'authorized', 'voided'], $this->transitions($row));
+
+        // The customer is told the hold was released, once.
+        $this->assertSame([$row->id], $this->heldVoidedMessages());
+        $this->sync($this->payment, 'fake_authorized_'.$this->payment->uuid)->assertOk();
+        $this->assertSame([$row->id], $this->heldVoidedMessages());
     }
 
     #[Test]
@@ -402,6 +409,7 @@ class ConfirmingHoldsTest extends TestCase
 
         $this->campaign->refresh();
         $this->assertSame([0, 0], [$this->campaign->committed_qty, $this->campaign->reserved_qty]);
+        $this->assertSame([$this->payment->id], $this->heldVoidedMessages());
     }
 
     #[Test]
@@ -441,9 +449,12 @@ class ConfirmingHoldsTest extends TestCase
         $this->assertSame(['pay_1'], $gateway->voids);
         $this->assertSame(1, PaymentAuthorization::count());
 
+        $this->assertSame([$this->payment->id], $this->heldVoidedMessages());
+
         // Seen again, nothing more happens.
         $this->sync($this->payment, 'pay_1')->assertOk();
         $this->assertSame(['pay_1'], $gateway->voids);
+        $this->assertSame([$this->payment->id], $this->heldVoidedMessages());
     }
 
     #[Test]
@@ -462,6 +473,7 @@ class ConfirmingHoldsTest extends TestCase
 
         $this->assertSame('voided', $this->payment->refresh()->status->value);
         $this->assertSame(['pay_1'], $gateway->voids);
+        $this->assertSame([$this->payment->id], $this->heldVoidedMessages());
     }
 
     #[Test]
@@ -522,6 +534,18 @@ class ConfirmingHoldsTest extends TestCase
 
         $this->assertSame('authorized', $second->refresh()->status->value);
         $this->assertSame('reservation_expired', $this->participation->refresh()->status->value);
+    }
+
+    /**
+     * The payments a "hold released" message was sent for, one per payment
+     * whatever the number of channels.
+     *
+     * @return list<int>
+     */
+    private function heldVoidedMessages(): array
+    {
+        return Notification::query()->where('template_key', 'hold_voided')->where('subject_type', 'payment_authorization')
+            ->orderBy('subject_id')->distinct()->pluck('subject_id')->map(fn ($id) => (int) $id)->all();
     }
 
     private function sync(PaymentAuthorization $payment, string $providerPaymentId, ?string $token = null): TestResponse

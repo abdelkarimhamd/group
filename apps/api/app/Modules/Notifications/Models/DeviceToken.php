@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  *
  * @property int $id
  * @property int $user_id
+ * @property int|null $personal_access_token_id The sign-in that registered it; signing out removes the row.
  * @property string $platform ios, android or web
  * @property string $fcm_token
  * @property string $token_hash SHA-256 of the token, unique
