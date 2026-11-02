@@ -8,6 +8,7 @@ use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Services\Closing;
+use App\Modules\Orders\Services\Orders;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
 use App\Modules\Payments\Enums\TransactionStatus;
@@ -34,8 +35,9 @@ use LogicException;
  *     capture_failed without a call.
  *  2. Write the attempt keyed capture:{payment uuid} and commit, then ask
  *     Moyasar for a partial capture of the participation's capture amount.
- *  3. Record the answer under the same locks: captured, or capture_failed
- *     (then voided). A result already recorded is left alone.
+ *  3. Record the answer under the same locks: captured (with the customer
+ *     order and its tax invoice), or capture_failed (then voided). A result
+ *     already recorded is left alone.
  *
  * An unknown outcome (timeout, Moyasar down) leaves the attempt pending and
  * the job retries; each later try fetches the payment first and sends the
@@ -50,6 +52,7 @@ class Captures
         private readonly StatusHistory $history,
         private readonly Holds $holds,
         private readonly Closing $closing,
+        private readonly Orders $orders,
     ) {}
 
     /**
@@ -249,6 +252,12 @@ class Captures
             $this->history->record($payment, PaymentStatus::Authorized, PaymentStatus::Captured, $actor);
 
             $this->closing->captured($participation, $actor);
+
+            // The order, and its tax invoice, exist from the moment the money is taken.
+            if ($participation->status === ParticipationStatus::Captured) {
+                $this->orders->createForCapture($participation, $payment, $actor);
+            }
+
             PaymentCaptured::dispatch($payment->id);
         });
     }

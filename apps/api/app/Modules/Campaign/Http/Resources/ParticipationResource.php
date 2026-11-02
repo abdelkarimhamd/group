@@ -18,7 +18,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 class ParticipationResource extends JsonResource
 {
     public const RELATIONS = [
-        'campaign.currentTiers', 'campaign.product.images.variant', 'variant', 'latestPayment.participation.campaign',
+        'campaign.currentTiers', 'campaign.product.images.variant', 'variant', 'latestPayment.participation.campaign', 'order',
     ];
 
     /**
@@ -44,8 +44,7 @@ class ParticipationResource extends JsonResource
                 && $campaign->status === CampaignStatus::Active
                 && $campaign->deal_confirmed_at === null,
             'payment' => $this->latestPayment === null ? null : PaymentResource::make($this->latestPayment)->resolve($request),
-            // Customer orders arrive with E11.
-            'order_id' => null,
+            'order_id' => $this->order?->uuid,
             'created_at' => $this->created_at->toIso8601ZuluString(),
         ];
     }

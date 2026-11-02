@@ -100,6 +100,27 @@ return [
 
         // A verified webhook still unprocessed after this long is queued again.
         'webhook_requeue_after_minutes' => 5,
+
+        // A full refund this soon after capture is sent as a void (no fee,
+        // nothing settles); later it is a refund (spec, Payments: "Refunds").
+        'void_after_capture_minutes' => 120,
+    ],
+
+    'orders' => [
+        // Spec, Orders: a customer may return within 7 days of delivery.
+        'return_window_days' => 7,
+    ],
+
+    // The seller of record printed on every VAT invoice. Real values come from
+    // the commercial registration and VAT certificate (E1); the defaults mark
+    // invoices made before then as not for use.
+    'seller' => [
+        'legal_name_ar' => env('GROUPBUY_SELLER_NAME_AR', 'اسم البائع غير محدد'),
+        'legal_name_en' => env('GROUPBUY_SELLER_NAME_EN', 'Seller name not set'),
+        'vat_number' => env('GROUPBUY_SELLER_VAT_NUMBER', '300000000000003'),
+        'cr_number' => env('GROUPBUY_SELLER_CR_NUMBER'),
+        'address_ar' => env('GROUPBUY_SELLER_ADDRESS_AR', 'الرياض، المملكة العربية السعودية'),
+        'address_en' => env('GROUPBUY_SELLER_ADDRESS_EN', 'Riyadh, Saudi Arabia'),
     ],
 
     'auth' => [

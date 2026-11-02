@@ -14,7 +14,10 @@ use App\Modules\Identity\Http\Controllers\AddressController;
 use App\Modules\Identity\Http\Controllers\AdminAccountsController;
 use App\Modules\Identity\Http\Controllers\AdminAuthController;
 use App\Modules\Identity\Http\Controllers\CustomerAuthController;
+use App\Modules\Orders\Http\Controllers\AdminOrderController;
+use App\Modules\Orders\Http\Controllers\MyOrderController;
 use App\Modules\Payments\Http\Controllers\AdminPaymentController;
+use App\Modules\Payments\Http\Controllers\AdminRefundController;
 use App\Modules\Payments\Http\Controllers\MoyasarWebhookController;
 use App\Modules\Payments\Http\Controllers\PaymentController;
 use App\Modules\Supplier\Http\Controllers\AdminQuotationController;
@@ -66,6 +69,15 @@ Route::prefix('v1')->name('v1.')->group(function () {
             ->middleware('throttle:payment-sync')->name('payments.sync');
         Route::post('me/participations/{participation}/payments', [PaymentController::class, 'retry'])->whereUuid('participation')
             ->middleware('throttle:joins')->name('me.participations.payments');
+
+        // Joins and orders (E11)
+        Route::get('me/participations', [ParticipationController::class, 'index'])->name('me.participations.index');
+        Route::get('me/participations/{participation}', [ParticipationController::class, 'show'])->whereUuid('participation')
+            ->name('me.participations.show');
+        Route::post('me/participations/{participation}/cancel', [ParticipationController::class, 'cancel'])->whereUuid('participation')
+            ->middleware('throttle:joins')->name('me.participations.cancel');
+        Route::get('me/orders', [MyOrderController::class, 'index'])->name('me.orders.index');
+        Route::get('me/orders/{order}', [MyOrderController::class, 'show'])->whereUuid('order')->name('me.orders.show');
     });
 
     // ------------------------------------------------------------ Admins (E5)
@@ -152,6 +164,12 @@ Route::prefix('v1')->name('v1.')->group(function () {
             Route::get('payments', [AdminPaymentController::class, 'index'])->can('payments.view')->name('payments.index');
             Route::get('payments/{payment}', [AdminPaymentController::class, 'show'])->whereUuid('payment')
                 ->can('payments.view')->name('payments.show');
+
+            // Orders and refunds (E11)
+            Route::get('orders', [AdminOrderController::class, 'index'])->can('orders.view')->name('orders.index');
+            Route::get('orders/{order}', [AdminOrderController::class, 'show'])->whereUuid('order')->can('orders.view')->name('orders.show');
+            Route::get('refunds', [AdminRefundController::class, 'index'])->can('payments.view')->name('refunds.index');
+            Route::post('refunds', [AdminRefundController::class, 'store'])->can('refunds.request')->name('refunds.store');
         });
     });
 });

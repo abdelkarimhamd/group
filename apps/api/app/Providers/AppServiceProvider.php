@@ -23,9 +23,12 @@ use App\Modules\Identity\Models\User;
 use App\Modules\Identity\Otp\OtpService;
 use App\Modules\Notifications\Sms\LogSmsSender;
 use App\Modules\Notifications\Sms\SmsSender;
+use App\Modules\Orders\Models\CustomerOrder;
+use App\Modules\Orders\Models\Invoice;
 use App\Modules\Payments\Gateway\FakeMoyasarGateway;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Models\PaymentAuthorization;
+use App\Modules\Payments\Models\Refund;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierQuotation;
 use App\Modules\Supplier\Services\QuotationUsage;
@@ -101,6 +104,9 @@ class AppServiceProvider extends ServiceProvider
             'campaign_participation' => CampaignParticipation::class,
             'payment_authorization' => PaymentAuthorization::class,
             'approval_request' => ApprovalRequest::class,
+            'customer_order' => CustomerOrder::class,
+            'invoice' => Invoice::class,
+            'refund' => Refund::class,
         ]);
 
         // A campaign that starts closing gets its closing job.
