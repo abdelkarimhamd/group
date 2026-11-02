@@ -2,8 +2,10 @@
 
 namespace App\Modules\Finance\Models;
 
+use App\Models\Concerns\AppendOnlyModel;
 use App\Modules\Finance\Enums\LedgerTransactionType;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -24,11 +26,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $actor_id
  * @property CarbonImmutable $occurred_at
  * @property CarbonImmutable $created_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, LedgerEntry> $entries
+ * @property-read Collection<int, LedgerEntry> $entries
  */
 class LedgerTransaction extends Model
 {
-    use HasUuids;
+    use AppendOnlyModel, HasUuids;
 
     public const UPDATED_AT = null;
 

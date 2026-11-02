@@ -3,8 +3,9 @@
 namespace App\Models;
 
 use App\Models\Concerns\AppendOnlyModel;
-use Carbon\CarbonImmutable;
 use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Identity\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 

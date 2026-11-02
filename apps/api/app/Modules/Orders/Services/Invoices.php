@@ -102,10 +102,10 @@ final class Invoices
             ->where('customer_order_id', $order->id)
             ->where('type', InvoiceType::SimplifiedTaxInvoice)
             ->firstOrFail();
-        $credited = (int) Invoice::query()
+        $notes = Invoice::query()
             ->where('customer_order_id', $order->id)
-            ->where('type', InvoiceType::CreditNote)
-            ->sum('total_halalas');
+            ->where('type', InvoiceType::CreditNote);
+        $credited = (int) (clone $notes)->sum('total_halalas');
         $amount = Money::sar($amountHalalas);
 
         if (! $amount->greaterThan(Money::zero()) || $amount->greaterThan(Money::sar($original->total_halalas - $credited))) {
@@ -119,7 +119,14 @@ final class Invoices
             $net = Money::sar($original->net_halalas);
             $vat = Money::sar($original->vat_halalas);
         } else {
-            ['net' => $net, 'vat' => $vat] = $amount->splitVatInclusive($rate);
+            if ($credited + $amountHalalas === $original->total_halalas) {
+                // The last note takes the VAT left, so the notes add up to the invoice.
+                $vat = Money::sar($original->vat_halalas - (int) (clone $notes)->sum('vat_halalas'));
+                $net = $amount->minus($vat);
+            } else {
+                ['net' => $net, 'vat' => $vat] = $amount->splitVatInclusive($rate);
+            }
+
             $lines = [[
                 'description_ar' => 'استرداد مبلغ من الطلب '.$order->order_number,
                 'description_en' => 'Refund on order '.$order->order_number,

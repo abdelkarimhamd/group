@@ -2,6 +2,7 @@
 
 namespace App\Modules\Finance\Models;
 
+use App\Models\Concerns\AppendOnlyModel;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class LedgerEntry extends Model
 {
+    use AppendOnlyModel;
+
     public const UPDATED_AT = null;
 
     protected $guarded = ['id'];

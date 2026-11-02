@@ -44,7 +44,8 @@ final class Reconciliation
         'refunded' => ['refunded', 'voided'],
         'voided' => ['voided'],
         'expired' => ['voided'],
-        'failed' => ['failed'],
+        // A declined payment, or an orphan hold we voided.
+        'failed' => ['failed', 'voided'],
         // Being voided after a capture failed.
         'capture_failed' => ['authorized', 'voided'],
     ];

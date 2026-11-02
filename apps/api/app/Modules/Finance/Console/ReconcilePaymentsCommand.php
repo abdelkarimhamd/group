@@ -24,7 +24,8 @@ final class ReconcilePaymentsCommand extends Command
             ? CarbonImmutable::createFromFormat('!Y-m-d', $date, (string) config('groupbuy.display_timezone'))
             : null;
 
-        if ($day === false) {
+        // createFromFormat rolls 2026-13-45 over to a real date; refuse it.
+        if ($day === false || ($day !== null && $day->format('Y-m-d') !== $date)) {
             $this->error('Give --date as YYYY-MM-DD.');
 
             return self::INVALID;

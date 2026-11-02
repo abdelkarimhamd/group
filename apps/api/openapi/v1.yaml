@@ -2589,7 +2589,7 @@ paths:
       operationId: adminListApprovalRequests
       summary: Actions waiting for a second admin
       x-epic: E15
-      x-status: mock
+      x-status: live
       x-permission: approvals.view
       security: [{adminToken: []}]
       parameters:
@@ -2614,6 +2614,8 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
 
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
   /admin/approval-requests/{approval_request_id}/approve:
     parameters:
       - $ref: '#/components/parameters/ApprovalRequestId'
@@ -2621,9 +2623,16 @@ paths:
       tags: [Admin refunds and approvals]
       operationId: adminApproveRequest
       summary: Approve, then carry out the action
-      description: The approver must hold the finance role and must not be the requester (403 `same_admin`).
+      description: >-
+        The approver must hold the finance role and must not be the requester (403 `same_admin`).
+        A `manual_refund` is then carried out after commit: Moyasar voids the hold while the payment can
+        still be voided, otherwise refunds it; a credit note and ledger entries follow when it lands, and
+        the refund shows `failed` if Moyasar refuses. An approved `campaign_cancellation` refunds every
+        captured join, voids the remaining holds and cancels the orders and the purchase order. Other
+        request types cannot be decided yet (409 `invalid_transition`), nor can a request that is no longer
+        pending, or a campaign cancellation whose campaign can no longer be cancelled.
       x-epic: E15
-      x-status: mock
+      x-status: live
       x-permission: approvals.decide
       security: [{adminToken: []}]
       responses:
@@ -2649,7 +2658,7 @@ paths:
       operationId: adminRejectRequest
       summary: Reject with a reason
       x-epic: E15
-      x-status: mock
+      x-status: live
       x-permission: approvals.decide
       security: [{adminToken: []}]
       requestBody:
@@ -3013,7 +3022,7 @@ paths:
       operationId: adminListReconciliationRuns
       summary: Daily reconciliation runs against Moyasar
       x-epic: E15
-      x-status: mock
+      x-status: live
       x-permission: reconciliation.view
       security: [{adminToken: []}]
       parameters:
@@ -3035,6 +3044,8 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
 
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
   /admin/reconciliation-runs/{run_id}/items:
     parameters:
       - name: run_id
@@ -3046,7 +3057,7 @@ paths:
       operationId: adminListReconciliationItems
       summary: Mismatches found by one run
       x-epic: E15
-      x-status: mock
+      x-status: live
       x-permission: reconciliation.view
       security: [{adminToken: []}]
       parameters:
@@ -3071,6 +3082,8 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
 
   /admin/reconciliation-items/{item_id}/resolve:
     parameters:
@@ -3082,9 +3095,9 @@ paths:
       tags: [Admin finance]
       operationId: adminResolveReconciliationItem
       summary: Close a mismatch with a note
-      description: Any fix that moves money goes through an approval request; this only records the resolution.
+      description: Any fix that moves money goes through an approval request; this only records the resolution. A mismatch already resolved gives 409 `already_resolved`.
       x-epic: E15
-      x-status: mock
+      x-status: live
       x-permission: reconciliation.resolve
       security: [{adminToken: []}]
       requestBody:
@@ -3117,8 +3130,11 @@ paths:
       tags: [Admin finance]
       operationId: adminListAuditLogs
       summary: Who did what
+      description: >-
+        Newest first. `subject_id` is the subject's public ID and needs `subject_type` (one whose records
+        have public IDs). Entries name their subject by its public ID, or by its row ID when it has none.
       x-epic: E2
-      x-status: mock
+      x-status: live
       x-permission: audit.view
       security: [{adminToken: []}]
       parameters:
@@ -3152,6 +3168,8 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
 
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
 components:
   securitySchemes:
     customerToken:
