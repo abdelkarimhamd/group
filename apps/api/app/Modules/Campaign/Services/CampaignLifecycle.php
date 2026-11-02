@@ -514,11 +514,29 @@ class CampaignLifecycle
 
         $campaign->closing_step = ClosingStep::Notifying;
 
-        // The supplier purchase order (E12) is created here, in this transaction.
+        // The closing job creates the supplier purchase order (E12) in this transaction.
         $campaign = $this->transition($campaign, CampaignStatus::Purchasing, CampaignEvents::CAPTURES_COMPLETED, $actor, payload: [
             'captured_qty' => $campaign->captured_qty,
             'final_unit_price_halalas' => $campaign->final_unit_price_halalas,
         ] + $payload);
+        CampaignProgressChanged::dispatch($campaign->id);
+
+        return $campaign;
+    }
+
+    /**
+     * The supplier's goods are on their way (the purchase order is marked
+     * shipped): purchasing moves to fulfilling. Call with the campaign locked.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function startFulfilling(Campaign $campaign, Actor $actor, array $payload = []): Campaign
+    {
+        if ($campaign->status !== CampaignStatus::Purchasing) {
+            throw new LogicException("Campaign {$campaign->id} cannot start fulfilling from {$campaign->status->value}.");
+        }
+
+        $campaign = $this->transition($campaign, CampaignStatus::Fulfilling, CampaignEvents::SUPPLIER_SHIPPED, $actor, payload: $payload);
         CampaignProgressChanged::dispatch($campaign->id);
 
         return $campaign;

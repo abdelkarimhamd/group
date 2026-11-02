@@ -16,6 +16,7 @@ use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Orders\Services\PurchaseOrders;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
 use App\Modules\Payments\Jobs\CapturePayment;
@@ -66,6 +67,7 @@ final class Closing
         private readonly StatusHistory $history,
         private readonly AuditLogger $audit,
         private readonly Holds $holds,
+        private readonly PurchaseOrders $purchaseOrders,
     ) {}
 
     /**
@@ -201,7 +203,7 @@ final class Closing
 
             $this->events->record($campaign, CampaignEvents::BELOW_TARGET_DECISION, $actor, $context);
             $this->audit->record($actor, 'campaign.below_target_decision', $campaign, ['closing_step' => ClosingStep::NeedsAdmin->value], $context);
-            $campaign = $this->lifecycle->startPurchasing($campaign, $actor, ['decision' => 'proceed', 'reason' => $reason]);
+            $campaign = $this->startPurchasing($campaign, $actor, ['decision' => 'proceed', 'reason' => $reason]);
             CloseCampaign::dispatch($campaign->id)->afterCommit();
 
             return $campaign;
@@ -429,9 +431,23 @@ final class Closing
             return false;
         }
 
-        $this->lifecycle->startPurchasing($campaign, $actor);
+        $this->startPurchasing($campaign, $actor);
 
         return true;
+    }
+
+    /**
+     * Step 7: purchasing, with the supplier purchase order for the captured
+     * units created in the same transaction (spec, E10 and E12).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function startPurchasing(Campaign $campaign, Actor $actor, array $payload = []): Campaign
+    {
+        $campaign = $this->lifecycle->startPurchasing($campaign, $actor, $payload);
+        $this->purchaseOrders->createForCampaign($campaign, $actor);
+
+        return $campaign;
     }
 
     /**

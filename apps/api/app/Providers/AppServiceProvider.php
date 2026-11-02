@@ -25,6 +25,7 @@ use App\Modules\Notifications\Sms\LogSmsSender;
 use App\Modules\Notifications\Sms\SmsSender;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
+use App\Modules\Orders\Models\SupplierPurchaseOrder;
 use App\Modules\Payments\Gateway\FakeMoyasarGateway;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Models\PaymentAuthorization;
@@ -107,6 +108,7 @@ class AppServiceProvider extends ServiceProvider
             'customer_order' => CustomerOrder::class,
             'invoice' => Invoice::class,
             'refund' => Refund::class,
+            'supplier_purchase_order' => SupplierPurchaseOrder::class,
         ]);
 
         // A campaign that starts closing gets its closing job.

@@ -24,6 +24,12 @@ final class DocumentNumbers
         return sprintf('%s-%s-%06d', $creditNote ? 'CRN' : 'INV', $this->now()->format('Y'), $this->next('invoice_number_seq'));
     }
 
+    /** PO-2611-0007 */
+    public function purchaseOrder(): string
+    {
+        return sprintf('PO-%s-%04d', $this->now()->format('ym'), $this->next('purchase_order_number_seq'));
+    }
+
     private function next(string $sequence): int
     {
         return (int) DB::selectOne("SELECT nextval('{$sequence}') AS n")->n;

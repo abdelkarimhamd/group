@@ -13,6 +13,7 @@ use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Services\Closing;
 use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Identity\Enums\AdminRole;
+use App\Modules\Orders\Models\SupplierPurchaseOrder;
 use App\Modules\Payments\Gateway\GatewayException;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Jobs\CapturePayment;
@@ -311,6 +312,8 @@ class ClosingCampaignsTest extends TestCase
         $decision = $this->campaign->events()->where('event_type', 'below_target_decision')->sole();
         $this->assertSame(['proceed', 2, 3, 3], [$decision->payload['decision'], $decision->payload['captured_qty'], $decision->payload['min_target_qty'], $decision->payload['supplier_moq']]);
         $this->assertSame('captured', $kept->refresh()->status->value);
+        // The supplier order is for the captured units only.
+        $this->assertSame([2], SupplierPurchaseOrder::query()->where('campaign_id', $this->campaign->id)->sole()->lines->pluck('qty')->all());
         $this->getJson("/api/v1/campaigns/{$this->campaign->uuid}")->assertOk()->assertJsonPath('data.final_unit_price.amount_minor', 10500);
     }
 

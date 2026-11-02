@@ -146,4 +146,45 @@ class MoneyTest extends TestCase
             Money::sar(4_900)->jsonSerialize(),
         );
     }
+
+    /**
+     * @return array<string, array{int, string, int}>
+     */
+    public static function conversions(): array
+    {
+        return [
+            'dollars at the peg' => [120_000, '3.75', 450_000],
+            'a full-precision rate' => [100, '3.75123456', 375],
+            'half a halala rounds up' => [1, '0.5', 1],
+            'just under half rounds down' => [1, '0.49999999', 0],
+            'yuan' => [999_999, '0.52345678', 523_456],
+            'negative amounts round away from zero' => [-3, '0.5', -2],
+            'a large order' => [1_000_000_000_000, '9999.99999999', 9_999_999_999_990_000],
+            'one to one' => [12_345, '1', 12_345],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('conversions')]
+    public function it_converts_at_an_exact_rate(int $minor, string $rate, int $expected): void
+    {
+        $converted = Money::of($minor, Currency::USD)->convertTo(Currency::SAR, $rate);
+
+        $this->assertSame([$expected, Currency::SAR], [$converted->minor, $converted->currency]);
+    }
+
+    #[Test]
+    public function a_conversion_refuses_bad_rates_and_overflow(): void
+    {
+        foreach (['', '1.123456789', '-1', '1e3', '3,75'] as $rate) {
+            try {
+                Money::of(100, Currency::USD)->convertTo(Currency::SAR, $rate);
+                $this->fail("Rate [{$rate}] was accepted.");
+            } catch (InvalidArgumentException) {
+            }
+        }
+
+        $this->expectException(OverflowException::class);
+        Money::of(PHP_INT_MAX, Currency::USD)->convertTo(Currency::SAR, '2');
+    }
 }
