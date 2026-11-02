@@ -28,6 +28,18 @@ return [
         // Decided 2 Nov 2026: every price tier must clear this margin on the
         // price before VAT, measured against landed cost. 1500 = 15%.
         'min_margin_bp' => (int) env('GROUPBUY_MIN_MARGIN_BP', 1500),
+
+        // Estimated Moyasar fee per unit for the margin check, until Moyasar
+        // confirms its fees (open question in the spec's Pricing rules). A
+        // share of the VAT-inclusive price plus a fixed amount, both charged
+        // per unit so a one-unit join is never underestimated.
+        'payment_fee_bp' => (int) env('GROUPBUY_PAYMENT_FEE_BP', 275),
+        'payment_fee_fixed_halalas' => (int) env('GROUPBUY_PAYMENT_FEE_FIXED_HALALAS', 100),
+
+        // Delivery cost per unit the platform pays on top of landed cost. The
+        // landed cost breakdown already includes last-mile delivery, so this
+        // stays 0 until a separate delivery charge is decided (Q12).
+        'delivery_cost_estimate_halalas' => (int) env('GROUPBUY_DELIVERY_COST_ESTIMATE_HALALAS', 0),
     ],
 
     'campaigns' => [
@@ -41,6 +53,17 @@ return [
 
         // Units are reserved while the customer is on the payment form.
         'reservation_minutes' => (int) env('GROUPBUY_RESERVATION_MINUTES', 15),
+
+        // Join attempts per customer per minute, in front of the row lock.
+        'joins_per_minute' => 10,
+
+        // The customer progress endpoint is cached this long (contract: at most 2 seconds).
+        'progress_cache_seconds' => 2,
+
+        // Proposed answer to Q16, shown to customers before they pay: a join
+        // can be cancelled only while the campaign is active and before the
+        // deal is confirmed.
+        'cancellation_rule' => 'before_deal_confirmed',
     ],
 
     'payments' => [

@@ -491,7 +491,7 @@ paths:
         `active`, most recent first. Drafts and campaigns awaiting approval
         are never listed.
       x-epic: E7
-      x-status: mock
+      x-status: live
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
         - name: filter
@@ -516,6 +516,7 @@ paths:
                     type: array
                     items: {$ref: '#/components/schemas/CampaignSummary'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
 
   /campaigns/{campaign_id}:
     parameters:
@@ -525,7 +526,7 @@ paths:
       operationId: getCampaign
       summary: Campaign page
       x-epic: E7
-      x-status: mock
+      x-status: live
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       responses:
@@ -549,7 +550,7 @@ paths:
       summary: Live progress for polling
       description: Same payload as the Reverb `progress.updated` event. Cached for at most 2 seconds.
       x-epic: E7
-      x-status: mock
+      x-status: live
       responses:
         '200':
           description: Current progress.
@@ -580,7 +581,7 @@ paths:
         Retrying with the same `client_request_id` returns the original
         participation, again with 201, instead of joining twice.
       x-epic: E7
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
@@ -609,15 +610,16 @@ paths:
         '409':
           description: |
             `price_changed` (body has `current_unit_price`), `sold_out` (not
-            enough units left), or `campaign_not_joinable` (not active, or the
-            deadline passed).
+            enough units left; body has `remaining_qty`), or
+            `campaign_not_joinable` (not active, or the deadline passed).
           content:
             application/json:
               schema: {$ref: '#/components/schemas/JoinConflict'}
         '422':
           description: |
             `per_customer_limit_exceeded`, `variant_not_in_campaign`,
-            `address_not_found`, or invalid input.
+            `address_not_found`, a `client_request_id` already used for another
+            campaign, or invalid input.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
@@ -1853,7 +1855,7 @@ paths:
       operationId: adminListCampaigns
       summary: Campaigns in every status
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.view
       security: [{adminToken: []}]
       parameters:
@@ -1881,12 +1883,19 @@ paths:
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
     post:
       tags: [Admin campaigns]
       operationId: adminCreateCampaign
       summary: Create a draft campaign
+      description: |
+        The quotation must belong to the product, not be rejected or expired,
+        and its supplier must not be blocked. A quotation for one variant can
+        only price a campaign for that variant. Errors are 422 with codes
+        `quotation_not_for_product`, `quotation_not_usable`, `supplier_blocked`,
+        `variant_not_in_product` or `quotation_not_for_variants`.
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1916,7 +1925,7 @@ paths:
       operationId: adminGetCampaign
       summary: One campaign with tiers and closing progress
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.view
       security: [{adminToken: []}]
       responses:
@@ -1936,9 +1945,13 @@ paths:
       tags: [Admin campaigns]
       operationId: adminUpdateCampaign
       summary: Edit a draft
-      description: Only in `draft`. Send the `lock_version` you read; a stale one returns 409 `stale_campaign`.
+      description: |
+        Only in `draft`, otherwise 409 `invalid_transition`. Send the
+        `lock_version` you read; a stale one returns 409 `stale_campaign`.
+        The body replaces the editable fields: an omitted optional field goes
+        back to its default. The same 422 checks as create apply.
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.edit
       security: [{adminToken: []}]
       requestBody:
@@ -1976,11 +1989,13 @@ paths:
       operationId: adminReplaceCampaignTiers
       summary: Save a new tier set
       description: |
-        Only in `draft`. Each save stores a new full version; old versions are
-        kept. Tiers must cover 1 to `max_qty` with no gaps or overlaps, and the
-        price must never rise with quantity. `reason` is required from version 2.
+        Only in `draft`. Send the campaign's `lock_version`; a stale one
+        returns 409 `stale_campaign`. Each save stores a new full version; old
+        versions are kept. Tiers must cover 1 to `max_qty` with no gaps or
+        overlaps, and the price must never rise with quantity. `reason` is
+        required from version 2.
       x-epic: E8
-      x-status: mock
+      x-status: live
       x-permission: pricing.edit
       security: [{adminToken: []}]
       requestBody:
@@ -2003,7 +2018,7 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '422':
-          description: '`tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `price_rises_with_quantity`, or invalid input.'
+          description: '`tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`, a missing `reason` from version 2, or invalid input.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
@@ -2015,9 +2030,13 @@ paths:
       tags: [Admin campaigns]
       operationId: adminGetCampaignMargin
       summary: Margin per tier against the 15% floor
-      description: What the approval screen shows. Approval is blocked when any tier fails, unless an admin with `campaigns.override_margin` approves with a reason.
+      description: |
+        What the approval screen shows. Approval is blocked when any tier
+        fails, unless an admin with `campaigns.override_margin` approves with a
+        reason. Before approval the landed cost comes from the quotation; from
+        approval on it is the snapshot taken then.
       x-epic: E8
-      x-status: mock
+      x-status: live
       x-permission: campaigns.view
       security: [{adminToken: []}]
       responses:
@@ -2047,7 +2066,7 @@ paths:
       operationId: adminSubmitCampaign
       summary: Send a draft for approval
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.edit
       security: [{adminToken: []}]
       responses:
@@ -2057,7 +2076,7 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidTransition'}
         '422':
-          description: '`tiers_missing`, `landed_cost_missing` or `supplier_not_approved`.'
+          description: '`tiers_missing`, a tier error (`tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`), `landed_cost_missing`, `supplier_not_approved`, `quotation_not_usable` or `product_not_active`.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
@@ -2070,13 +2089,15 @@ paths:
       operationId: adminApproveCampaign
       summary: Approve and lock the terms
       description: |
-        Needs `campaigns.approve`. Locks tiers, target and maximum, sets
+        Needs `campaigns.approve`. Re-runs the submit checks, then locks tiers,
+        target and maximum, snapshots the landed cost, sets
         `deadline_at = starts_at + 7 days` (moving `starts_at` to now if it has
         passed), and schedules the campaign. A failing margin check returns 422
         `margin_below_floor` unless `override_reason` is sent, which needs
-        `campaigns.override_margin`.
+        `campaigns.override_margin` (403 without it). When every tier passes,
+        `override_reason` is ignored.
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.approve
       x-field-permissions: {override_reason: campaigns.override_margin}
       security: [{adminToken: []}]
@@ -2099,7 +2120,7 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidTransition'}
         '422':
-          description: '`margin_below_floor` (body includes `margin`), or invalid input.'
+          description: '`margin_below_floor` (body includes `margin`), one of the submit checks, or invalid input.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/MarginBlockedError'}
@@ -2112,7 +2133,7 @@ paths:
       operationId: adminRejectCampaign
       summary: Send back to draft
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.approve
       security: [{adminToken: []}]
       requestBody:
@@ -2136,7 +2157,7 @@ paths:
       operationId: adminGetExtensionWindow
       summary: Whether the deadline can be extended, and how far
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.view
       security: [{adminToken: []}]
       responses:
@@ -2162,10 +2183,11 @@ paths:
       summary: Use the one deadline extension
       description: |
         Allowed once, while `active`, before the deal is confirmed, and only to
-        a date at least 3 days before the earliest hold expires. A blocked
-        request returns 422 `extension_not_allowed` with the latest allowed date.
+        a date at least 3 days before the earliest hold expires (holds still
+        waiting for authorization count). A blocked request returns 422
+        `extension_not_allowed` with the current `window` in the body.
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.extend
       security: [{adminToken: []}]
       requestBody:
@@ -2197,11 +2219,14 @@ paths:
       operationId: adminCancelCampaign
       summary: Cancel a campaign
       description: |
-        Before any capture, cancels at once and voids every hold. Once any
-        capture succeeded, money must go back, so this opens an approval
-        request for a second admin with the finance role (202) instead.
+        Allowed from `draft`, `pending_approval`, `scheduled`, `active`, and
+        `closing` before captures start. Cancels at once, releases every join
+        and voids every hold. Once any capture succeeded, money must go back,
+        so this will open an approval request for a second admin with the
+        finance role (202) instead; until that flow ships (E10) it answers 409
+        `invalid_transition`.
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.cancel
       security: [{adminToken: []}]
       requestBody:
@@ -2301,7 +2326,7 @@ paths:
       operationId: adminListCampaignParticipations
       summary: Everyone who joined
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.view
       security: [{adminToken: []}]
       parameters:
@@ -2326,6 +2351,7 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
 
   /admin/campaigns/{campaign_id}/events:
     parameters:
@@ -2335,7 +2361,7 @@ paths:
       operationId: adminListCampaignEvents
       summary: Campaign history, including every price change
       x-epic: E7
-      x-status: mock
+      x-status: live
       x-permission: campaigns.view
       security: [{adminToken: []}]
       parameters:
@@ -2357,6 +2383,7 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
 
   # ---------------------------------------------------------------- Admin payments, refunds, approvals
   /admin/payments:
@@ -4063,7 +4090,9 @@ components:
         min_margin_bp: {type: integer, example: 1500, description: 1500 is 15%.}
         passes: {type: boolean}
         landed_cost_per_unit: {$ref: '#/components/schemas/Money'}
-        payment_fee_estimate: {$ref: '#/components/schemas/Money'}
+        payment_fee_estimate:
+          allOf: [{$ref: '#/components/schemas/Money'}]
+          description: Per unit, worked out on the highest tier price so it is never understated.
         delivery_cost_estimate: {$ref: '#/components/schemas/Money'}
         tiers:
           type: array
@@ -4187,7 +4216,7 @@ components:
             id: {type: string, format: uuid}
             code: {type: string}
         provider_payment_id: {type: string, nullable: true}
-        source_type: {type: string, enum: [creditcard, applepay]}
+        source_type: {type: string, enum: [creditcard, applepay], nullable: true, description: Null until Moyasar reports the payment.}
         scheme: {type: string, enum: [mada, visa, mastercard], nullable: true}
         card_last4: {type: string, nullable: true}
         status: {$ref: '#/components/schemas/PaymentStatus'}

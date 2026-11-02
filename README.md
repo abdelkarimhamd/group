@@ -16,7 +16,7 @@ The product rules live in the [MVP build spec](https://claude.ai/artifact/WZRndB
 
 ## Run the API locally
 
-You need PHP 8.3+ with the `pdo_pgsql` and `redis` extensions, Composer, and either Docker or local PostgreSQL 16 and Redis 7.
+You need PHP 8.3+ with the `pdo_pgsql`, `redis` and `pcntl` extensions (`pcntl` for the concurrency tests), Composer, and either Docker or local PostgreSQL 16 and Redis 7.
 
 ```bash
 docker compose up -d            # PostgreSQL on 127.0.0.1:5432, Redis on 127.0.0.1:6379
@@ -37,6 +37,15 @@ php artisan admin:create you@example.com --name="Your Name" --phone=05XXXXXXXX -
 Finance admins are created and changed only here (`--role=finance`, or `php artisan admin:update`), because the portal never lets an admin grant permissions they lack, and only finance approves money movements.
 
 On every deploy, run `php artisan admin:sync-roles` after migrating so the roles match `AdminPermissions`.
+
+Campaigns need the scheduler and a queue worker. The scheduler runs `campaigns:tick` every minute, which opens campaigns at their start, frees unpaid reservations after 15 minutes and closes campaigns at their deadline. The worker voids card holds. Locally:
+
+```bash
+php artisan schedule:work       # or cron: * * * * * php artisan schedule:run
+php artisan queue:work
+```
+
+Card payments go through a fake Moyasar (`MOYASAR_DRIVER=fake`) until the merchant account is ready. A payment whose Moyasar ID is `fake_authorized_<payment id>` counts as held; `fake_declined_<payment id>` is a declined card. Set `WEB_URL` to the website's address so the payment form returns there.
 
 Until the first production deploy, migrations already on `main` may still be edited rather than followed by new ones. If `migrate` fails after you pull, rebuild your local database with `php artisan migrate:fresh --seed`.
 

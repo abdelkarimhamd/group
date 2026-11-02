@@ -29,28 +29,47 @@ final class CursorPage
     }
 
     /**
-     * Validation rules for the `cursor` and `per_page` query parameters. Every
-     * list pages by `id`, so a cursor must decode to an integer id; anything
-     * else is refused here instead of reaching the database.
+     * Validation rules for the `cursor` and `per_page` query parameters. A
+     * cursor must decode to exactly the columns the list orders by: an
+     * integer `id` and, for lists sorted by something else first, a string
+     * for each other column. Anything else is refused here instead of
+     * reaching the database.
      *
+     * @param  list<string>  $columns  The list's order columns, ending with `id`.
      * @return array<string, list<mixed>>
      */
-    public static function rules(): array
+    public static function rules(array $columns = ['id']): array
     {
         return [
-            'cursor' => ['sometimes', 'string', 'max:500', self::validCursor()],
+            'cursor' => ['sometimes', 'string', 'max:500', self::validCursor($columns)],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ];
     }
 
-    private static function validCursor(): Closure
+    /**
+     * @param  list<string>  $columns
+     */
+    private static function validCursor(array $columns): Closure
     {
-        return function (string $attribute, mixed $value, Closure $fail): void {
+        return function (string $attribute, mixed $value, Closure $fail) use ($columns): void {
             $cursor = is_string($value) ? Cursor::fromEncoded($value) : null;
             $parameters = $cursor?->toArray() ?? [];
             unset($parameters['_pointsToNextItems']);
 
-            if ($cursor === null || array_keys($parameters) !== ['id'] || ! is_int($parameters['id'])) {
+            $keys = array_keys($parameters);
+            sort($keys);
+            $expected = $columns;
+            sort($expected);
+
+            $valid = $cursor !== null && $keys === $expected && is_int($parameters['id'] ?? null);
+
+            foreach ($columns as $column) {
+                if ($column !== 'id' && ! is_string($parameters[$column] ?? null)) {
+                    $valid = false;
+                }
+            }
+
+            if (! $valid) {
                 $fail(__('validation.regex', ['attribute' => $attribute]));
             }
         };

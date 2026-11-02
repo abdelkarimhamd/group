@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Campaign\Console\CampaignTickCommand;
 use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Supplier\Console\ExpireQuotationsCommand;
 use Illuminate\Support\Facades\Schedule;
@@ -12,3 +13,7 @@ Schedule::command('model:prune', ['--model' => [OtpChallenge::class]])->daily();
 
 // Supplier quotes past their validity date, just after midnight in Riyadh.
 Schedule::command(ExpireQuotationsCommand::class)->dailyAt('00:05')->timezone('Asia/Riyadh');
+
+// Campaigns going live, closing at their deadline, and unpaid reservations
+// expiring. One server at a time, never overlapping itself.
+Schedule::command(CampaignTickCommand::class)->everyMinute()->withoutOverlapping()->onOneServer();

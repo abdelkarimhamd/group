@@ -42,4 +42,14 @@ return [
         'log_channel' => env('SMS_LOG_CHANNEL'),
     ],
 
+    // Card payments. Until the merchant account is approved the "fake" driver
+    // stands in for Moyasar: it authorizes, captures and voids without any
+    // network call, and refuses to run in production. See docs/architecture.md.
+    'moyasar' => [
+        'driver' => env('MOYASAR_DRIVER', 'fake'),
+        'publishable_key' => env('MOYASAR_PUBLISHABLE_KEY', 'pk_test_fake'),
+        // Where Moyasar sends the customer after the payment form.
+        'callback_base_url' => env('WEB_URL', 'http://localhost:3000'),
+    ],
+
 ];
