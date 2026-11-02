@@ -3,6 +3,7 @@
 namespace App\Modules\Orders\Models;
 
 use App\Modules\Catalog\Models\ProductVariant;
+use App\Support\Money\Currency;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,7 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $supplier_purchase_order_id
  * @property int $product_variant_id
  * @property int $qty
- * @property int $unit_cost_minor In the order's currency.
+ * @property int $unit_cost_minor In the line's currency.
+ * @property Currency $currency The currency the supplier confirmed; kept when the order's currency changes.
  * @property-read SupplierPurchaseOrder $purchaseOrder
  * @property-read ProductVariant $variant
  */
@@ -26,6 +28,7 @@ class SupplierPurchaseOrderLine extends Model
         return [
             'qty' => 'integer',
             'unit_cost_minor' => 'integer',
+            'currency' => Currency::class,
         ];
     }
 

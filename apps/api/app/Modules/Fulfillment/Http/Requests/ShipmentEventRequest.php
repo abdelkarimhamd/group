@@ -17,7 +17,7 @@ final class ShipmentEventRequest extends ApiRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', Rule::enum(ShipmentStatus::class)],
+            'status' => ['required', 'string', Rule::in(array_map(fn (ShipmentStatus $status) => $status->value, ShipmentStatus::trackable()))],
             'description' => ['nullable', 'string', 'max:500'],
             'location' => ['nullable', 'string', 'max:200'],
             'occurred_at' => ['required', 'date', 'before_or_equal:now'],

@@ -69,7 +69,11 @@ return [
         'refund_exceeds_captured' => 'The refund is more than what is left of the captured amount.',
         'purchase_order_incomplete' => 'Record the Alibaba order number and the exchange rate first, and a freight tracking reference before shipping.',
         'shipment_exists' => 'This order already has a shipment.',
+        'event_before_shipment' => 'An update cannot be dated before the courier picked up the order.',
         'receipt_lines_mismatch' => 'Count every variant on the purchase order exactly once, and nothing else.',
+        'sar_rate_must_be_one' => 'A SAR order has an exchange rate of 1.',
+        'purchase_order_not_paid' => 'Record the payment date once the order is paid.',
+        'step_date_out_of_order' => 'This date is earlier than a step the order already went through.',
         'payment_provider_unavailable' => 'We could not check your payment right now. We will update it shortly.',
     ],
 

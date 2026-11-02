@@ -1538,8 +1538,9 @@ export interface paths {
          *     `delivered` always does. `delivered` marks the order delivered and
          *     starts its 7-day return window (`groupbuy.orders.return_window_days`);
          *     once every order of the campaign is delivered or cancelled, the
-         *     campaign is `completed`. A delivered, returned or cancelled shipment
-         *     takes no more updates (409).
+         *     campaign is `completed`. No update is dated before the pickup
+         *     (`event_before_shipment`, 422). A delivered shipment takes no more
+         *     updates (409).
          */
         post: operations["adminAddShipmentEvent"];
         delete?: never;
@@ -1587,11 +1588,15 @@ export interface paths {
         /**
          * Record Alibaba order details and freight
          * @description Fields sent change; the rest keep their value. Changing the currency
-         *     clears a rate that no longer applies (a SAR order's rate is 1), and
-         *     `total_sar` follows the total and the rate. Past `draft` the Alibaba
-         *     order number and the rate cannot be cleared, nor the freight tracking
-         *     reference once shipped (`purchase_order_incomplete`). A received or
-         *     cancelled order cannot change (409).
+         *     needs `total_minor` in the new currency and clears a rate that no
+         *     longer applies (a SAR order's rate is 1, `sar_rate_must_be_one`);
+         *     `total_sar` follows the total and the rate. Line costs stay in the
+         *     currency the supplier confirmed. Past `draft` the Alibaba order number
+         *     and the rate cannot be cleared, nor the freight tracking reference once
+         *     shipped (`purchase_order_incomplete`). `paid_at` can be set once the
+         *     order is paid (`purchase_order_not_paid`), and step dates never go
+         *     backwards (`step_date_out_of_order`). A received or cancelled order
+         *     cannot change (409).
          */
         patch: operations["adminUpdatePurchaseOrder"];
         trace?: never;
@@ -1616,7 +1621,8 @@ export interface paths {
          *     (409 otherwise). Past `draft` the order needs its Alibaba order number
          *     and a SAR value (`purchase_order_incomplete`, 422). Leaving `draft`
          *     moves the campaign's confirmed customer orders to `processing`.
-         *     `occurred_at` (default now, never in the future) sets the step's time.
+         *     `occurred_at` (default now, never in the future) sets the step's time;
+         *     it is never earlier than a step already recorded (`step_date_out_of_order`, 422).
          */
         post: operations["adminAdvancePurchaseOrder"];
         delete?: never;
@@ -2808,7 +2814,11 @@ export interface components {
             shipping_cost_halalas?: number | null;
         };
         ShipmentEventInput: {
-            status: components["schemas"]["ShipmentStatus"];
+            /**
+             * @description Returns and cancelled shipments come with returns handling.
+             * @enum {string}
+             */
+            status: "picked_up" | "in_transit" | "out_for_delivery" | "failed_attempt" | "delivered";
             description?: string | null;
             location?: string | null;
             /** Format: date-time */
@@ -2826,6 +2836,11 @@ export interface components {
             freight_tracking_ref?: string | null;
             /** Format: date */
             eta?: string | null;
+            /**
+             * Format: date-time
+             * @description Once the order is paid, records or corrects the payment date.
+             */
+            paid_at?: string;
         };
         PurchaseOrder: {
             /** Format: uuid */
