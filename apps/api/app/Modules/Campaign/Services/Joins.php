@@ -42,6 +42,9 @@ use LogicException;
  */
 class Joins
 {
+    /** Reservations expired per scheduler run; the provider check covers the same ones. */
+    public const EXPIRY_BATCH = 500;
+
     public function __construct(
         private readonly StatusHistory $history,
         private readonly CampaignEvents $events,
@@ -210,7 +213,7 @@ class Joins
      * provider about unsettled payments first, so a hold that went through
      * is counted rather than voided. Returns how many expired.
      */
-    public function expireReservations(?CarbonImmutable $now = null, int $limit = 500): int
+    public function expireReservations(?CarbonImmutable $now = null, int $limit = self::EXPIRY_BATCH): int
     {
         $now ??= CarbonImmutable::now();
         $due = CampaignParticipation::query()

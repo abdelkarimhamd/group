@@ -487,9 +487,11 @@ export interface paths {
      *     match the token set on the webhook in the Moyasar dashboard (open
      *     question Q5). Every event is stored, with the token redacted; a
      *     verified event is processed once per event ID and resends are
-     *     ignored. The answer is immediate: a queued job fetches the payment
+     *     ignored, unless the stored event was never processed, which queues
+     *     it again. The answer is immediate: a queued job fetches the payment
      *     from Moyasar and applies it exactly as the sync endpoint does, never
-     *     trusting the event body.
+     *     trusting the event body. Bodies over 64 KB are refused (413) and not
+     *     stored.
      */
     post: operations['receiveMoyasarWebhook'];
     delete?: never;
@@ -3824,7 +3826,7 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       404: components['responses']['NotFound'];
-      /** @description `reservation_expired` when the participation is no longer `pending_payment` or its reservation ran out, or `payment_in_progress` when the previous attempt has neither failed nor been refused. */
+      /** @description `already_paid` when the participation is already `authorized` or `captured`; `reservation_expired` when it is otherwise no longer `pending_payment` or its reservation ran out; or `payment_in_progress` when the previous attempt has neither failed nor been refused. */
       409: {
         headers: {
           [name: string]: unknown;
@@ -3979,6 +3981,13 @@ export interface operations {
       };
       /** @description Verification failed. Logged and never processed. */
       401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Body too large to be a Moyasar event. Not stored. */
+      413: {
         headers: {
           [name: string]: unknown;
         };

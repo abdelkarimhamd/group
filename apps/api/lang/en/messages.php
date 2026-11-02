@@ -59,6 +59,7 @@ return [
         'provider_payment_mismatch' => 'That payment does not match this order. Please try paying again.',
         'reservation_expired' => 'Your reserved units were released. Join again to try another card.',
         'payment_in_progress' => 'Your last payment is still being processed. Wait for it to finish before trying another card.',
+        'already_paid' => 'This join is already paid: its card hold went through.',
         'payment_provider_unavailable' => 'We could not check your payment right now. We will update it shortly.',
     ],
 

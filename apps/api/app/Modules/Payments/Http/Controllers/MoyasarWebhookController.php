@@ -14,6 +14,11 @@ final class MoyasarWebhookController extends Controller
 {
     public function __invoke(Request $request, MoyasarWebhooks $webhooks): Response
     {
+        // Moyasar's events are a few kilobytes; anything far bigger is not one of them and is not stored.
+        if (strlen($request->getContent()) > (int) config('groupbuy.payments.webhook_max_bytes')) {
+            return response()->noContent(413);
+        }
+
         $payload = json_decode($request->getContent(), true);
 
         if (! is_array($payload) || array_is_list($payload)) {

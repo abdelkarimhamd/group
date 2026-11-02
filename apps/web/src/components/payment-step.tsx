@@ -105,6 +105,12 @@ export function RetryPayment({ participation, label }: { participation: JoinRef;
         router.replace(`/${locale}/sign-in?expired=1&next=${encodeURIComponent(`/${locale}/account/joins/${participation.id}`)}`);
         return;
       }
+      if (result.code === "already_paid") {
+        // The hold went through meanwhile: show the join as it now stands.
+        setError(t.joins.retryAlreadyPaid);
+        router.refresh();
+        return;
+      }
       if (result.code === "reservation_expired") setError(t.joins.retryExpired);
       else if (result.code === "payment_in_progress") setError(t.joins.retryInProgress);
       else if (result.status === 0) setError(t.common.networkError);

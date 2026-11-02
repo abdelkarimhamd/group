@@ -5,9 +5,12 @@ namespace Tests\Feature\Payments;
 use App\Models\StatusTransition;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
+use App\Modules\Campaign\Services\Joins;
+use App\Modules\Identity\Enums\AdminRole;
 use App\Modules\Identity\Models\Address;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Models\PaymentAuthorization;
+use App\Modules\Payments\Services\Confirmations;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -124,7 +127,7 @@ class ConfirmingHoldsTest extends TestCase
         $this->sync($this->payment, 'fake_authorized_'.$this->payment->uuid)->assertOk();
 
         // Once the join counts there is nothing left to pay.
-        $this->retry()->assertConflict()->assertJsonPath('code', 'reservation_expired');
+        $this->retry()->assertConflict()->assertJsonPath('code', 'already_paid');
         $this->assertSame(1, PaymentAuthorization::count());
     }
 
@@ -413,9 +416,115 @@ class ConfirmingHoldsTest extends TestCase
         $this->assertSame(1, $this->campaign->refresh()->committed_qty);
     }
 
-    private function sync(PaymentAuthorization $payment, string $providerPaymentId): TestResponse
+    #[Test]
+    public function a_hold_that_lands_after_its_known_payment_was_released_is_voided(): void
     {
-        $response = $this->withToken($this->token)->postJson("/api/v1/payments/{$payment->uuid}/sync", ['provider_payment_id' => $providerPaymentId]);
+        // The customer came back while 3-D Secure was still running.
+        $gateway = $this->scripted();
+        $gateway->report('pay_1', $this->payment, status: 'initiated');
+        $this->sync($this->payment, 'pay_1')->assertOk();
+
+        // The reservation runs out while Moyasar still says initiated.
+        $this->travel(16)->minutes();
+        $this->artisan('campaigns:tick')->assertSuccessful();
+        $this->assertSame(['failed', 'pay_1'], [$this->payment->refresh()->status->value, $this->payment->provider_payment_id]);
+
+        // Then the hold goes through, and the webhook (or a later check) sees it.
+        $gateway->report('pay_1', $this->payment);
+        $this->sync($this->payment, 'pay_1')->assertOk()->assertJsonPath('data.status', 'reservation_expired');
+
+        $this->payment->refresh();
+        $this->assertSame(['voided', 'voided'], [$this->payment->status->value, $this->payment->provider_status]);
+        $this->assertSame(['pending_authorization', 'failed', 'voided'], $this->transitions($this->payment));
+        $this->assertSame(['pay_1'], $gateway->voids);
+        $this->assertSame(1, PaymentAuthorization::count());
+
+        // Seen again, nothing more happens.
+        $this->sync($this->payment, 'pay_1')->assertOk();
+        $this->assertSame(['pay_1'], $gateway->voids);
+    }
+
+    #[Test]
+    public function a_hold_that_lands_after_the_campaign_was_cancelled_is_voided(): void
+    {
+        $gateway = $this->scripted();
+        $gateway->report('pay_1', $this->payment, status: 'initiated');
+        $this->sync($this->payment, 'pay_1')->assertOk();
+
+        [, $admin] = $this->adminWithToken(AdminRole::CampaignManager);
+        $this->withToken($admin)->postJson("/api/v1/admin/campaigns/{$this->campaign->uuid}/cancel", ['reason' => 'Supplier stopped making it'])->assertOk();
+        $this->forgetAuthenticatedUsers();
+
+        $gateway->report('pay_1', $this->payment);
+        $this->sync($this->payment, 'pay_1')->assertOk()->assertJsonPath('data.status', 'released');
+
+        $this->assertSame('voided', $this->payment->refresh()->status->value);
+        $this->assertSame(['pay_1'], $gateway->voids);
+    }
+
+    #[Test]
+    public function a_refused_second_hold_for_a_counted_join_is_a_duplicate_and_never_replaces_the_first(): void
+    {
+        $gateway = $this->scripted();
+        $gateway->report('pay_1', $this->payment);
+        $this->sync($this->payment, 'pay_1')->assertOk();
+
+        // The form was sent again, for the wrong amount this time.
+        $gateway->report('pay_2', $this->payment, amount: 99);
+        $this->sync($this->payment, 'pay_2')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'authorized')
+            ->assertJsonPath('data.payment.id', $this->payment->uuid)
+            ->assertJsonPath('data.payment.status', 'authorized');
+
+        $second = PaymentAuthorization::query()->where('provider_payment_id', 'pay_2')->sole();
+        $this->assertSame(['voided', 'duplicate_hold'], [$second->status->value, $second->rejection_reason->value]);
+        $this->assertSame($this->payment->id, $this->participation->refresh()->latestPayment->id);
+    }
+
+    #[Test]
+    public function what_the_provider_held_is_kept_with_the_hold(): void
+    {
+        $gateway = $this->scripted();
+        $gateway->report('pay_1', $this->payment, amount: 9999, scheme: 'visa');
+        $this->sync($this->payment, 'pay_1')->assertOk();
+
+        $change = StatusTransition::query()
+            ->where('subject_type', 'payment_authorization')
+            ->where('subject_id', $this->payment->id)
+            ->where('to_status', 'authorized')
+            ->sole();
+        $this->assertSame('amount_mismatch', $change->reason);
+        // Key order is not kept in jsonb.
+        $this->assertEquals(
+            ['id' => 'pay_1', 'status' => 'authorized', 'amount_halalas' => 9999, 'currency' => 'SAR', 'source_type' => 'creditcard', 'scheme' => 'visa'],
+            $change->metadata['provider'],
+        );
+    }
+
+    #[Test]
+    public function every_reservation_that_expires_was_checked_with_the_provider_first(): void
+    {
+        $gateway = $this->scripted();
+        // An earlier join with no payment started, then one whose hold went through unseen.
+        [, $token, $address] = $this->customerReadyToJoin();
+        $second = $this->joinAs($token, $this->campaign, $address);
+        $gateway->report('pay_2', $second->latestPayment, status: 'initiated');
+        $this->sync($second->latestPayment, 'pay_2', $token)->assertOk();
+        $gateway->report('pay_2', $second->latestPayment);
+
+        $now = CarbonImmutable::now()->addMinutes(16);
+        $this->travelTo($now);
+        app(Confirmations::class)->checkExpiringReservations($now, 2);
+        app(Joins::class)->expireReservations($now, 2);
+
+        $this->assertSame('authorized', $second->refresh()->status->value);
+        $this->assertSame('reservation_expired', $this->participation->refresh()->status->value);
+    }
+
+    private function sync(PaymentAuthorization $payment, string $providerPaymentId, ?string $token = null): TestResponse
+    {
+        $response = $this->withToken($token ?? $this->token)->postJson("/api/v1/payments/{$payment->uuid}/sync", ['provider_payment_id' => $providerPaymentId]);
         $this->forgetAuthenticatedUsers();
 
         return $response;
