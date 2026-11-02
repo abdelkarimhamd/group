@@ -176,14 +176,14 @@ class Joins
             'quantity' => $participation->qty,
             'hold_unit_price_halalas' => $participation->hold_unit_price_halalas,
         ]);
-        $this->notices->joined($campaign, $participation);
 
-        if ($campaign->deal_confirmed_at === null && $campaign->committed_qty >= $campaign->min_target_qty) {
+        $confirmed = $campaign->deal_confirmed_at === null && $campaign->committed_qty >= $campaign->min_target_qty;
+
+        if ($confirmed) {
             $campaign->deal_confirmed_at = $now;
             $campaign->save();
             $this->events->record($campaign, CampaignEvents::DEAL_CONFIRMED, $actor, ['min_target_qty' => $campaign->min_target_qty]);
             CampaignDealConfirmed::dispatch($campaign->id);
-            $this->notices->dealConfirmed($campaign);
         }
 
         $priceAfter = $tiers->current($campaign->committed_qty);
@@ -204,6 +204,15 @@ class Joins
         if ($campaign->status === CampaignStatus::Active && $campaign->committed_qty === $campaign->max_qty) {
             $this->events->record($campaign, CampaignEvents::MAX_REACHED, $actor, ['max_qty' => $campaign->max_qty]);
             $this->lifecycle->enterClosing($campaign, $actor);
+        }
+
+        // Told once closing may have started, so a join that fills the
+        // campaign (or lands while it settles its joins) is not promised
+        // a deadline that has gone.
+        $this->notices->joined($campaign, $participation);
+
+        if ($confirmed) {
+            $this->notices->dealConfirmed($campaign);
         }
 
         $this->wakeClosingIfSettled($campaign);

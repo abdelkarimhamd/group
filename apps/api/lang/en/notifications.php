@@ -9,9 +9,17 @@ return [
         'title' => "You're in",
         'body' => 'You joined :campaign for :qty. We placed a hold of :hold SAR on your card. If the deal goes ahead after :deadline you pay the final price, which may be lower; if not, the hold is released.',
     ],
+    'joined_closing' => [
+        'title' => "You're in",
+        'body' => 'You joined :campaign for :qty. We placed a hold of :hold SAR on your card. The campaign is closing now: if the deal goes ahead you pay the final price, which may be lower; if not, the hold is released.',
+    ],
     'deal_confirmed' => [
         'title' => 'Deal confirmed',
         'body' => ':campaign reached its target, so the deal is on. The price can still drop until :deadline; then you are charged the final price.',
+    ],
+    'deal_confirmed_closing' => [
+        'title' => 'Deal confirmed',
+        'body' => ':campaign reached its target and is closing now, so the deal is on. You will be charged the final price shortly.',
     ],
     'extended' => [
         'title' => 'More time to join',
@@ -32,6 +40,10 @@ return [
     'capture_failed' => [
         'title' => "Payment didn't go through",
         'body' => "We couldn't charge your card for :campaign, so no order was made. Your hold of :hold SAR is released.",
+    ],
+    'hold_voided' => [
+        'title' => 'Hold released',
+        'body' => 'Your payment for :campaign came through after your place was no longer held, so we released the hold of :hold SAR and nothing was charged. Your bank may take a few days to show it.',
     ],
     'charged' => [
         'title' => 'Payment taken',

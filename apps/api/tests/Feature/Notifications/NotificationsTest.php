@@ -68,7 +68,7 @@ final class NotificationsTest extends TestCase
             'انضممت إلى سماعات لاسلكية بعدد 1. حجزنا 120.00 ريال على بطاقتك. إذا تمت الصفقة بعد '.$deadline->locale('ar')->translatedFormat('j F, H:i').' تدفع السعر النهائي وقد يكون أقل، وإلا يُلغى الحجز.',
             'انضممت إلى سماعات لاسلكية بعدد 1. حجزنا 120.00 ريال على بطاقتك. إذا تمت الصفقة بعد '.$deadline->locale('ar')->translatedFormat('j F, H:i').' تدفع السعر النهائي وقد يكون أقل، وإلا يُلغى الحجز.',
             // Two joins, one message about the deal.
-            'وصلت سماعات لاسلكية إلى هدفها وتأكدت الصفقة. قد ينخفض السعر حتى '.$deadline->locale('ar')->translatedFormat('j F, H:i').'، وبعدها نخصم السعر النهائي.',
+            'وصلت حملة سماعات لاسلكية إلى هدفها وتأكدت الصفقة. قد ينخفض السعر حتى '.$deadline->locale('ar')->translatedFormat('j F, H:i').'، وبعدها نخصم السعر النهائي.',
         ], $this->sms->to($arabic->phone_e164));
         $this->assertSame([
             'You joined Wireless headphones for 1. We placed a hold of 120.00 SAR on your card. If the deal goes ahead after '.$deadline->locale('en')->translatedFormat('j F, H:i').' you pay the final price, which may be lower; if not, the hold is released.',
@@ -99,6 +99,37 @@ final class NotificationsTest extends TestCase
     }
 
     #[Test]
+    public function a_join_that_fills_the_campaign_is_told_it_closes_now_and_not_about_the_deadline(): void
+    {
+        $campaign = $this->closableCampaign(['title_en' => 'Desk lamp']);
+        [$first] = $this->paidJoin($campaign, 2);
+        $early = $first->user()->sole();
+        $early->forceFill(['locale' => 'en'])->save();
+        [$last, $token, $address] = $this->customerReadyToJoin();
+        $last->forceFill(['locale' => 'en'])->save();
+        $this->paidJoin($campaign, 8, $token, $address);
+
+        $this->assertSame('closing', $campaign->refresh()->status->value);
+        $this->assertSame([
+            'You joined Desk lamp for 8. We placed a hold of 960.00 SAR on your card. The campaign is closing now: if the deal goes ahead you pay the final price, which may be lower; if not, the hold is released.',
+            'Desk lamp reached its target and is closing now, so the deal is on. You will be charged the final price shortly.',
+        ], $this->sms->to($last->phone_e164));
+        $this->assertSame(
+            'Desk lamp reached its target and is closing now, so the deal is on. You will be charged the final price shortly.',
+            $this->sms->to($early->phone_e164)[1],
+        );
+
+        // Kept under the usual keys, so the plain wording is never sent as well.
+        $this->assertSame(
+            ['deal_confirmed_closing' => ['deal_confirmed'], 'joined' => ['joined'], 'joined_closing' => ['joined']],
+            Notification::query()->where('channel', 'sms')->orderBy('id')->get()
+                ->groupBy(fn (Notification $n) => $n->template_key->value)
+                ->map(fn ($messages) => $messages->map(fn (Notification $n) => explode(':', $n->dedupe_key)[0])->unique()->values()->all())
+                ->sortKeys()->all(),
+        );
+    }
+
+    #[Test]
     public function a_released_hold_is_explained_to_each_paid_join(): void
     {
         // Target missed at the deadline.
@@ -117,7 +148,7 @@ final class NotificationsTest extends TestCase
         [$paid] = $this->paidJoin($cancelled, 1);
         [$admin] = $this->adminWithToken(AdminRole::CampaignManager);
         app(CampaignLifecycle::class)->cancel($cancelled->uuid, 'Supplier withdrew the product', $admin);
-        $this->assertSame('أُلغيت خلاط كهربائي - شراء جماعي. ألغينا الحجز البالغ 120.00 ريال ولم نخصم أي مبلغ. قد يستغرق ظهور ذلك لدى بنكك بضعة أيام.', $this->lastSmsTo($paid));
+        $this->assertSame('أُلغيت حملة خلاط كهربائي - شراء جماعي. ألغينا الحجز البالغ 120.00 ريال ولم نخصم أي مبلغ. قد يستغرق ظهور ذلك لدى بنكك بضعة أيام.', $this->lastSmsTo($paid));
 
         // Cancelled by the customer.
         $open = $this->closableCampaign();
@@ -131,7 +162,7 @@ final class NotificationsTest extends TestCase
         [$waiting] = $this->paidJoin($extended, 1);
         $newDeadline = $extended->deadline_at->addDays(2);
         app(CampaignLifecycle::class)->extend($extended->uuid, $newDeadline, 'Slow first week', $admin);
-        $this->assertSame('مُددت خلاط كهربائي - شراء جماعي حتى '.$newDeadline->setTimezone('Asia/Riyadh')->locale('ar')->translatedFormat('j F, H:i').'. يبقى الحجز على بطاقتك كما هو.', $this->lastSmsTo($waiting));
+        $this->assertSame('مُددت حملة خلاط كهربائي - شراء جماعي حتى '.$newDeadline->setTimezone('Asia/Riyadh')->locale('ar')->translatedFormat('j F, H:i').'. يبقى الحجز على بطاقتك كما هو.', $this->lastSmsTo($waiting));
 
         $this->assertSame(
             ['campaign_cancelled', 'campaign_failed', 'extended', 'join_cancelled'],
@@ -217,7 +248,7 @@ final class NotificationsTest extends TestCase
 
         app(Deliveries::class)->deliver($message->id);
         $this->assertSame('sent', $message->refresh()->status->value);
-        $this->assertSame(['مُددت أ حتى '.$campaign->deadline_at->setTimezone('Asia/Riyadh')->locale('ar')->translatedFormat('j F, H:i').'. يبقى الحجز على بطاقتك كما هو.'], $this->sms->to($user->phone_e164));
+        $this->assertSame(['مُددت حملة أ حتى '.$campaign->deadline_at->setTimezone('Asia/Riyadh')->locale('ar')->translatedFormat('j F, H:i').'. يبقى الحجز على بطاقتك كما هو.'], $this->sms->to($user->phone_e164));
     }
 
     #[Test]
@@ -253,6 +284,33 @@ final class NotificationsTest extends TestCase
 
         $this->register($token, ['platform' => 'blackberry', 'token' => ''])->assertUnprocessable()->assertJsonValidationErrors(['platform', 'token']);
         $this->withoutToken()->postJson('/api/v1/me/device-tokens', ['platform' => 'ios', 'token' => 'x'])->assertUnauthorized();
+
+        // Signing out of the app removes its push token: the device stops getting this account's messages.
+        $this->forgetAuthenticatedUsers();
+        $this->withToken($otherToken)->postJson('/api/v1/auth/logout')->assertNoContent();
+        $this->forgetAuthenticatedUsers();
+        $this->assertFalse(DeviceToken::query()->where('user_id', $other->id)->exists());
+        $this->assertSame(10, DeviceToken::query()->where('user_id', $user->id)->count());
+    }
+
+    #[Test]
+    public function a_message_whose_tries_never_report_back_stops_at_the_attempt_limit(): void
+    {
+        Bus::fake([SendNotification::class]);
+        $user = User::factory()->create(['phone_e164' => '+966512345678']);
+        app(Notifier::class)->send($user, NotificationTemplate::Shipped, $user, ['order' => 'ORD-1', 'courier' => 'SMSA', 'tracking' => 'T-1'], 'shipped:limit');
+        $message = Notification::query()->sole();
+
+        // Every try so far crashed mid-send, so none recorded a result.
+        $message->forceFill(['attempts' => config('groupbuy.notifications.max_attempts'), 'next_attempt_at' => now()->subMinute()])->save();
+
+        app(Deliveries::class)->deliver($message->id);
+        $message->refresh();
+        $this->assertSame(['failed', 'no_result_after_max_attempts', null], [$message->status->value, $message->last_error, $message->next_attempt_at]);
+        $this->assertSame([], $this->sms->to('+966512345678'));
+        // Nothing is due any more: only the first dispatch, when it was queued.
+        $this->artisan('notifications:dispatch-due')->assertSuccessful();
+        Bus::assertDispatchedTimes(SendNotification::class, 1);
     }
 
     #[Test]

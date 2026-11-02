@@ -50,6 +50,17 @@ final class Deliveries
                 return null;
             }
 
+            // Tries that never reported back (a crash mid-send) count too.
+            if ($notification->attempts >= (int) config('groupbuy.notifications.max_attempts')) {
+                $notification->status = NotificationStatus::Failed;
+                $notification->next_attempt_at = null;
+                $notification->last_error = 'no_result_after_max_attempts';
+                $notification->save();
+                Log::warning('notifications.failed', ['notification_id' => $notification->id, 'error' => 'no_result_after_max_attempts']);
+
+                return null;
+            }
+
             $notification->attempts++;
             $notification->last_attempt_at = $now;
             $notification->next_attempt_at = $now->addMinutes((int) config('groupbuy.notifications.stuck_after_minutes'));

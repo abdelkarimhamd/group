@@ -57,13 +57,17 @@ return new class extends Migration
             $table->foreignId('supplier_purchase_order_id')->constrained()->cascadeOnDelete();
             $table->foreignId('product_variant_id')->constrained()->restrictOnDelete();
             $table->unsignedInteger('qty');
+            // In the currency the supplier quoted, which stays with the line
+            // when the order's own currency is changed later.
             $table->bigInteger('unit_cost_minor');
+            $table->char('currency', 3);
             $table->timestampsTz();
 
             $table->unique(['supplier_purchase_order_id', 'product_variant_id']);
         });
 
         DB::statement('ALTER TABLE supplier_purchase_order_lines ADD CONSTRAINT supplier_purchase_order_lines_amounts_check CHECK (qty > 0 AND unit_cost_minor >= 0)');
+        DB::statement("ALTER TABLE supplier_purchase_order_lines ADD CONSTRAINT supplier_purchase_order_lines_currency_check CHECK (currency IN ('USD', 'CNY', 'SAR'))");
     }
 
     public function down(): void

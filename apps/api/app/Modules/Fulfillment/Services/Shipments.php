@@ -74,6 +74,7 @@ final class Shipments
                 'created_by_admin_id' => $by->id,
             ]);
             $this->appendEvent($shipment, ShipmentStatus::PickedUp, null, null, $now, $actor);
+            $this->history->record($shipment, null, ShipmentStatus::PickedUp, $actor);
 
             $order->status = OrderStatus::Shipped;
             $order->save();
@@ -95,9 +96,10 @@ final class Shipments
 
     /**
      * A tracking update. Updates may arrive out of order: the newest one
-     * sets the shipment's status, and `delivered` always does. Delivery
-     * marks the order delivered and starts its return window. Nothing
-     * follows a delivered, returned or cancelled shipment.
+     * sets the shipment's status, and `delivered` always does; none is
+     * dated before the pickup. Delivery marks the order delivered and
+     * starts its return window. Nothing follows a delivered, returned or
+     * cancelled shipment.
      *
      * @param  array{status: string, description?: string|null, location?: string|null, occurred_at: string}  $input
      */
@@ -116,15 +118,25 @@ final class Shipments
             $actor = Actor::admin($by->id);
             $status = ShipmentStatus::from($input['status']);
             $occurredAt = CarbonImmutable::parse($input['occurred_at']);
+
+            // Nothing happens to a shipment before the courier picked it up;
+            // a delivery dated earlier would cut the return window short.
+            if ($occurredAt->lessThan($shipment->shipped_at)) {
+                throw ApiException::unprocessable('event_before_shipment', 'occurred_at');
+            }
+
             $newest = ShipmentEvent::query()->where('shipment_id', $shipment->id)->max('occurred_at');
             $this->appendEvent($shipment, $status, $input['description'] ?? null, $input['location'] ?? null, $occurredAt, $actor);
-
             $from = $shipment->status;
 
             if ($status === ShipmentStatus::Delivered || $newest === null || ! $occurredAt->lessThan(CarbonImmutable::parse($newest))) {
                 $shipment->status = $status;
                 $shipment->delivered_at = $status === ShipmentStatus::Delivered ? $occurredAt : null;
                 $shipment->save();
+
+                if ($shipment->status !== $from) {
+                    $this->history->record($shipment, $from, $shipment->status, $actor, null, ['occurred_at' => $occurredAt->toIso8601ZuluString()]);
+                }
             }
 
             $this->audit->record($actor, 'shipment.event', $shipment, ['status' => $from->value], [
