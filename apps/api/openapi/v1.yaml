@@ -1,0 +1,3964 @@
+openapi: 3.0.3
+info:
+  title: Group buying API
+  version: 0.1.0
+  description: |
+    The one API behind the customer website, the admin portal and the mobile app.
+    Product rules come from the MVP build spec; this file is the contract the
+    clients build against. Every operation carries:
+
+    - `x-epic`: the backlog epic that ships it.
+    - `x-status`: `live` when the Laravel API serves it, `mock` while only the
+      mock server does. A contract test keeps this honest in both directions.
+
+    ## Conventions
+
+    - **Language.** Send `Accept-Language: ar` or `en`; Arabic is the default.
+      Customer endpoints return text (`title`, `name`, `description`) in that
+      language. Admin endpoints return both, as `*_ar` and `*_en`.
+    - **Money.** Responses use the `Money` object: integer minor units
+      (halalas for SAR), currency, and a display string. Requests send integers
+      in fields ending `_halalas` (SAR) or `_minor` (supplier currency). Prices
+      include 15% VAT. Floats never carry money.
+    - **IDs.** Every resource is addressed by a UUID `id`. Campaigns and orders
+      also have a short human reference (`code`, `order_number`).
+    - **Time.** ISO 8601 in UTC (`2026-11-08T07:00:00Z`). Clients show Riyadh time.
+    - **Envelope.** A single resource is `{"data": {...}}`. A list is
+      `{"data": [...], "meta": {"next_cursor": ..., "per_page": ...}}`; pass
+      `cursor` to get the next page. `/health` is unwrapped.
+    - **Errors.** `{"message": "...", "code": "..."}`, plus `errors` (field to
+      messages) on 422. `message` is localized; branch on `code`.
+    - **Tracing.** Every response has `X-Request-Id`. Send your own (8-64 of
+      `A-Z a-z 0-9 . _ -`) to correlate client and server logs.
+
+    ## Live progress
+
+    Campaign progress is also pushed over Laravel Reverb (Pusher protocol) on the
+    public channel `campaigns.{campaign_id}`, event `progress.updated`, with a
+    `CampaignProgress` payload. `GET /campaigns/{campaign_id}/progress` returns
+    the same shape for polling and for catching up after a reconnect.
+
+    ## Joining and paying
+
+    1. `POST /campaigns/{campaign_id}/participations` reserves units for 15
+       minutes and returns a payment with `checkout` settings.
+    2. The client opens the Moyasar form with those settings (authorize only).
+    3. When Moyasar redirects back, the client calls
+       `POST /payments/{payment_id}/sync` with Moyasar's payment ID. The API
+       fetches the payment from Moyasar itself; redirect parameters are never
+       trusted. A Moyasar webhook does the same on the server side.
+    4. If the card was declined, `POST /me/participations/{participation_id}/payments`
+       starts a new attempt while the reservation lasts.
+servers:
+  - url: /api/v1
+    description: Same origin as the client
+  - url: http://localhost:8000/api/v1
+    description: Local Laravel
+  - url: http://localhost:4010
+    description: Local mock server (Prism)
+
+tags:
+  - name: Health
+    description: Readiness for load balancers and uptime checks.
+  - name: Auth
+    description: Customer sign-in with phone number and SMS code.
+  - name: Account
+    description: The customer's profile, privacy consent, addresses and devices.
+  - name: Catalog
+    description: Categories for browsing.
+  - name: Campaigns
+    description: What customers can see and join.
+  - name: Participations
+    description: A customer's joins, each with one card hold.
+  - name: Payments
+    description: Card holds through Moyasar.
+  - name: Orders
+    description: Created when a hold is captured. Tracking and invoices live here.
+  - name: Webhooks
+    description: Called by providers, never by clients.
+  - name: Admin auth
+    description: Admin sign-in with password plus SMS code.
+  - name: Admin catalog
+    description: Products, variants, photos and categories.
+  - name: Admin suppliers
+    description: Suppliers and their quotations with landed cost.
+  - name: Admin campaigns
+    description: Create, price, approve, extend, cancel and close campaigns.
+  - name: Admin payments
+    description: Holds, charges and every call made to Moyasar.
+  - name: Admin refunds and approvals
+    description: Refunds and the second-admin approvals they need.
+  - name: Admin orders
+    description: Customer orders as operations sees them.
+  - name: Admin purchasing
+    description: The one bulk Alibaba order per successful campaign.
+  - name: Admin fulfilment
+    description: Warehouse receipts and last-mile shipments.
+  - name: Admin finance
+    description: Reconciliation with Moyasar and the audit log.
+
+paths:
+  # ---------------------------------------------------------------- Health
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Readiness check
+      description: 200 when PostgreSQL and Redis both respond, 503 otherwise.
+      x-epic: E2
+      x-status: live
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: Every dependency answered.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Content-Language: {$ref: '#/components/headers/ContentLanguage'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Health'}
+        '503':
+          description: At least one dependency failed.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Content-Language: {$ref: '#/components/headers/ContentLanguage'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Health'}
+              example:
+                status: degraded
+                message: بعض الأنظمة لا تستجيب.
+                checks: {database: ok, redis: failing}
+                time: '2026-11-02T09:00:00Z'
+
+  # ---------------------------------------------------------------- Customer auth
+  /auth/otp:
+    post:
+      tags: [Auth]
+      operationId: requestOtp
+      summary: Send a sign-in code by SMS
+      description: |
+        Starts sign-in or sign-up. Sends a 6-digit code that expires after
+        5 minutes. Limited per phone number and per IP; a 429 says when to retry.
+      x-epic: E5
+      x-status: mock
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: {$ref: '#/components/schemas/SaudiMobile'}
+      responses:
+        '202':
+          description: Code sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/OtpChallenge'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+
+  /auth/otp/verify:
+    post:
+      tags: [Auth]
+      operationId: verifyOtp
+      summary: Exchange the SMS code for an access token
+      description: |
+        Creates the account on first sign-in. Send the token as
+        `Authorization: Bearer <token>`. After 5 wrong codes the challenge is
+        spent and a new code is needed.
+      x-epic: E5
+      x-status: mock
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge_id, code, device_name]
+              properties:
+                challenge_id: {type: string, format: uuid}
+                code: {type: string, pattern: '^[0-9]{6}$', example: '482913'}
+                device_name:
+                  type: string
+                  maxLength: 100
+                  description: Shown in the account's session list.
+                  example: Safari on iPhone
+      responses:
+        '200':
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/CustomerSession'}
+        '422':
+          description: |
+            Wrong or expired code (`code`: `otp_invalid`, `otp_expired`,
+            `otp_attempts_exhausted`), or invalid input.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Revoke the current token
+      x-epic: E5
+      x-status: mock
+      security: [{customerToken: []}]
+      responses:
+        '204': {description: Signed out.}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  # ---------------------------------------------------------------- Account
+  /me:
+    get:
+      tags: [Account]
+      operationId: getMe
+      summary: The signed-in customer
+      x-epic: E5
+      x-status: mock
+      security: [{customerToken: []}]
+      responses:
+        '200':
+          description: The customer.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+    patch:
+      tags: [Account]
+      operationId: updateMe
+      summary: Update name, email or language
+      x-epic: E5
+      x-status: mock
+      security: [{customerToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                name: {type: string, maxLength: 100, nullable: true}
+                email: {type: string, format: email, maxLength: 191, nullable: true}
+                locale: {$ref: '#/components/schemas/Locale'}
+      responses:
+        '200':
+          description: Updated customer.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /me/privacy-consent:
+    post:
+      tags: [Account]
+      operationId: acceptPrivacyPolicy
+      summary: Record consent to the privacy policy (PDPL)
+      description: |
+        Required before the first join. Stores the policy version and the time.
+        Call again when `User.privacy_consent.policy_version` is older than
+        `current_privacy_policy_version`.
+      x-epic: E5
+      x-status: mock
+      security: [{customerToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [policy_version]
+              properties:
+                policy_version: {type: string, maxLength: 20, example: '2026-11'}
+      responses:
+        '200':
+          description: Consent recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/User'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /me/addresses:
+    get:
+      tags: [Account]
+      operationId: listAddresses
+      summary: Saved delivery addresses
+      x-epic: E5
+      x-status: mock
+      security: [{customerToken: []}]
+      responses:
+        '200':
+          description: Addresses, default first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Address'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+    post:
+      tags: [Account]
+      operationId: createAddress
+      summary: Add a delivery address
+      x-epic: E5
+      x-status: mock
+      security: [{customerToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AddressInput'}
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Address'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /me/addresses/{address_id}:
+    parameters:
+      - $ref: '#/components/parameters/AddressId'
+    patch:
+      tags: [Account]
+      operationId: updateAddress
+      summary: Change a delivery address
+      description: Orders keep a copy of the address they were shipped to, so editing never changes past orders.
+      x-epic: E5
+      x-status: mock
+      security: [{customerToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AddressInput'}
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Address'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+    delete:
+      tags: [Account]
+      operationId: deleteAddress
+      summary: Remove a delivery address
+      x-epic: E5
+      x-status: mock
+      security: [{customerToken: []}]
+      responses:
+        '204': {description: Removed.}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /me/device-tokens:
+    post:
+      tags: [Account]
+      operationId: registerDeviceToken
+      summary: Register a Firebase push token
+      description: Mobile app only. Registering the same token again just refreshes it.
+      x-epic: E14
+      x-status: mock
+      security: [{customerToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform, token]
+              properties:
+                platform: {type: string, enum: [ios, android, web]}
+                token: {type: string, maxLength: 4096}
+      responses:
+        '204': {description: Registered.}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  # ---------------------------------------------------------------- Catalog and campaigns
+  /categories:
+    get:
+      tags: [Catalog]
+      operationId: listCategories
+      summary: Browsing categories
+      x-epic: E6
+      x-status: mock
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: All categories, sorted for display.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Category'}
+
+  /campaigns:
+    get:
+      tags: [Campaigns]
+      operationId: listCampaigns
+      summary: Campaigns customers can see
+      description: |
+        `open` (the default) lists `active` campaigns, soonest deadline first.
+        `upcoming` lists `scheduled` ones. `ended` lists everything after
+        `active`, most recent first. Drafts and campaigns awaiting approval
+        are never listed.
+      x-epic: E7
+      x-status: mock
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - name: filter
+          in: query
+          schema: {type: string, enum: [open, upcoming, ended], default: open}
+        - name: category
+          in: query
+          description: Category slug.
+          schema: {type: string}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of campaigns.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/CampaignSummary'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+
+  /campaigns/{campaign_id}:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    get:
+      tags: [Campaigns]
+      operationId: getCampaign
+      summary: Campaign page
+      x-epic: E7
+      x-status: mock
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: The campaign.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/CampaignDetail'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /campaigns/{campaign_id}/progress:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    get:
+      tags: [Campaigns]
+      operationId: getCampaignProgress
+      summary: Live progress for polling
+      description: Same payload as the Reverb `progress.updated` event. Cached for at most 2 seconds.
+      x-epic: E7
+      x-status: mock
+      responses:
+        '200':
+          description: Current progress.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/CampaignProgress'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /campaigns/{campaign_id}/participations:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    post:
+      tags: [Participations]
+      operationId: joinCampaign
+      summary: Join a campaign
+      description: |
+        Reserves the units for 15 minutes and fixes the hold price, then
+        returns a payment whose `checkout` opens the Moyasar form.
+
+        The server computes every amount. `shown_unit_price_halalas` is only
+        compared with the current price: if they differ the API answers 409
+        `price_changed` with the new price, and the customer confirms again.
+
+        Retrying with the same `client_request_id` returns the original
+        participation, again with 201, instead of joining twice.
+      x-epic: E7
+      x-status: mock
+      security: [{customerToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/JoinRequest'}
+      responses:
+        '201':
+          description: Units reserved (or the earlier join with this `client_request_id`); open the payment form.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Participation'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403':
+          description: '`privacy_consent_required`: accept the privacy policy first.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: |
+            `price_changed` (body has `current_unit_price`), `sold_out` (not
+            enough units left), or `campaign_not_joinable` (not active, or the
+            deadline passed).
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JoinConflict'}
+        '422':
+          description: |
+            `per_customer_limit_exceeded`, `variant_not_in_campaign`,
+            `address_not_found`, or invalid input.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+
+  # ---------------------------------------------------------------- Participations and payments
+  /me/participations:
+    get:
+      tags: [Participations]
+      operationId: listMyParticipations
+      summary: My joins
+      description: Newest first. Includes joins whose payment failed, so the customer can see what happened.
+      x-epic: E11
+      x-status: mock
+      security: [{customerToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/ParticipationStatus'}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of joins.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Participation'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  /me/participations/{participation_id}:
+    parameters:
+      - $ref: '#/components/parameters/ParticipationId'
+    get:
+      tags: [Participations]
+      operationId: getMyParticipation
+      summary: One join
+      x-epic: E11
+      x-status: mock
+      security: [{customerToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: The join.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Participation'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /me/participations/{participation_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ParticipationId'
+    post:
+      tags: [Participations]
+      operationId: cancelMyParticipation
+      summary: Cancel a join before close
+      description: |
+        Allowed while `can_cancel` is true: the campaign is `active` and the
+        deal is not yet confirmed (proposed rule, open question Q16). The hold
+        is released and the units go back on sale.
+      x-epic: E11
+      x-status: mock
+      security: [{customerToken: []}]
+      responses:
+        '200':
+          description: Cancelled; the hold is being released.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Participation'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`cancellation_not_allowed`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+
+  /me/participations/{participation_id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/ParticipationId'
+    post:
+      tags: [Payments]
+      operationId: retryParticipationPayment
+      summary: Try another card after a decline
+      description: |
+        Starts a new payment attempt for the same reserved units and hold
+        amount. Allowed while the participation is `pending_payment` and its
+        reservation has not expired.
+      x-epic: E9
+      x-status: mock
+      security: [{customerToken: []}]
+      responses:
+        '201':
+          description: New attempt; open the payment form with its `checkout`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Payment'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`reservation_expired`, or `payment_in_progress` when the previous attempt has not failed.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+
+  /payments/{payment_id}/sync:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    post:
+      tags: [Payments]
+      operationId: syncPayment
+      summary: Check a payment with Moyasar after the form
+      description: |
+        Call when Moyasar redirects back, with the Moyasar payment ID from the
+        redirect. The API fetches the payment from Moyasar and accepts the hold
+        only if it is `authorized` for exactly the hold amount in SAR, by an
+        allowed method, while the reservation is valid. Anything else is voided
+        and `rejection_reason` says why. Safe to call more than once.
+      x-epic: E9
+      x-status: mock
+      security: [{customerToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider_payment_id]
+              properties:
+                provider_payment_id:
+                  type: string
+                  maxLength: 64
+                  description: The `id` query parameter Moyasar adds to the callback URL.
+      responses:
+        '200':
+          description: |
+            The participation after the check. `status` is `authorized` on
+            success, `pending_payment` while Moyasar is still processing or
+            after a decline (see `payment.status`), or `payment_failed`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Participation'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422':
+          description: '`provider_payment_mismatch`: that Moyasar payment does not belong to this payment.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+
+  # ---------------------------------------------------------------- Orders
+  /me/orders:
+    get:
+      tags: [Orders]
+      operationId: listMyOrders
+      summary: My orders
+      description: An order exists once its hold is captured. Newest first.
+      x-epic: E11
+      x-status: mock
+      security: [{customerToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Order'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  /me/orders/{order_id}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Orders]
+      operationId: getMyOrder
+      summary: One order with tracking and invoices
+      x-epic: E11
+      x-status: mock
+      security: [{customerToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      responses:
+        '200':
+          description: The order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Order'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  # ---------------------------------------------------------------- Webhooks
+  /webhooks/moyasar:
+    post:
+      tags: [Webhooks]
+      operationId: receiveMoyasarWebhook
+      summary: Moyasar payment events
+      description: |
+        Called by Moyasar, not by clients. The event is verified as Moyasar
+        documents (open question Q5), stored once per event ID, and answered at
+        once. A queued job then fetches the payment from Moyasar and applies it.
+      x-epic: E9
+      x-status: mock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Moyasar's event body, stored as received.
+      responses:
+        '200': {description: 'Accepted, or a duplicate that was ignored.'}
+        '401': {description: Verification failed. Logged and never processed.}
+
+  # ---------------------------------------------------------------- Admin auth
+  /admin/auth/login:
+    post:
+      tags: [Admin auth]
+      operationId: adminLogin
+      summary: Admin sign-in, step 1 of 2
+      description: Checks email and password, then sends a code to the admin's phone.
+      x-epic: E5
+      x-status: mock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: {type: string, format: email}
+                password: {type: string, format: password}
+      responses:
+        '202':
+          description: Password accepted; code sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/OtpChallenge'}
+        '422':
+          description: '`invalid_credentials` or `account_blocked`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+
+  /admin/auth/verify:
+    post:
+      tags: [Admin auth]
+      operationId: adminVerify
+      summary: Admin sign-in, step 2 of 2
+      x-epic: E5
+      x-status: mock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge_id, code]
+              properties:
+                challenge_id: {type: string, format: uuid}
+                code: {type: string, pattern: '^[0-9]{6}$'}
+      responses:
+        '200':
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminSession'}
+        '422':
+          description: '`otp_invalid`, `otp_expired` or `otp_attempts_exhausted`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+
+  /admin/auth/logout:
+    post:
+      tags: [Admin auth]
+      operationId: adminLogout
+      summary: Revoke the admin token
+      x-epic: E5
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '204': {description: Signed out.}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  /admin/me:
+    get:
+      tags: [Admin auth]
+      operationId: getAdminMe
+      summary: The signed-in admin, with roles and permissions
+      description: The portal hides actions the admin lacks permission for; the API enforces them anyway.
+      x-epic: E5
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The admin.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminUser'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  # ---------------------------------------------------------------- Admin catalog
+  /admin/categories:
+    get:
+      tags: [Admin catalog]
+      operationId: adminListCategories
+      summary: Categories
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: All categories.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminCategory'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+    post:
+      tags: [Admin catalog]
+      operationId: adminCreateCategory
+      summary: Create a category
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminCategoryInput'}
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminCategory'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/categories/{category_id}:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    patch:
+      tags: [Admin catalog]
+      operationId: adminUpdateCategory
+      summary: Update a category
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminCategoryInput'}
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminCategory'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/products:
+    get:
+      tags: [Admin catalog]
+      operationId: adminListProducts
+      summary: Products
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {type: string, enum: [draft, active, archived]}
+        - name: q
+          in: query
+          description: Matches title (Arabic or English), SKU or Alibaba URL.
+          schema: {type: string}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of products.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminProduct'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+    post:
+      tags: [Admin catalog]
+      operationId: adminCreateProduct
+      summary: Create a product from an Alibaba listing
+      description: Every product needs at least one variant; send them here or add them after.
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/AdminProductInput'
+                - type: object
+                  properties:
+                    variants:
+                      type: array
+                      items: {$ref: '#/components/schemas/AdminVariantInput'}
+      responses:
+        '201':
+          description: Created as `draft`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminProduct'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/products/{product_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags: [Admin catalog]
+      operationId: adminGetProduct
+      summary: One product with variants and images
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The product.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminProduct'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Admin catalog]
+      operationId: adminUpdateProduct
+      summary: Update a product
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminProductInput'}
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminProduct'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/products/{product_id}/variants:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    post:
+      tags: [Admin catalog]
+      operationId: adminCreateVariant
+      summary: Add a variant
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminVariantInput'}
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminVariant'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/variants/{variant_id}:
+    parameters:
+      - $ref: '#/components/parameters/VariantId'
+    patch:
+      tags: [Admin catalog]
+      operationId: adminUpdateVariant
+      summary: Update a variant
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminVariantInput'}
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminVariant'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/products/{product_id}/images:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    post:
+      tags: [Admin catalog]
+      operationId: adminUploadProductImage
+      summary: Upload a product photo
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary, description: 'JPEG, PNG or WebP, up to 10 MB.'}
+                product_variant_id: {type: string, format: uuid, nullable: true}
+                alt_ar: {type: string, maxLength: 200}
+                alt_en: {type: string, maxLength: 200}
+                sort_order: {type: integer, minimum: 0}
+      responses:
+        '201':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminImage'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/product-images/{image_id}:
+    parameters:
+      - name: image_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    delete:
+      tags: [Admin catalog]
+      operationId: adminDeleteProductImage
+      summary: Remove a product photo
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '204': {description: Removed.}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  # ---------------------------------------------------------------- Admin suppliers
+  /admin/suppliers:
+    get:
+      tags: [Admin suppliers]
+      operationId: adminListSuppliers
+      summary: Suppliers
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {type: string, enum: [prospect, approved, blocked]}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of suppliers.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Supplier'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+    post:
+      tags: [Admin suppliers]
+      operationId: adminCreateSupplier
+      summary: Add a supplier
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SupplierInput'}
+      responses:
+        '201':
+          description: Created as `prospect`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Supplier'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/suppliers/{supplier_id}:
+    parameters:
+      - $ref: '#/components/parameters/SupplierId'
+    get:
+      tags: [Admin suppliers]
+      operationId: adminGetSupplier
+      summary: One supplier
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The supplier.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Supplier'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Admin suppliers]
+      operationId: adminUpdateSupplier
+      summary: Update or review a supplier
+      description: Setting `status` to `approved` records the reviewer and time. Only approved suppliers can back a campaign.
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/SupplierInput'
+                - type: object
+                  properties:
+                    status: {type: string, enum: [prospect, approved, blocked]}
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Supplier'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/quotations:
+    get:
+      tags: [Admin suppliers]
+      operationId: adminListQuotations
+      summary: Supplier quotations with landed cost
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: supplier_id
+          in: query
+          schema: {type: string, format: uuid}
+        - name: product_id
+          in: query
+          schema: {type: string, format: uuid}
+        - name: status
+          in: query
+          schema: {type: string, enum: [draft, accepted, rejected, expired]}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of quotations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Quotation'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+    post:
+      tags: [Admin suppliers]
+      operationId: adminCreateQuotation
+      summary: Record a quotation and its landed cost
+      description: The landed cost per unit is the sum of the breakdown, computed by the server.
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/QuotationInput'}
+      responses:
+        '201':
+          description: Created as `draft`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Quotation'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/quotations/{quotation_id}:
+    parameters:
+      - $ref: '#/components/parameters/QuotationId'
+    get:
+      tags: [Admin suppliers]
+      operationId: adminGetQuotation
+      summary: One quotation
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The quotation.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Quotation'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Admin suppliers]
+      operationId: adminUpdateQuotation
+      summary: Update a quotation
+      description: Refused with 409 `quotation_frozen` once a campaign beyond `draft` uses it.
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/QuotationInput'
+                - type: object
+                  properties:
+                    status: {type: string, enum: [draft, accepted, rejected]}
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Quotation'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/quotations/{quotation_id}/attachment:
+    parameters:
+      - $ref: '#/components/parameters/QuotationId'
+    post:
+      tags: [Admin suppliers]
+      operationId: adminUploadQuotationAttachment
+      summary: Attach the quote PDF or screenshot
+      x-epic: E6
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary, description: 'PDF, JPEG or PNG, up to 20 MB.'}
+      responses:
+        '200':
+          description: Attached.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Quotation'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  # ---------------------------------------------------------------- Admin campaigns
+  /admin/campaigns:
+    get:
+      tags: [Admin campaigns]
+      operationId: adminListCampaigns
+      summary: Campaigns in every status
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/CampaignStatus'}
+        - name: needs_attention
+          in: query
+          description: Only campaigns waiting on an admin (approval, supplier decision, below-target decision).
+          schema: {type: boolean}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of campaigns.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminCampaign'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+    post:
+      tags: [Admin campaigns]
+      operationId: adminCreateCampaign
+      summary: Create a draft campaign
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminCampaignInput'}
+      responses:
+        '201':
+          description: Created as `draft`, without tiers.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminCampaign'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/campaigns/{campaign_id}:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    get:
+      tags: [Admin campaigns]
+      operationId: adminGetCampaign
+      summary: One campaign with tiers and closing progress
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The campaign.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminCampaign'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Admin campaigns]
+      operationId: adminUpdateCampaign
+      summary: Edit a draft
+      description: Only in `draft`. Send the `lock_version` you read; a stale one returns 409 `stale_campaign`.
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/AdminCampaignInput'
+                - type: object
+                  required: [lock_version]
+                  properties:
+                    lock_version: {type: integer}
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminCampaign'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/campaigns/{campaign_id}/tiers:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    put:
+      tags: [Admin campaigns]
+      operationId: adminReplaceCampaignTiers
+      summary: Save a new tier set
+      description: |
+        Only in `draft`. Each save stores a new full version; old versions are
+        kept. Tiers must cover 1 to `max_qty` with no gaps or overlaps, and the
+        price must never rise with quantity. `reason` is required from version 2.
+      x-epic: E8
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TierSetInput'}
+      responses:
+        '200':
+          description: Saved; the campaign now shows the new version.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminCampaign'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422':
+          description: '`tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `price_rises_with_quantity`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+
+  /admin/campaigns/{campaign_id}/margin:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    get:
+      tags: [Admin campaigns]
+      operationId: adminGetCampaignMargin
+      summary: Margin per tier against the 15% floor
+      description: What the approval screen shows. Approval is blocked when any tier fails, unless a `super_admin` overrides.
+      x-epic: E8
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The margin check.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/MarginReport'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`tiers_missing` or `landed_cost_missing`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+
+  /admin/campaigns/{campaign_id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    post:
+      tags: [Admin campaigns]
+      operationId: adminSubmitCampaign
+      summary: Send a draft for approval
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200': {$ref: '#/components/responses/AdminCampaignResult'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422':
+          description: '`tiers_missing`, `landed_cost_missing` or `supplier_not_approved`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+
+  /admin/campaigns/{campaign_id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    post:
+      tags: [Admin campaigns]
+      operationId: adminApproveCampaign
+      summary: Approve and lock the terms
+      description: |
+        Needs `campaigns.approve`. Locks tiers, target and maximum, sets
+        `deadline_at = starts_at + 7 days` (moving `starts_at` to now if it has
+        passed), and schedules the campaign. A failing margin check returns 422
+        `margin_below_floor` unless `override_reason` is sent by a `super_admin`.
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                override_reason:
+                  type: string
+                  maxLength: 1000
+                  nullable: true
+                  description: Only for a `super_admin` approving below the margin floor. Audited.
+      responses:
+        '200': {$ref: '#/components/responses/AdminCampaignResult'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422':
+          description: '`margin_below_floor` (body includes `margin`), or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MarginBlockedError'}
+
+  /admin/campaigns/{campaign_id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    post:
+      tags: [Admin campaigns]
+      operationId: adminRejectCampaign
+      summary: Send back to draft
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReasonInput'}
+      responses:
+        '200': {$ref: '#/components/responses/AdminCampaignResult'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/campaigns/{campaign_id}/extension-window:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    get:
+      tags: [Admin campaigns]
+      operationId: adminGetExtensionWindow
+      summary: Whether the deadline can be extended, and how far
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The extension window.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/ExtensionWindow'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /admin/campaigns/{campaign_id}/extend:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    post:
+      tags: [Admin campaigns]
+      operationId: adminExtendCampaign
+      summary: Use the one deadline extension
+      description: |
+        Allowed once, while `active`, before the deal is confirmed, and only to
+        a date at least 3 days before the earliest hold expires. A blocked
+        request returns 422 `extension_not_allowed` with the latest allowed date.
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_deadline_at, reason]
+              properties:
+                new_deadline_at: {type: string, format: date-time}
+                reason: {type: string, minLength: 3, maxLength: 1000}
+      responses:
+        '200': {$ref: '#/components/responses/AdminCampaignResult'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422':
+          description: '`extension_not_allowed` (body includes `window`), or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ExtensionBlockedError'}
+
+  /admin/campaigns/{campaign_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    post:
+      tags: [Admin campaigns]
+      operationId: adminCancelCampaign
+      summary: Cancel a campaign
+      description: |
+        Before any capture, cancels at once and voids every hold. Once any
+        capture succeeded, money must go back, so this opens an approval
+        request for a second admin with the finance role (202) instead.
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReasonInput'}
+      responses:
+        '200': {$ref: '#/components/responses/AdminCampaignResult'}
+        '202':
+          description: Waiting for financial approval.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/ApprovalRequest'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/campaigns/{campaign_id}/supplier-decision:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    post:
+      tags: [Admin campaigns]
+      operationId: adminRecordSupplierDecision
+      summary: Record the supplier's reconfirmation before capture
+      description: |
+        Only while `closing_step` is `awaiting_supplier`. `confirmed` resumes
+        closing and starts captures; `rejected` fails the campaign and voids
+        every hold.
+      x-epic: E10
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SupplierDecisionInput'}
+      responses:
+        '200': {$ref: '#/components/responses/AdminCampaignResult'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/campaigns/{campaign_id}/below-target-decision:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    post:
+      tags: [Admin campaigns]
+      operationId: adminDecideBelowTarget
+      summary: Proceed or cancel when captures fell short
+      description: Only while `closing_step` is `needs_admin` (captured units below target or supplier MOQ).
+      x-epic: E10
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason]
+              properties:
+                decision: {type: string, enum: [proceed, cancel]}
+                reason: {type: string, minLength: 3, maxLength: 1000}
+      responses:
+        '200': {$ref: '#/components/responses/AdminCampaignResult'}
+        '202':
+          description: Cancel chosen; waiting for financial approval of the refunds.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/ApprovalRequest'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/campaigns/{campaign_id}/participations:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    get:
+      tags: [Admin campaigns]
+      operationId: adminListCampaignParticipations
+      summary: Everyone who joined
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/ParticipationStatus'}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of participations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminParticipation'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /admin/campaigns/{campaign_id}/events:
+    parameters:
+      - $ref: '#/components/parameters/CampaignId'
+    get:
+      tags: [Admin campaigns]
+      operationId: adminListCampaignEvents
+      summary: Campaign history, including every price change
+      x-epic: E7
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Events, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/CampaignEvent'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  # ---------------------------------------------------------------- Admin payments, refunds, approvals
+  /admin/payments:
+    get:
+      tags: [Admin payments]
+      operationId: adminListPayments
+      summary: Payment holds and charges
+      description: '`expiring_within_days=3` gives the hold-expiry alert list.'
+      x-epic: E9
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/PaymentStatus'}
+        - name: campaign_id
+          in: query
+          schema: {type: string, format: uuid}
+        - name: expiring_within_days
+          in: query
+          description: Only `authorized` holds whose tracked expiry is within this many days.
+          schema: {type: integer, minimum: 1, maximum: 14}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of payments.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminPayment'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  /admin/payments/{payment_id}:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    get:
+      tags: [Admin payments]
+      operationId: adminGetPayment
+      summary: One payment with every provider call
+      x-epic: E9
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The payment.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminPayment'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /admin/refunds:
+    get:
+      tags: [Admin refunds and approvals]
+      operationId: adminListRefunds
+      summary: Refunds
+      x-epic: E11
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/RefundStatus'}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of refunds.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Refund'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+    post:
+      tags: [Admin refunds and approvals]
+      operationId: adminRequestRefund
+      summary: Request a refund
+      description: |
+        For returns within 7 days of delivery, shortages, damage or late
+        delivery. Never more than captured minus already refunded. Starts as
+        `pending_approval` until a second admin with the finance role approves.
+      x-epic: E11
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RefundInput'}
+      responses:
+        '201':
+          description: Created and waiting for approval.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Refund'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422':
+          description: '`refund_exceeds_captured`, `payment_not_captured`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+
+  /admin/approval-requests:
+    get:
+      tags: [Admin refunds and approvals]
+      operationId: adminListApprovalRequests
+      summary: Actions waiting for a second admin
+      x-epic: E15
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {type: string, enum: [pending, approved, rejected, cancelled], default: pending}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of approval requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/ApprovalRequest'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  /admin/approval-requests/{approval_request_id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/ApprovalRequestId'
+    post:
+      tags: [Admin refunds and approvals]
+      operationId: adminApproveRequest
+      summary: Approve, then carry out the action
+      description: The approver must hold the finance role and must not be the requester (403 `same_admin`).
+      x-epic: E15
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: Approved; the action is queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/ApprovalRequest'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+
+  /admin/approval-requests/{approval_request_id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/ApprovalRequestId'
+    post:
+      tags: [Admin refunds and approvals]
+      operationId: adminRejectRequest
+      summary: Reject with a reason
+      x-epic: E15
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReasonInput'}
+      responses:
+        '200':
+          description: Rejected.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/ApprovalRequest'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  # ---------------------------------------------------------------- Admin orders, purchasing, fulfilment
+  /admin/orders:
+    get:
+      tags: [Admin orders]
+      operationId: adminListOrders
+      summary: Customer orders
+      x-epic: E11
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/OrderStatus'}
+        - name: campaign_id
+          in: query
+          schema: {type: string, format: uuid}
+        - name: q
+          in: query
+          description: Order number or customer phone.
+          schema: {type: string}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminOrder'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  /admin/orders/{order_id}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Admin orders]
+      operationId: adminGetOrder
+      summary: One order
+      x-epic: E11
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminOrder'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /admin/orders/{order_id}/shipment:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Admin fulfilment]
+      operationId: adminCreateShipment
+      summary: Ship an order from the warehouse
+      x-epic: E13
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ShipmentInput'}
+      responses:
+        '201':
+          description: Shipment created; the order becomes `shipped`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Shipment'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`shipment_exists`, or the order is not `ready_to_ship`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/shipments/{shipment_id}/events:
+    parameters:
+      - name: shipment_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Admin fulfilment]
+      operationId: adminAddShipmentEvent
+      summary: Record a tracking update by hand
+      description: For couriers without a tracking API (open question Q11). `delivered` starts the 7-day return window.
+      x-epic: E13
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ShipmentEventInput'}
+      responses:
+        '201':
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Shipment'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/purchase-orders:
+    get:
+      tags: [Admin purchasing]
+      operationId: adminListPurchaseOrders
+      summary: Supplier purchase orders
+      x-epic: E12
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/PurchaseOrderStatus'}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of purchase orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/PurchaseOrder'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  /admin/purchase-orders/{purchase_order_id}:
+    parameters:
+      - $ref: '#/components/parameters/PurchaseOrderId'
+    get:
+      tags: [Admin purchasing]
+      operationId: adminGetPurchaseOrder
+      summary: One purchase order with receipts
+      x-epic: E12
+      x-status: mock
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The purchase order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/PurchaseOrder'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Admin purchasing]
+      operationId: adminUpdatePurchaseOrder
+      summary: Record Alibaba order details and freight
+      x-epic: E12
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PurchaseOrderInput'}
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/PurchaseOrder'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/purchase-orders/{purchase_order_id}/status:
+    parameters:
+      - $ref: '#/components/parameters/PurchaseOrderId'
+    post:
+      tags: [Admin purchasing]
+      operationId: adminAdvancePurchaseOrder
+      summary: Move a purchase order forward
+      description: |
+        `placed`, `supplier_confirmed`, `paid`, then `shipped`, which needs a
+        freight tracking reference and moves the campaign to `fulfilling`.
+        `received` is set by recording an inbound receipt.
+      x-epic: E12
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {type: string, enum: [placed, supplier_confirmed, paid, shipped]}
+                occurred_at: {type: string, format: date-time, nullable: true}
+                note: {type: string, maxLength: 1000, nullable: true}
+      responses:
+        '200':
+          description: Moved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/PurchaseOrder'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/purchase-orders/{purchase_order_id}/receipts:
+    parameters:
+      - $ref: '#/components/parameters/PurchaseOrderId'
+    post:
+      tags: [Admin fulfilment]
+      operationId: adminRecordInboundReceipt
+      summary: Record goods counted at the warehouse
+      description: Marks the purchase order `received`. Missing or damaged units are listed so the admin can pick the orders to refund.
+      x-epic: E13
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InboundReceiptInput'}
+      responses:
+        '201':
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/InboundReceipt'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  # ---------------------------------------------------------------- Admin finance and audit
+  /admin/reconciliation-runs:
+    get:
+      tags: [Admin finance]
+      operationId: adminListReconciliationRuns
+      summary: Daily reconciliation runs against Moyasar
+      x-epic: E15
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Runs, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/ReconciliationRun'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+
+  /admin/reconciliation-runs/{run_id}/items:
+    parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Admin finance]
+      operationId: adminListReconciliationItems
+      summary: Mismatches found by one run
+      x-epic: E15
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: resolved
+          in: query
+          schema: {type: boolean}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of mismatches.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/ReconciliationItem'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /admin/reconciliation-items/{item_id}/resolve:
+    parameters:
+      - name: item_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      tags: [Admin finance]
+      operationId: adminResolveReconciliationItem
+      summary: Close a mismatch with a note
+      description: Any fix that moves money goes through an approval request; this only records the resolution.
+      x-epic: E15
+      x-status: mock
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note: {type: string, minLength: 3, maxLength: 2000}
+      responses:
+        '200':
+          description: Resolved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/ReconciliationItem'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/audit-logs:
+    get:
+      tags: [Admin finance]
+      operationId: adminListAuditLogs
+      summary: Who did what
+      x-epic: E2
+      x-status: mock
+      security: [{adminToken: []}]
+      parameters:
+        - name: subject_type
+          in: query
+          schema: {type: string, example: campaign}
+        - name: subject_id
+          in: query
+          schema: {type: string, format: uuid}
+        - name: actor_admin_id
+          in: query
+          schema: {type: string, format: uuid}
+        - name: action
+          in: query
+          schema: {type: string, example: refund.approve}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Entries, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AuditLogEntry'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+components:
+  securitySchemes:
+    customerToken:
+      type: http
+      scheme: bearer
+      description: Token from `POST /auth/otp/verify`.
+    adminToken:
+      type: http
+      scheme: bearer
+      description: Token from `POST /admin/auth/verify`. A customer token is refused here, and the reverse.
+
+  headers:
+    XRequestId:
+      description: Request ID for support and log searches.
+      schema: {type: string, example: 3f6c1d2e-8a4b-4c5d-9e6f-7a8b9c0d1e2f}
+    ContentLanguage:
+      description: Language of the text in the response.
+      schema: {$ref: '#/components/schemas/Locale'}
+    RetryAfter:
+      description: Seconds until another attempt is allowed.
+      schema: {type: integer, example: 60}
+
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: '`ar` (default) or `en`. Other languages fall back to Arabic.'
+      schema: {type: string, example: ar}
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: '`meta.next_cursor` from the previous page.'
+      schema: {type: string}
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    AddressId:
+      name: address_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    CampaignId:
+      name: campaign_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    CategoryId:
+      name: category_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ParticipationId:
+      name: participation_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    PaymentId:
+      name: payment_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ProductId:
+      name: product_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    VariantId:
+      name: variant_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    SupplierId:
+      name: supplier_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    QuotationId:
+      name: quotation_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ApprovalRequestId:
+      name: approval_request_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    PurchaseOrderId:
+      name: purchase_order_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+
+  responses:
+    Unauthenticated:
+      description: Missing or expired token.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Forbidden:
+      description: Signed in, but not allowed (for example a missing admin permission).
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFound:
+      description: No such resource, or not visible to this caller.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Conflict:
+      description: The resource changed or is locked; reload and try again.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    InvalidTransition:
+      description: '`invalid_transition`: not allowed from the current status.'
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    ValidationFailed:
+      description: Invalid input.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ValidationError'}
+    TooManyRequests:
+      description: Rate limited.
+      headers:
+        Retry-After: {$ref: '#/components/headers/RetryAfter'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    AdminCampaignResult:
+      description: The campaign after the action.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data: {$ref: '#/components/schemas/AdminCampaign'}
+
+  schemas:
+    # ------------------------------------------------------------ Shared
+    Health:
+      type: object
+      required: [status, message, checks, time]
+      properties:
+        status: {type: string, enum: [ok, degraded]}
+        message: {type: string, example: جميع الأنظمة تعمل.}
+        checks:
+          type: object
+          required: [database, redis]
+          properties:
+            database: {type: string, enum: [ok, failing]}
+            redis: {type: string, enum: [ok, failing]}
+        time: {type: string, format: date-time, example: '2026-11-02T09:00:00Z'}
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: {type: string, description: 'Localized, for display.'}
+        code: {type: string, description: Stable machine-readable reason.}
+
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            errors:
+              type: object
+              description: Field name to messages.
+              additionalProperties:
+                type: array
+                items: {type: string}
+
+    CursorMeta:
+      type: object
+      required: [next_cursor, per_page]
+      properties:
+        next_cursor: {type: string, nullable: true, description: Null on the last page.}
+        per_page: {type: integer, example: 20}
+
+    Money:
+      type: object
+      description: An exact amount in minor units. 4900 SAR minor units is 49.00 SAR.
+      required: [amount_minor, currency, formatted]
+      properties:
+        amount_minor: {type: integer, format: int64, example: 6900}
+        currency: {type: string, enum: [SAR, USD, CNY], example: SAR}
+        formatted: {type: string, example: 69.00 SAR, description: Plain display string; clients may format in Arabic numerals.}
+
+    Locale:
+      type: string
+      enum: [ar, en]
+
+    SaudiMobile:
+      type: string
+      description: Saudi mobile number in E.164.
+      pattern: '^\+9665[0-9]{8}$'
+      example: '+966512345678'
+
+    Actor:
+      type: object
+      required: [type, id, name]
+      properties:
+        type: {type: string, enum: [system, admin, user]}
+        id: {type: string, format: uuid, nullable: true}
+        name: {type: string, nullable: true, example: Sara (Campaigns)}
+
+    ReasonInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: {type: string, minLength: 3, maxLength: 1000}
+
+    # ------------------------------------------------------------ Customers
+    OtpChallenge:
+      type: object
+      required: [challenge_id, expires_at, resend_available_at]
+      properties:
+        challenge_id: {type: string, format: uuid}
+        expires_at: {type: string, format: date-time}
+        resend_available_at: {type: string, format: date-time}
+
+    CustomerSession:
+      type: object
+      required: [token, token_type, user, is_new_user]
+      properties:
+        token: {type: string, example: '1|k9Jx...'}
+        token_type: {type: string, enum: [Bearer]}
+        user: {$ref: '#/components/schemas/User'}
+        is_new_user: {type: boolean}
+
+    User:
+      type: object
+      required: [id, phone, name, email, locale, privacy_consent, current_privacy_policy_version, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        phone: {$ref: '#/components/schemas/SaudiMobile'}
+        name: {type: string, nullable: true, example: نورة}
+        email: {type: string, format: email, nullable: true}
+        locale: {$ref: '#/components/schemas/Locale'}
+        privacy_consent:
+          type: object
+          nullable: true
+          required: [policy_version, accepted_at]
+          properties:
+            policy_version: {type: string, example: '2026-11'}
+            accepted_at: {type: string, format: date-time}
+        current_privacy_policy_version: {type: string, example: '2026-11'}
+        created_at: {type: string, format: date-time}
+
+    AddressInput:
+      type: object
+      description: Saudi National Address fields.
+      required: [recipient_name, recipient_phone, city, district, street, building_no, postal_code]
+      properties:
+        recipient_name: {type: string, maxLength: 100}
+        recipient_phone: {$ref: '#/components/schemas/SaudiMobile'}
+        city: {type: string, maxLength: 100, example: الرياض}
+        district: {type: string, maxLength: 100, example: العليا}
+        street: {type: string, maxLength: 150}
+        building_no: {type: string, pattern: '^[0-9]{4}$', example: '2401'}
+        postal_code: {type: string, pattern: '^[0-9]{5}$', example: '12211'}
+        additional_no: {type: string, pattern: '^[0-9]{4}$', nullable: true, example: '3344'}
+        short_address: {type: string, pattern: '^[A-Z]{4}[0-9]{4}$', nullable: true, example: RRRD2929}
+        lat: {type: number, format: double, minimum: -90, maximum: 90, nullable: true}
+        lng: {type: number, format: double, minimum: -180, maximum: 180, nullable: true}
+        is_default: {type: boolean, default: false}
+
+    Address:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id: {type: string, format: uuid}
+        - $ref: '#/components/schemas/AddressInput'
+
+    Category:
+      type: object
+      required: [id, slug, name, parent_id]
+      properties:
+        id: {type: string, format: uuid}
+        slug: {type: string, example: home-kitchen}
+        name: {type: string, example: المنزل والمطبخ}
+        parent_id: {type: string, format: uuid, nullable: true}
+
+    Image:
+      type: object
+      required: [url, alt, product_variant_id]
+      properties:
+        url: {type: string, format: uri, example: 'https://cdn.example.sa/products/kettle-1.webp'}
+        alt: {type: string, nullable: true}
+        product_variant_id: {type: string, format: uuid, nullable: true}
+
+    Variant:
+      type: object
+      required: [id, sku, name, option_values]
+      properties:
+        id: {type: string, format: uuid}
+        sku: {type: string, example: KET-17-BLK}
+        name: {type: string, example: أسود}
+        option_values:
+          type: object
+          additionalProperties: {type: string}
+          example: {color: black}
+
+    PriceTier:
+      type: object
+      required: [min_qty, max_qty, unit_price, is_current]
+      properties:
+        min_qty: {type: integer, example: 1}
+        max_qty: {type: integer, example: 49}
+        unit_price: {$ref: '#/components/schemas/Money'}
+        is_current: {type: boolean, description: The tier the next unit sold falls in.}
+
+    CustomerCampaignStatus:
+      type: string
+      description: |
+        Customers never see `draft` or `pending_approval`. Show `purchasing`,
+        `fulfilling` and `completed` as a successful deal.
+      enum: [scheduled, active, closing, purchasing, fulfilling, completed, failed, cancelled]
+      example: active
+
+    CampaignProgress:
+      type: object
+      required: [campaign_id, status, committed_qty, min_target_qty, max_qty, remaining_qty, units_to_target, deal_confirmed_at, current_unit_price, deadline_at, updated_at]
+      properties:
+        campaign_id: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/CustomerCampaignStatus'}
+        committed_qty: {type: integer, description: Units with an authorized hold. Pending payments do not count., example: 53}
+        min_target_qty: {type: integer, example: 100}
+        max_qty: {type: integer, example: 150}
+        remaining_qty: {type: integer, description: Units still on sale (max minus committed minus reserved)., example: 95}
+        units_to_target: {type: integer, description: 0 once the deal is confirmed., example: 47}
+        deal_confirmed_at: {type: string, format: date-time, nullable: true, description: 'Set once the target is reached; show "Deal confirmed". It does not mean the order is placed.'}
+        current_unit_price: {$ref: '#/components/schemas/Money'}
+        deadline_at: {type: string, format: date-time, example: '2026-11-08T07:00:00Z'}
+        updated_at: {type: string, format: date-time, example: '2026-11-02T09:00:00Z'}
+
+    CampaignSummary:
+      type: object
+      required: [id, code, title, image, status, starts_at, deadline_at, current_unit_price, lowest_unit_price, progress]
+      properties:
+        id: {type: string, format: uuid}
+        code: {type: string, example: GB-2611-0007}
+        title: {type: string, example: غلاية كهربائية 1.7 لتر}
+        image:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Image'}]
+          nullable: true
+        status: {$ref: '#/components/schemas/CustomerCampaignStatus'}
+        starts_at: {type: string, format: date-time, example: '2026-11-01T07:00:00Z'}
+        deadline_at: {type: string, format: date-time, example: '2026-11-08T07:00:00Z'}
+        current_unit_price: {$ref: '#/components/schemas/Money'}
+        lowest_unit_price: {$ref: '#/components/schemas/Money'}
+        progress: {$ref: '#/components/schemas/CampaignProgress'}
+
+    CampaignDetail:
+      allOf:
+        - $ref: '#/components/schemas/CampaignSummary'
+        - type: object
+          required: [description, category, variants, images, tiers, per_customer_max_qty, original_deadline_at, final_unit_price, cancellation_rule]
+          properties:
+            description: {type: string}
+            category:
+              type: object
+              allOf: [{$ref: '#/components/schemas/Category'}]
+              nullable: true
+            variants:
+              type: array
+              items: {$ref: '#/components/schemas/Variant'}
+            images:
+              type: array
+              items: {$ref: '#/components/schemas/Image'}
+            tiers:
+              type: array
+              description: Lowest quantity first. Prices never rise with quantity.
+              items: {$ref: '#/components/schemas/PriceTier'}
+            per_customer_max_qty: {type: integer, nullable: true, description: Total units one customer may hold across joins.}
+            original_deadline_at: {type: string, format: date-time, nullable: true, description: Set when the deadline was extended.}
+            final_unit_price:
+              type: object
+              allOf: [{$ref: '#/components/schemas/Money'}]
+              nullable: true
+              description: Set when the campaign closes successfully; everyone pays this.
+            cancellation_rule:
+              type: string
+              enum: [before_deal_confirmed]
+              description: When a customer may cancel a join (proposed rule, open question Q16). Show it before payment.
+
+    JoinRequest:
+      type: object
+      required: [client_request_id, product_variant_id, quantity, shown_unit_price_halalas, delivery_address_id]
+      properties:
+        client_request_id:
+          type: string
+          format: uuid
+          description: Generated by the client once per join attempt; reuse it on retries.
+        product_variant_id: {type: string, format: uuid}
+        quantity: {type: integer, minimum: 1, example: 2}
+        shown_unit_price_halalas:
+          type: integer
+          minimum: 1
+          description: The unit price the customer saw. Compared only; never charged.
+          example: 6900
+        delivery_address_id: {type: string, format: uuid}
+
+    JoinConflict:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            code: {type: string, enum: [price_changed, sold_out, campaign_not_joinable]}
+            current_unit_price:
+              allOf: [{$ref: '#/components/schemas/Money'}]
+              description: Present with `price_changed`.
+            remaining_qty: {type: integer, description: Present with `sold_out`.}
+
+    ParticipationStatus:
+      type: string
+      enum: [pending_payment, authorized, payment_failed, reservation_expired, cancelled, released, captured, capture_failed]
+      example: authorized
+
+    Participation:
+      type: object
+      required: [id, campaign, product_variant, quantity, status, hold_unit_price, hold_amount, final_unit_price, capture_amount, reservation_expires_at, can_cancel, payment, order_id, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        campaign: {$ref: '#/components/schemas/CampaignSummary'}
+        product_variant: {$ref: '#/components/schemas/Variant'}
+        quantity: {type: integer, example: 2}
+        status: {$ref: '#/components/schemas/ParticipationStatus'}
+        hold_unit_price: {$ref: '#/components/schemas/Money'}
+        hold_amount:
+          allOf: [{$ref: '#/components/schemas/Money'}]
+          description: The most the customer can be charged. Show that the final charge may be lower.
+        final_unit_price:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Money'}]
+          nullable: true
+        capture_amount:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Money'}]
+          nullable: true
+          description: Set at close. The rest of the hold is released, never charged.
+        reservation_expires_at: {type: string, format: date-time}
+        can_cancel: {type: boolean}
+        payment:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Payment'}]
+          nullable: true
+          description: The latest payment attempt.
+        order_id: {type: string, format: uuid, nullable: true, description: Set once the hold is captured.}
+        created_at: {type: string, format: date-time}
+
+    PaymentStatus:
+      type: string
+      enum: [pending_authorization, authorized, failed, voided, expired, captured, capture_failed, partially_refunded, refunded]
+      example: authorized
+
+    PaymentRejectionReason:
+      type: string
+      description: Why a payment was voided or failed on our side.
+      enum: [declined, amount_mismatch, currency_mismatch, method_not_allowed, not_authorize_only, reservation_expired, campaign_closed, participation_cancelled]
+
+    Payment:
+      type: object
+      required: [id, status, amount, captured_amount, refunded_amount, scheme, card_last4, expires_at, rejection_reason, checkout]
+      properties:
+        id: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/PaymentStatus'}
+        amount: {$ref: '#/components/schemas/Money'}
+        captured_amount: {$ref: '#/components/schemas/Money'}
+        refunded_amount: {$ref: '#/components/schemas/Money'}
+        scheme: {type: string, enum: [mada, visa, mastercard], nullable: true}
+        card_last4: {type: string, pattern: '^[0-9]{4}$', nullable: true, example: '4242'}
+        expires_at: {type: string, format: date-time, description: When the hold lapses (created + 14 days).}
+        rejection_reason:
+          type: string
+          allOf: [{$ref: '#/components/schemas/PaymentRejectionReason'}]
+          nullable: true
+        checkout:
+          type: object
+          allOf: [{$ref: '#/components/schemas/MoyasarCheckout'}]
+          nullable: true
+          description: Present only while `pending_authorization`.
+
+    MoyasarCheckout:
+      type: object
+      description: Settings for the Moyasar payment form. Card details are typed only into Moyasar's form.
+      required: [publishable_api_key, amount, currency, description, callback_url, methods, supported_networks, manual, metadata]
+      properties:
+        publishable_api_key: {type: string, example: pk_test_xxxxxxxx}
+        amount: {type: integer, description: Halalas; equals the hold amount., example: 13800}
+        currency: {type: string, enum: [SAR]}
+        description: {type: string, example: GB-2611-0007 x2}
+        callback_url: {type: string, format: uri, example: 'https://example.sa/payments/return'}
+        methods:
+          type: array
+          items: {type: string, enum: [creditcard, applepay]}
+        supported_networks:
+          type: array
+          items: {type: string, enum: [mada, visa, mastercard]}
+        manual:
+          type: boolean
+          enum: [true]
+          description: Authorize only. A payment captured at once is voided and rejected.
+        metadata:
+          type: object
+          required: [payment_id]
+          properties:
+            payment_id: {type: string, format: uuid}
+
+    OrderStatus:
+      type: string
+      enum: [confirmed, processing, ready_to_ship, shipped, delivered, completed, cancelled, return_requested, returned]
+
+    Order:
+      type: object
+      required: [id, order_number, campaign, product_variant, quantity, unit_price, goods_total, delivery_fee, total, vat, status, shipping_address, payment, shipment, invoices, delivered_at, return_window_ends_at, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        order_number: {type: string, example: ORD-2611-000123}
+        campaign: {$ref: '#/components/schemas/CampaignSummary'}
+        product_variant: {$ref: '#/components/schemas/Variant'}
+        quantity: {type: integer}
+        unit_price: {$ref: '#/components/schemas/Money'}
+        goods_total: {$ref: '#/components/schemas/Money'}
+        delivery_fee: {$ref: '#/components/schemas/Money'}
+        total:
+          allOf: [{$ref: '#/components/schemas/Money'}]
+          description: Equals the amount captured.
+        vat:
+          allOf: [{$ref: '#/components/schemas/Money'}]
+          description: The 15% VAT contained in the total.
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        shipping_address: {$ref: '#/components/schemas/AddressInput'}
+        payment:
+          type: object
+          required: [status, captured_amount, refunded_amount]
+          properties:
+            status: {$ref: '#/components/schemas/PaymentStatus'}
+            captured_amount: {$ref: '#/components/schemas/Money'}
+            refunded_amount: {$ref: '#/components/schemas/Money'}
+        shipment:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Shipment'}]
+          nullable: true
+        invoices:
+          type: array
+          items: {$ref: '#/components/schemas/InvoiceRef'}
+        delivered_at: {type: string, format: date-time, nullable: true}
+        return_window_ends_at: {type: string, format: date-time, nullable: true}
+        created_at: {type: string, format: date-time}
+
+    InvoiceRef:
+      type: object
+      required: [id, type, invoice_number, issued_at, total, pdf_url]
+      properties:
+        id: {type: string, format: uuid}
+        type: {type: string, enum: [simplified_tax_invoice, credit_note]}
+        invoice_number: {type: string, example: INV-2026-000123}
+        issued_at: {type: string, format: date-time}
+        total: {$ref: '#/components/schemas/Money'}
+        pdf_url: {type: string, format: uri, nullable: true, description: Short-lived signed link.}
+
+    ShipmentStatus:
+      type: string
+      enum: [pending, picked_up, in_transit, out_for_delivery, delivered, failed_attempt, returned, cancelled]
+
+    Shipment:
+      type: object
+      required: [id, courier, tracking_number, tracking_url, status, shipped_at, delivered_at, events]
+      properties:
+        id: {type: string, format: uuid}
+        courier: {type: string, example: SMSA}
+        tracking_number: {type: string}
+        tracking_url: {type: string, format: uri, nullable: true}
+        status: {$ref: '#/components/schemas/ShipmentStatus'}
+        shipped_at: {type: string, format: date-time, nullable: true}
+        delivered_at: {type: string, format: date-time, nullable: true}
+        events:
+          type: array
+          description: Oldest first.
+          items:
+            type: object
+            required: [status, description, location, occurred_at]
+            properties:
+              status: {$ref: '#/components/schemas/ShipmentStatus'}
+              description: {type: string, nullable: true}
+              location: {type: string, nullable: true}
+              occurred_at: {type: string, format: date-time}
+
+    # ------------------------------------------------------------ Admin
+    AdminSession:
+      type: object
+      required: [token, token_type, admin]
+      properties:
+        token: {type: string}
+        token_type: {type: string, enum: [Bearer]}
+        admin: {$ref: '#/components/schemas/AdminUser'}
+
+    AdminUser:
+      type: object
+      required: [id, email, name, roles, permissions]
+      properties:
+        id: {type: string, format: uuid}
+        email: {type: string, format: email}
+        name: {type: string}
+        roles:
+          type: array
+          items: {type: string, enum: [super_admin, sourcing, campaign_manager, finance, operations, support]}
+        permissions:
+          type: array
+          items: {type: string}
+          example: [campaigns.approve, pricing.edit, refunds.approve]
+
+    AdminCategoryInput:
+      type: object
+      required: [slug, name_ar, name_en]
+      properties:
+        slug: {type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'}
+        name_ar: {type: string, maxLength: 100}
+        name_en: {type: string, maxLength: 100}
+        parent_id: {type: string, format: uuid, nullable: true}
+        sort_order: {type: integer, minimum: 0, default: 0}
+
+    AdminCategory:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id: {type: string, format: uuid}
+        - $ref: '#/components/schemas/AdminCategoryInput'
+
+    AdminProductInput:
+      type: object
+      required: [category_id, name_ar, name_en, alibaba_url]
+      properties:
+        category_id: {type: string, format: uuid}
+        name_ar: {type: string, maxLength: 200}
+        name_en: {type: string, maxLength: 200}
+        description_ar: {type: string, maxLength: 10000, nullable: true}
+        description_en: {type: string, maxLength: 10000, nullable: true}
+        alibaba_url: {type: string, format: uri}
+        hs_code: {type: string, pattern: '^[0-9]{6,12}$', nullable: true, example: '851610'}
+        status: {type: string, enum: [draft, active, archived]}
+
+    AdminProduct:
+      allOf:
+        - $ref: '#/components/schemas/AdminProductInput'
+        - type: object
+          required: [id, status, variants, images, created_at, updated_at]
+          properties:
+            id: {type: string, format: uuid}
+            variants:
+              type: array
+              items: {$ref: '#/components/schemas/AdminVariant'}
+            images:
+              type: array
+              items: {$ref: '#/components/schemas/AdminImage'}
+            created_at: {type: string, format: date-time}
+            updated_at: {type: string, format: date-time}
+
+    AdminVariantInput:
+      type: object
+      required: [sku, name_ar, name_en]
+      properties:
+        sku: {type: string, maxLength: 64}
+        name_ar: {type: string, maxLength: 100}
+        name_en: {type: string, maxLength: 100}
+        option_values:
+          type: object
+          additionalProperties: {type: string}
+        weight_grams: {type: integer, minimum: 0, nullable: true}
+        length_mm: {type: integer, minimum: 0, nullable: true}
+        width_mm: {type: integer, minimum: 0, nullable: true}
+        height_mm: {type: integer, minimum: 0, nullable: true}
+        status: {type: string, enum: [active, archived]}
+
+    AdminVariant:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id: {type: string, format: uuid}
+        - $ref: '#/components/schemas/AdminVariantInput'
+
+    AdminImage:
+      type: object
+      required: [id, url, product_variant_id, alt_ar, alt_en, sort_order]
+      properties:
+        id: {type: string, format: uuid}
+        url: {type: string, format: uri}
+        product_variant_id: {type: string, format: uuid, nullable: true}
+        alt_ar: {type: string, nullable: true}
+        alt_en: {type: string, nullable: true}
+        sort_order: {type: integer}
+
+    SupplierInput:
+      type: object
+      required: [name, alibaba_store_url, country]
+      properties:
+        name: {type: string, maxLength: 200}
+        alibaba_store_url: {type: string, format: uri}
+        country: {type: string, pattern: '^[A-Z]{2}$', example: CN}
+        contact_name: {type: string, maxLength: 100, nullable: true}
+        contact_channel: {type: string, maxLength: 200, nullable: true, example: 'Alibaba chat'}
+        quality_rating: {type: integer, minimum: 1, maximum: 5, nullable: true}
+        review_notes: {type: string, maxLength: 5000, nullable: true}
+
+    Supplier:
+      allOf:
+        - $ref: '#/components/schemas/SupplierInput'
+        - type: object
+          required: [id, status, reviewed_by, reviewed_at]
+          properties:
+            id: {type: string, format: uuid}
+            status: {type: string, enum: [prospect, approved, blocked]}
+            reviewed_by:
+              type: object
+              allOf: [{$ref: '#/components/schemas/Actor'}]
+              nullable: true
+            reviewed_at: {type: string, format: date-time, nullable: true}
+
+    LandedCostBreakdownInput:
+      type: object
+      description: Per unit, in halalas.
+      required: [product_halalas, freight_halalas, customs_duty_halalas, import_vat_halalas, clearance_halalas, last_mile_halalas]
+      properties:
+        product_halalas: {type: integer, minimum: 0}
+        freight_halalas: {type: integer, minimum: 0}
+        customs_duty_halalas: {type: integer, minimum: 0}
+        import_vat_halalas: {type: integer, minimum: 0, description: Whether this belongs here is open with the tax adviser.}
+        clearance_halalas: {type: integer, minimum: 0}
+        last_mile_halalas: {type: integer, minimum: 0}
+
+    QuotationInput:
+      type: object
+      required: [supplier_id, product_id, moq, unit_cost_minor, currency, shipping_terms, lead_time_days, valid_until, fx_rate_to_sar, landed_cost_basis_qty, landed_cost_breakdown]
+      properties:
+        supplier_id: {type: string, format: uuid}
+        product_id: {type: string, format: uuid}
+        product_variant_id: {type: string, format: uuid, nullable: true, description: Null when the quote covers every variant.}
+        moq: {type: integer, minimum: 1}
+        unit_cost_minor: {type: integer, minimum: 1, description: "In the supplier's currency (USD cents, for example)."}
+        currency: {type: string, enum: [USD, CNY, SAR]}
+        shipping_terms: {type: string, maxLength: 20, example: FOB}
+        lead_time_days: {type: integer, minimum: 0}
+        valid_until: {type: string, format: date}
+        fx_rate_to_sar:
+          type: string
+          pattern: '^[0-9]{1,10}(\.[0-9]{1,8})?$'
+          description: Decimal string, never a float. SAR per unit of `currency`.
+          example: '3.75000000'
+        landed_cost_basis_qty: {type: integer, minimum: 1}
+        landed_cost_breakdown: {$ref: '#/components/schemas/LandedCostBreakdownInput'}
+
+    Quotation:
+      type: object
+      required: [id, supplier_id, product_id, product_variant_id, moq, unit_cost, shipping_terms, lead_time_days, valid_until, fx_rate_to_sar, landed_cost_basis_qty, landed_cost_breakdown, landed_cost_per_unit, attachment_url, status, used_by_campaign_ids]
+      properties:
+        id: {type: string, format: uuid}
+        supplier_id: {type: string, format: uuid}
+        product_id: {type: string, format: uuid}
+        product_variant_id: {type: string, format: uuid, nullable: true}
+        moq: {type: integer}
+        unit_cost: {$ref: '#/components/schemas/Money'}
+        shipping_terms: {type: string}
+        lead_time_days: {type: integer}
+        valid_until: {type: string, format: date}
+        fx_rate_to_sar: {type: string, example: '3.75000000'}
+        landed_cost_basis_qty: {type: integer}
+        landed_cost_breakdown:
+          type: object
+          required: [product, freight, customs_duty, import_vat, clearance, last_mile]
+          properties:
+            product: {$ref: '#/components/schemas/Money'}
+            freight: {$ref: '#/components/schemas/Money'}
+            customs_duty: {$ref: '#/components/schemas/Money'}
+            import_vat: {$ref: '#/components/schemas/Money'}
+            clearance: {$ref: '#/components/schemas/Money'}
+            last_mile: {$ref: '#/components/schemas/Money'}
+        landed_cost_per_unit: {$ref: '#/components/schemas/Money'}
+        attachment_url: {type: string, format: uri, nullable: true}
+        status: {type: string, enum: [draft, accepted, rejected, expired]}
+        used_by_campaign_ids:
+          type: array
+          items: {type: string, format: uuid}
+
+    CampaignStatus:
+      type: string
+      enum: [draft, pending_approval, scheduled, active, closing, purchasing, fulfilling, completed, failed, cancelled]
+      example: active
+
+    ClosingStep:
+      type: string
+      enum: [settling_joins, awaiting_supplier, capturing, needs_admin, notifying, done]
+
+    AdminCampaignInput:
+      type: object
+      required: [product_id, supplier_quotation_id, title_ar, title_en, product_variant_ids, min_target_qty, max_qty, starts_at]
+      properties:
+        product_id: {type: string, format: uuid}
+        supplier_quotation_id: {type: string, format: uuid}
+        title_ar: {type: string, maxLength: 200}
+        title_en: {type: string, maxLength: 200}
+        product_variant_ids:
+          type: array
+          minItems: 1
+          items: {type: string, format: uuid}
+          description: Every variant counts toward one shared target and maximum.
+        min_target_qty: {type: integer, minimum: 1}
+        max_qty: {type: integer, minimum: 1, description: Must be at least `min_target_qty`.}
+        per_customer_max_qty: {type: integer, minimum: 1, nullable: true}
+        starts_at: {type: string, format: date-time, description: 'The deadline is set at approval, 7 days after the start.'}
+        delivery_mode: {type: string, enum: [warehouse], default: warehouse, description: '`direct` comes after the pilot.'}
+
+    AdminTier:
+      type: object
+      required: [min_qty, max_qty, unit_price]
+      properties:
+        min_qty: {type: integer}
+        max_qty: {type: integer}
+        unit_price: {$ref: '#/components/schemas/Money'}
+
+    TierSetInput:
+      type: object
+      required: [lock_version, tiers]
+      properties:
+        lock_version: {type: integer}
+        reason: {type: string, maxLength: 1000, nullable: true, description: Required from version 2.}
+        tiers:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [min_qty, max_qty, unit_price_halalas]
+            properties:
+              min_qty: {type: integer, minimum: 1}
+              max_qty: {type: integer, minimum: 1}
+              unit_price_halalas: {type: integer, minimum: 1, description: VAT-inclusive.}
+
+    AdminCampaign:
+      type: object
+      required: [id, code, status, product, supplier, supplier_quotation_id, title_ar, title_en, variants, min_target_qty, max_qty, committed_qty, reserved_qty, per_customer_max_qty, starts_at, deadline_at, original_deadline_at, extended_at, extension_reason, deal_confirmed_at, close_reason, closing_step, closed_at, final_qty, final_unit_price, capture_by, supplier_decision_due_at, captured_qty, end_reason, tier_version, tiers, landed_cost_per_unit, delivery_mode, created_by, approved_by, approved_at, lock_version, available_actions]
+      properties:
+        id: {type: string, format: uuid}
+        code: {type: string, example: GB-2611-0007}
+        status: {$ref: '#/components/schemas/CampaignStatus'}
+        product:
+          type: object
+          required: [id, name_ar, name_en]
+          properties:
+            id: {type: string, format: uuid}
+            name_ar: {type: string}
+            name_en: {type: string}
+        supplier:
+          type: object
+          required: [id, name, moq]
+          properties:
+            id: {type: string, format: uuid}
+            name: {type: string}
+            moq: {type: integer, description: From the campaign's quotation.}
+        supplier_quotation_id: {type: string, format: uuid}
+        title_ar: {type: string}
+        title_en: {type: string}
+        variants:
+          type: array
+          items: {$ref: '#/components/schemas/AdminVariant'}
+        min_target_qty: {type: integer}
+        max_qty: {type: integer}
+        committed_qty: {type: integer}
+        reserved_qty: {type: integer}
+        per_customer_max_qty: {type: integer, nullable: true}
+        starts_at: {type: string, format: date-time}
+        deadline_at: {type: string, format: date-time, nullable: true, description: Null until approval.}
+        original_deadline_at: {type: string, format: date-time, nullable: true}
+        extended_at: {type: string, format: date-time, nullable: true}
+        extension_reason: {type: string, nullable: true}
+        deal_confirmed_at: {type: string, format: date-time, nullable: true}
+        close_reason: {type: string, enum: [deadline, max_reached], nullable: true}
+        closing_step:
+          type: string
+          allOf: [{$ref: '#/components/schemas/ClosingStep'}]
+          nullable: true
+        closed_at: {type: string, format: date-time, nullable: true}
+        final_qty: {type: integer, nullable: true}
+        final_unit_price:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Money'}]
+          nullable: true
+        capture_by: {type: string, format: date-time, nullable: true, description: Earliest capture cutoff among the holds.}
+        supplier_decision_due_at: {type: string, format: date-time, nullable: true, description: '`capture_by` minus 24 hours, while awaiting the supplier.'}
+        captured_qty: {type: integer, nullable: true}
+        end_reason: {type: string, nullable: true}
+        tier_version: {type: integer, nullable: true, description: Null until the first tier set is saved.}
+        tiers:
+          type: array
+          items: {$ref: '#/components/schemas/AdminTier'}
+        landed_cost_per_unit: {$ref: '#/components/schemas/Money'}
+        delivery_mode: {type: string, enum: [warehouse, direct]}
+        created_by: {$ref: '#/components/schemas/Actor'}
+        approved_by:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Actor'}]
+          nullable: true
+        approved_at: {type: string, format: date-time, nullable: true}
+        lock_version: {type: integer}
+        available_actions:
+          type: array
+          description: Actions this admin may take now, given status and permissions.
+          items: {type: string, enum: [edit, edit_tiers, submit, approve, reject, extend, cancel, record_supplier_decision, decide_below_target]}
+
+    MarginReport:
+      type: object
+      required: [min_margin_bp, passes, landed_cost_per_unit, payment_fee_estimate, delivery_cost_estimate, tiers, warnings]
+      properties:
+        min_margin_bp: {type: integer, example: 1500, description: 1500 is 15%.}
+        passes: {type: boolean}
+        landed_cost_per_unit: {$ref: '#/components/schemas/Money'}
+        payment_fee_estimate: {$ref: '#/components/schemas/Money'}
+        delivery_cost_estimate: {$ref: '#/components/schemas/Money'}
+        tiers:
+          type: array
+          items:
+            type: object
+            required: [min_qty, max_qty, unit_price, net_price, margin, margin_bp, passes]
+            properties:
+              min_qty: {type: integer}
+              max_qty: {type: integer}
+              unit_price: {$ref: '#/components/schemas/Money'}
+              net_price:
+                allOf: [{$ref: '#/components/schemas/Money'}]
+                description: Price without VAT.
+              margin: {$ref: '#/components/schemas/Money'}
+              margin_bp: {type: integer, description: 'Margin as a share of the net price, in basis points.'}
+              passes: {type: boolean}
+        warnings:
+          type: array
+          items: {type: string, enum: [min_target_below_supplier_moq, target_at_lowest_tier_boundary, quotation_expires_before_capture]}
+
+    MarginBlockedError:
+      allOf:
+        - $ref: '#/components/schemas/ValidationError'
+        - type: object
+          properties:
+            margin: {$ref: '#/components/schemas/MarginReport'}
+
+    ExtensionWindow:
+      type: object
+      required: [allowed, blocked_reason, latest_allowed_deadline_at, earliest_hold_expires_at]
+      properties:
+        allowed: {type: boolean}
+        blocked_reason:
+          type: string
+          nullable: true
+          enum: [not_active, already_extended, deal_confirmed, deadline_passed, no_room_before_hold_expiry]
+        latest_allowed_deadline_at: {type: string, format: date-time, nullable: true}
+        earliest_hold_expires_at: {type: string, format: date-time, nullable: true}
+
+    ExtensionBlockedError:
+      allOf:
+        - $ref: '#/components/schemas/ValidationError'
+        - type: object
+          properties:
+            window: {$ref: '#/components/schemas/ExtensionWindow'}
+
+    SupplierDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision: {type: string, enum: [confirmed, rejected]}
+        unit_cost_minor: {type: integer, minimum: 1, description: Required when confirmed.}
+        currency: {type: string, enum: [USD, CNY, SAR]}
+        available_qty: {type: integer, minimum: 0, description: Required when confirmed; must cover the final quantity.}
+        quotation_reference: {type: string, maxLength: 200}
+        note: {type: string, maxLength: 2000, nullable: true}
+
+    CampaignEvent:
+      type: object
+      required: [id, event_type, from_status, to_status, committed_qty_after, payload, actor, occurred_at]
+      properties:
+        id: {type: string, format: uuid}
+        event_type:
+          type: string
+          example: price_changed
+          description: For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed, max_reached, tiers_changed, extended, closed, supplier_confirmed, captures_completed, failed.
+        from_status:
+          type: string
+          allOf: [{$ref: '#/components/schemas/CampaignStatus'}]
+          nullable: true
+        to_status:
+          type: string
+          allOf: [{$ref: '#/components/schemas/CampaignStatus'}]
+          nullable: true
+        committed_qty_after: {type: integer}
+        payload: {type: object, additionalProperties: true}
+        actor: {$ref: '#/components/schemas/Actor'}
+        occurred_at: {type: string, format: date-time}
+
+    AdminParticipation:
+      type: object
+      required: [id, customer, product_variant, quantity, status, hold_unit_price, hold_amount, final_unit_price, capture_amount, payment, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        customer:
+          type: object
+          required: [id, name, phone]
+          properties:
+            id: {type: string, format: uuid}
+            name: {type: string, nullable: true}
+            phone: {type: string, description: 'Masked, for example +9665******78.'}
+        product_variant: {$ref: '#/components/schemas/AdminVariant'}
+        quantity: {type: integer}
+        status: {$ref: '#/components/schemas/ParticipationStatus'}
+        hold_unit_price: {$ref: '#/components/schemas/Money'}
+        hold_amount: {$ref: '#/components/schemas/Money'}
+        final_unit_price:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Money'}]
+          nullable: true
+        capture_amount:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Money'}]
+          nullable: true
+        payment:
+          type: object
+          allOf: [{$ref: '#/components/schemas/AdminPayment'}]
+          nullable: true
+        created_at: {type: string, format: date-time}
+
+    AdminPayment:
+      type: object
+      required: [id, participation_id, campaign, provider_payment_id, source_type, scheme, card_last4, status, rejection_reason, authorized_amount, captured_amount, refunded_amount, expires_at, capture_cutoff_at, authorized_at, captured_at, voided_at, provider_status, last_synced_at, transactions]
+      properties:
+        id: {type: string, format: uuid}
+        participation_id: {type: string, format: uuid}
+        campaign:
+          type: object
+          required: [id, code]
+          properties:
+            id: {type: string, format: uuid}
+            code: {type: string}
+        provider_payment_id: {type: string, nullable: true}
+        source_type: {type: string, enum: [creditcard, applepay]}
+        scheme: {type: string, enum: [mada, visa, mastercard], nullable: true}
+        card_last4: {type: string, nullable: true}
+        status: {$ref: '#/components/schemas/PaymentStatus'}
+        rejection_reason:
+          type: string
+          allOf: [{$ref: '#/components/schemas/PaymentRejectionReason'}]
+          nullable: true
+        authorized_amount: {$ref: '#/components/schemas/Money'}
+        captured_amount: {$ref: '#/components/schemas/Money'}
+        refunded_amount: {$ref: '#/components/schemas/Money'}
+        expires_at: {type: string, format: date-time}
+        capture_cutoff_at: {type: string, format: date-time, description: '`expires_at` minus 24 hours. No capture after this.'}
+        authorized_at: {type: string, format: date-time, nullable: true}
+        captured_at: {type: string, format: date-time, nullable: true}
+        voided_at: {type: string, format: date-time, nullable: true}
+        provider_status: {type: string, nullable: true, description: Last status seen at Moyasar.}
+        last_synced_at: {type: string, format: date-time, nullable: true}
+        transactions:
+          type: array
+          description: Every call to Moyasar, oldest first. Empty in list responses.
+          items: {$ref: '#/components/schemas/PaymentTransaction'}
+
+    PaymentTransaction:
+      type: object
+      required: [id, type, amount, idempotency_key, status, provider_reference, error_code, error_message, requested_by, created_at, completed_at]
+      properties:
+        id: {type: string, format: uuid}
+        type: {type: string, enum: [authorize, capture, void, refund]}
+        amount: {$ref: '#/components/schemas/Money'}
+        idempotency_key: {type: string, example: 'capture:0f8f3c3e-6d1b-4c55-9d0f-4d6c3e2b1a90'}
+        status: {type: string, enum: [pending, succeeded, failed]}
+        provider_reference: {type: string, nullable: true}
+        error_code: {type: string, nullable: true}
+        error_message: {type: string, nullable: true}
+        requested_by: {$ref: '#/components/schemas/Actor'}
+        created_at: {type: string, format: date-time}
+        completed_at: {type: string, format: date-time, nullable: true}
+
+    RefundStatus:
+      type: string
+      enum: [pending_approval, approved, processing, succeeded, failed, rejected]
+
+    RefundReason:
+      type: string
+      enum: [customer_cancellation, delivery_delay, defective, shortage, campaign_cancelled_after_capture, other]
+
+    RefundInput:
+      type: object
+      required: [payment_id, amount_halalas, reason]
+      properties:
+        payment_id: {type: string, format: uuid}
+        customer_order_id: {type: string, format: uuid, nullable: true}
+        amount_halalas: {type: integer, minimum: 1}
+        reason: {$ref: '#/components/schemas/RefundReason'}
+        note: {type: string, maxLength: 2000, nullable: true}
+
+    Refund:
+      type: object
+      required: [id, payment_id, customer_order_id, amount, method, reason, status, provider_refund_id, approval_request_id, credit_note_id, requested_by, created_at, processed_at]
+      properties:
+        id: {type: string, format: uuid}
+        payment_id: {type: string, format: uuid}
+        customer_order_id: {type: string, format: uuid, nullable: true}
+        amount: {$ref: '#/components/schemas/Money'}
+        method: {type: string, enum: [void, refund], description: '`void` only for a full refund within about 2 hours of capture.'}
+        reason: {$ref: '#/components/schemas/RefundReason'}
+        status: {$ref: '#/components/schemas/RefundStatus'}
+        provider_refund_id: {type: string, nullable: true}
+        approval_request_id: {type: string, format: uuid, nullable: true}
+        credit_note_id: {type: string, format: uuid, nullable: true}
+        requested_by: {$ref: '#/components/schemas/Actor'}
+        created_at: {type: string, format: date-time}
+        processed_at: {type: string, format: date-time, nullable: true}
+
+    ApprovalRequest:
+      type: object
+      required: [id, type, subject_type, subject_id, payload, status, requested_by, decided_by, reason, created_at, decided_at]
+      properties:
+        id: {type: string, format: uuid}
+        type: {type: string, enum: [manual_refund, manual_capture, manual_void, ledger_adjustment, campaign_cancellation]}
+        subject_type: {type: string, example: refund}
+        subject_id: {type: string, format: uuid}
+        payload: {type: object, additionalProperties: true}
+        status: {type: string, enum: [pending, approved, rejected, cancelled]}
+        requested_by: {$ref: '#/components/schemas/Actor'}
+        decided_by:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Actor'}]
+          nullable: true
+        reason: {type: string, nullable: true}
+        created_at: {type: string, format: date-time}
+        decided_at: {type: string, format: date-time, nullable: true}
+
+    AdminOrder:
+      allOf:
+        - $ref: '#/components/schemas/Order'
+        - type: object
+          required: [customer, participation_id, payment_id, refunds]
+          properties:
+            customer:
+              type: object
+              required: [id, name, phone]
+              properties:
+                id: {type: string, format: uuid}
+                name: {type: string, nullable: true}
+                phone: {$ref: '#/components/schemas/SaudiMobile'}
+            participation_id: {type: string, format: uuid}
+            payment_id: {type: string, format: uuid}
+            refunds:
+              type: array
+              items: {$ref: '#/components/schemas/Refund'}
+
+    ShipmentInput:
+      type: object
+      required: [courier, tracking_number]
+      properties:
+        courier: {type: string, maxLength: 100}
+        tracking_number: {type: string, maxLength: 100}
+        tracking_url: {type: string, format: uri, nullable: true}
+        shipping_cost_halalas: {type: integer, minimum: 0, nullable: true}
+
+    ShipmentEventInput:
+      type: object
+      required: [status, occurred_at]
+      properties:
+        status: {$ref: '#/components/schemas/ShipmentStatus'}
+        description: {type: string, maxLength: 500, nullable: true}
+        location: {type: string, maxLength: 200, nullable: true}
+        occurred_at: {type: string, format: date-time}
+
+    PurchaseOrderStatus:
+      type: string
+      enum: [draft, placed, supplier_confirmed, paid, shipped, received, cancelled]
+
+    PurchaseOrderInput:
+      type: object
+      minProperties: 1
+      properties:
+        alibaba_order_ref: {type: string, maxLength: 100, nullable: true}
+        total_minor: {type: integer, minimum: 0}
+        currency: {type: string, enum: [USD, CNY, SAR]}
+        fx_rate_to_sar: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,8})?$'}
+        freight_forwarder: {type: string, maxLength: 100, nullable: true}
+        freight_tracking_ref: {type: string, maxLength: 100, nullable: true}
+        eta: {type: string, format: date, nullable: true}
+
+    PurchaseOrder:
+      type: object
+      required: [id, po_number, campaign, supplier, supplier_quotation_id, alibaba_order_ref, total, fx_rate_to_sar, total_sar, status, lines, placed_at, supplier_confirmed_at, paid_at, freight_forwarder, freight_tracking_ref, eta, receipts]
+      properties:
+        id: {type: string, format: uuid}
+        po_number: {type: string, example: PO-2611-0007}
+        campaign:
+          type: object
+          required: [id, code]
+          properties:
+            id: {type: string, format: uuid}
+            code: {type: string}
+        supplier:
+          type: object
+          required: [id, name]
+          properties:
+            id: {type: string, format: uuid}
+            name: {type: string}
+        supplier_quotation_id: {type: string, format: uuid}
+        alibaba_order_ref: {type: string, nullable: true}
+        total: {$ref: '#/components/schemas/Money'}
+        fx_rate_to_sar: {type: string}
+        total_sar: {$ref: '#/components/schemas/Money'}
+        status: {$ref: '#/components/schemas/PurchaseOrderStatus'}
+        lines:
+          type: array
+          items:
+            type: object
+            required: [product_variant, qty, unit_cost]
+            properties:
+              product_variant: {$ref: '#/components/schemas/AdminVariant'}
+              qty: {type: integer, description: Captured units for this variant.}
+              unit_cost: {$ref: '#/components/schemas/Money'}
+        placed_at: {type: string, format: date-time, nullable: true}
+        supplier_confirmed_at: {type: string, format: date-time, nullable: true}
+        paid_at: {type: string, format: date-time, nullable: true}
+        freight_forwarder: {type: string, nullable: true}
+        freight_tracking_ref: {type: string, nullable: true}
+        eta: {type: string, format: date, nullable: true}
+        receipts:
+          type: array
+          items: {$ref: '#/components/schemas/InboundReceipt'}
+
+    InboundReceiptInput:
+      type: object
+      required: [warehouse_name, received_at, lines]
+      properties:
+        warehouse_name: {type: string, maxLength: 100}
+        received_at: {type: string, format: date-time}
+        notes: {type: string, maxLength: 5000, nullable: true}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [product_variant_id, qty_received, qty_damaged]
+            properties:
+              product_variant_id: {type: string, format: uuid}
+              qty_received: {type: integer, minimum: 0}
+              qty_damaged: {type: integer, minimum: 0}
+
+    InboundReceipt:
+      type: object
+      required: [id, warehouse_name, received_at, received_by, notes, lines, photo_urls]
+      properties:
+        id: {type: string, format: uuid}
+        warehouse_name: {type: string}
+        received_at: {type: string, format: date-time}
+        received_by: {$ref: '#/components/schemas/Actor'}
+        notes: {type: string, nullable: true}
+        lines:
+          type: array
+          items:
+            type: object
+            required: [product_variant_id, qty_expected, qty_received, qty_damaged, qty_missing]
+            properties:
+              product_variant_id: {type: string, format: uuid}
+              qty_expected: {type: integer}
+              qty_received: {type: integer}
+              qty_damaged: {type: integer}
+              qty_missing: {type: integer}
+        photo_urls:
+          type: array
+          items: {type: string, format: uri}
+
+    ReconciliationRun:
+      type: object
+      required: [id, run_date, provider, status, payments_checked, mismatch_count, started_at, finished_at]
+      properties:
+        id: {type: string, format: uuid}
+        run_date: {type: string, format: date}
+        provider: {type: string, enum: [moyasar]}
+        status: {type: string, enum: [running, matched, mismatches, failed]}
+        payments_checked: {type: integer}
+        mismatch_count: {type: integer}
+        started_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time, nullable: true}
+
+    ReconciliationItem:
+      type: object
+      required: [id, run_id, payment_id, mismatch_type, our_value, provider_value, resolved_by, resolved_at, resolution_note]
+      properties:
+        id: {type: string, format: uuid}
+        run_id: {type: string, format: uuid}
+        payment_id: {type: string, format: uuid, nullable: true}
+        mismatch_type: {type: string, enum: [status, amount, missing_locally, missing_at_provider, orphan_hold, stuck_void]}
+        our_value: {type: object, nullable: true, additionalProperties: true}
+        provider_value: {type: object, nullable: true, additionalProperties: true}
+        resolved_by:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Actor'}]
+          nullable: true
+        resolved_at: {type: string, format: date-time, nullable: true}
+        resolution_note: {type: string, nullable: true}
+
+    AuditLogEntry:
+      type: object
+      required: [id, actor, action, subject_type, subject_id, before, after, ip, user_agent, request_id, occurred_at]
+      properties:
+        id: {type: integer, format: int64}
+        actor: {$ref: '#/components/schemas/Actor'}
+        action: {type: string, example: campaign.approve}
+        subject_type: {type: string, nullable: true}
+        subject_id: {type: string, nullable: true}
+        before: {type: object, nullable: true, additionalProperties: true}
+        after: {type: object, nullable: true, additionalProperties: true}
+        ip: {type: string, nullable: true}
+        user_agent: {type: string, nullable: true}
+        request_id: {type: string, nullable: true}
+        occurred_at: {type: string, format: date-time}

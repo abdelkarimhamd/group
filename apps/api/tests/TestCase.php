@@ -4,7 +4,9 @@ namespace Tests;
 
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Testing\TestResponse;
 use RuntimeException;
+use Tests\Contract\OpenApiContract;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -25,5 +27,18 @@ abstract class TestCase extends BaseTestCase
         }
 
         return $app;
+    }
+
+    /**
+     * Every response from an /api/v1 route must match the API contract, so a
+     * change to the API that the contract does not describe fails the build.
+     */
+    public function call($method, $uri, $parameters = [], $cookies = [], $files = [], $server = [], $content = null): TestResponse
+    {
+        $response = parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
+
+        OpenApiContract::assertResponseMatches($response);
+
+        return $response;
     }
 }

@@ -11,6 +11,15 @@ apps/mobile (later) ─┘                │                 ──> Redis (que
                                       └──> Moyasar, SMS, courier APIs
 ```
 
+## API contract
+
+`apps/api/openapi/v1.yaml` (OpenAPI 3.0) is the contract every client builds against. It covers the customer and admin endpoints for the whole MVP, ahead of the code:
+
+- Each operation says which epic ships it (`x-epic`) and whether Laravel serves it yet (`x-status: live`) or only the mock server does (`x-status: mock`).
+- The mock server (Prism) answers every operation from the contract, so the website and admin portal can be built before the backend. It also rejects requests that break the contract.
+- In the test suite, every response from an `/api/v1` route is checked against the contract, and a coverage test fails if a route is missing from the contract, if a served route is still marked `mock`, or if a `live` operation has no route.
+- An API change and its contract change go in the same pull request. When an endpoint ships, flip its `x-status` to `live` in that pull request.
+
 ## Domain modules
 
 Business code is grouped by domain under `apps/api/app/Modules/<Domain>`, added as each epic starts:
@@ -56,4 +65,4 @@ A module may call another module's public services, never its tables directly. S
 
 - Tests run against PostgreSQL, not SQLite, because triggers, `jsonb` and row locks behave differently.
 - Concurrency rules (for example, 200 joins racing for the last 10 units) get tests that run real parallel transactions, added with E7.
-- CI runs Pint and the full test suite on every pull request.
+- CI lints the contract with Redocly and runs Pint and the full test suite on every pull request.
