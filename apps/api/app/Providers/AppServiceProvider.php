@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Models\AuditLog;
 use App\Models\StatusTransition;
+use App\Modules\Campaign\Events\CampaignClosingStarted;
+use App\Modules\Campaign\Listeners\StartClosingJob;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Services\CampaignQuotationUsage;
@@ -11,6 +13,7 @@ use App\Modules\Catalog\Models\Category;
 use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductImage;
 use App\Modules\Catalog\Models\ProductVariant;
+use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Identity\Admins\AdminAccounts;
 use App\Modules\Identity\Models\Address;
 use App\Modules\Identity\Models\AdminUser;
@@ -36,6 +39,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
@@ -96,7 +100,11 @@ class AppServiceProvider extends ServiceProvider
             'campaign' => Campaign::class,
             'campaign_participation' => CampaignParticipation::class,
             'payment_authorization' => PaymentAuthorization::class,
+            'approval_request' => ApprovalRequest::class,
         ]);
+
+        // A campaign that starts closing gets its closing job.
+        Event::listen(CampaignClosingStarted::class, StartClosingJob::class);
 
         $this->configureTokens();
         $this->configureRateLimits();

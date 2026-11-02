@@ -9,6 +9,7 @@ use App\Modules\Campaign\Enums\ClosingStep;
 use App\Modules\Campaign\Enums\DeliveryMode;
 use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Events\CampaignClosingStarted;
+use App\Modules\Campaign\Events\CampaignFailed;
 use App\Modules\Campaign\Events\CampaignProgressChanged;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignPriceTier;
@@ -16,6 +17,9 @@ use App\Modules\Catalog\Enums\ProductStatus;
 use App\Modules\Catalog\Enums\VariantStatus;
 use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductVariant;
+use App\Modules\Finance\Enums\ApprovalType;
+use App\Modules\Finance\Models\ApprovalRequest;
+use App\Modules\Finance\Services\Approvals;
 use App\Modules\Identity\Models\AdminUser;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
@@ -43,7 +47,9 @@ use LogicException;
  * draft -> pending_approval -> scheduled -> active -> closing, with
  * pending_approval -> draft on rejection and cancellation from any status
  * before a capture. Terms (tiers, target, maximum, deadline) lock at
- * approval; while active the only change is the single extension.
+ * approval; while active the only change is the single extension. The
+ * closing job (App\Modules\Campaign\Services\Closing) takes closing on to
+ * purchasing or failed through fail() and startPurchasing().
  */
 class CampaignLifecycle
 {
@@ -54,6 +60,7 @@ class CampaignLifecycle
         private readonly CampaignCodes $codes,
         private readonly MarginCalculator $margins,
         private readonly Holds $holds,
+        private readonly Approvals $approvals,
     ) {}
 
     /**
@@ -400,58 +407,35 @@ class CampaignLifecycle
     }
 
     /**
-     * Cancel before any capture: the campaign ends at once, every join is
-     * released and every hold voided (after commit). Once a capture has
-     * happened, money must go back, which needs a finance approval (E10).
+     * Cancel a campaign. Before any capture it ends at once: every join is
+     * released and every hold voided (after commit). Once captures have
+     * started (closing at capturing or needs_admin, or purchasing), money
+     * may have to go back, so the cancellation waits for a second admin with
+     * the finance role: this opens (or finds) that approval request and
+     * changes nothing else. Fulfilling and ended campaigns cannot be cancelled.
+     *
+     * @throws ApiException 409 invalid_transition
      */
-    public function cancel(string $uuid, string $reason, AdminUser $by): Campaign
+    public function cancel(string $uuid, string $reason, AdminUser $by): Campaign|ApprovalRequest
     {
-        return DB::transaction(function () use ($uuid, $reason, $by): Campaign {
+        return DB::transaction(function () use ($uuid, $reason, $by): Campaign|ApprovalRequest {
             $campaign = $this->lock($uuid);
-            $beforeCapture = [ClosingStep::SettlingJoins, ClosingStep::AwaitingSupplier];
+            $step = $campaign->closing_step;
+
+            if (($campaign->status === CampaignStatus::Closing && in_array($step, [ClosingStep::Capturing, ClosingStep::NeedsAdmin], true))
+                || $campaign->status === CampaignStatus::Purchasing) {
+                return $this->requestCancellation($campaign, $reason, $by, 'cancel');
+            }
 
             $allowed = in_array($campaign->status, [CampaignStatus::Draft, CampaignStatus::PendingApproval, CampaignStatus::Scheduled, CampaignStatus::Active], true)
-                || ($campaign->status === CampaignStatus::Closing && in_array($campaign->closing_step, $beforeCapture, true));
+                || ($campaign->status === CampaignStatus::Closing && in_array($step, [ClosingStep::SettlingJoins, ClosingStep::AwaitingSupplier], true));
 
             if (! $allowed) {
                 throw new ApiException(409, 'invalid_transition');
             }
 
             $actor = Actor::admin($by->id);
-            $released = 0;
-            $reservedUnits = 0;
-
-            foreach ($campaign->participations()->whereIn('status', [ParticipationStatus::PendingPayment, ParticipationStatus::Authorized])->orderBy('id')->lockForUpdate()->get() as $participation) {
-                $from = $participation->status;
-                $reservedUnits += $from === ParticipationStatus::PendingPayment ? $participation->qty : 0;
-                $participation->status = ParticipationStatus::Released;
-                $participation->cancel_reason = 'campaign_cancelled';
-                $participation->save();
-                $this->history->record($participation, $from, ParticipationStatus::Released, $actor, 'campaign_cancelled');
-
-                foreach ($participation->payments()->whereIn('status', [PaymentStatus::PendingAuthorization, PaymentStatus::Authorized])->get() as $payment) {
-                    $this->holds->release($payment, RejectionReason::CampaignClosed, $actor);
-                }
-
-                $released++;
-            }
-
-            // Units still waiting for payment are no longer held. Committed
-            // units stay as the record of what was sold before the cancel.
-            if ($reservedUnits > 0) {
-                $freed = DB::update(
-                    'UPDATE campaigns SET reserved_qty = reserved_qty - ? WHERE id = ? AND reserved_qty >= ?',
-                    [$reservedUnits, $campaign->id, $reservedUnits],
-                );
-
-                if ($freed !== 1) {
-                    throw new LogicException("Campaign {$campaign->id} has fewer reserved units than its waiting joins hold.");
-                }
-
-                $campaign->reserved_qty -= $reservedUnits;
-                $campaign->syncOriginalAttribute('reserved_qty');
-            }
-
+            $released = $this->releaseParticipations($campaign, $actor, 'campaign_cancelled');
             $campaign->end_reason = $reason;
 
             $campaign = $this->transition($campaign, CampaignStatus::Cancelled, CampaignEvents::CANCELLED, $actor, 'campaign.cancel', [
@@ -461,6 +445,127 @@ class CampaignLifecycle
 
             return $campaign;
         });
+    }
+
+    /**
+     * Ask a finance admin to approve cancelling a campaign whose holds may
+     * already be captured. Carrying it out (voiding fresh captures,
+     * refunding the rest, cancelling orders) comes with the approvals flow
+     * (E15). Asking again returns the request already waiting. Call with
+     * the campaign locked.
+     */
+    public function requestCancellation(Campaign $campaign, string $reason, AdminUser $by, string $source): ApprovalRequest
+    {
+        $captured = $campaign->participations()->where('status', ParticipationStatus::Captured);
+        $request = $this->approvals->request(ApprovalType::CampaignCancellation, $campaign, [
+            'reason' => $reason,
+            'source' => $source,
+            'campaign_status' => $campaign->status->value,
+            'closing_step' => $campaign->closing_step?->value,
+            'captured_participations' => (clone $captured)->count(),
+            'captured_amount_halalas' => (int) (clone $captured)->sum('capture_amount_halalas'),
+        ], $by);
+
+        if ($request->wasRecentlyCreated) {
+            $this->events->record($campaign, CampaignEvents::CANCELLATION_REQUESTED, Actor::admin($by->id), [
+                'approval_request_id' => $request->uuid, 'reason' => $reason, 'source' => $source,
+            ]);
+        }
+
+        return $request;
+    }
+
+    /**
+     * closing -> failed (spec, Failure path): in the caller's transaction,
+     * with the campaign locked, every join still holding units is released
+     * and its hold voided after commit. Only before any capture.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function fail(Campaign $campaign, string $endReason, Actor $actor, array $payload = []): Campaign
+    {
+        if ($campaign->status !== CampaignStatus::Closing || ! in_array($campaign->closing_step, [ClosingStep::SettlingJoins, ClosingStep::AwaitingSupplier, ClosingStep::Capturing], true)) {
+            throw new LogicException("Campaign {$campaign->id} cannot fail from {$campaign->status->value}/{$campaign->closing_step?->value}.");
+        }
+
+        $released = $this->releaseParticipations($campaign, $actor, 'campaign_failed');
+        $campaign->end_reason = $endReason;
+
+        $campaign = $this->transition($campaign, CampaignStatus::Failed, CampaignEvents::FAILED, $actor, payload: [
+            'end_reason' => $endReason, 'released_participations' => $released,
+        ] + $payload);
+        CampaignFailed::dispatch($campaign->id);
+        CampaignProgressChanged::dispatch($campaign->id);
+
+        return $campaign;
+    }
+
+    /**
+     * closing -> purchasing once captures are done (closing step 7), with
+     * closing_step notifying. Call with the campaign locked.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function startPurchasing(Campaign $campaign, Actor $actor, array $payload = []): Campaign
+    {
+        if ($campaign->status !== CampaignStatus::Closing || ! in_array($campaign->closing_step, [ClosingStep::Capturing, ClosingStep::NeedsAdmin], true)) {
+            throw new LogicException("Campaign {$campaign->id} cannot start purchasing from {$campaign->status->value}/{$campaign->closing_step?->value}.");
+        }
+
+        $campaign->closing_step = ClosingStep::Notifying;
+
+        // The supplier purchase order (E12) is created here, in this transaction.
+        $campaign = $this->transition($campaign, CampaignStatus::Purchasing, CampaignEvents::CAPTURES_COMPLETED, $actor, payload: [
+            'captured_qty' => $campaign->captured_qty,
+            'final_unit_price_halalas' => $campaign->final_unit_price_halalas,
+        ] + $payload);
+        CampaignProgressChanged::dispatch($campaign->id);
+
+        return $campaign;
+    }
+
+    /**
+     * Ends every join that still holds units: participations waiting for
+     * payment or authorized become `released`, their holds are released
+     * (voided after commit) and their reserved units freed. Committed units
+     * stay as the record of what was sold. Call with the campaign locked.
+     * Returns how many were released.
+     */
+    private function releaseParticipations(Campaign $campaign, Actor $actor, string $reason): int
+    {
+        $released = 0;
+        $reservedUnits = 0;
+
+        foreach ($campaign->participations()->whereIn('status', [ParticipationStatus::PendingPayment, ParticipationStatus::Authorized])->orderBy('id')->lockForUpdate()->get() as $participation) {
+            $from = $participation->status;
+            $reservedUnits += $from === ParticipationStatus::PendingPayment ? $participation->qty : 0;
+            $participation->status = ParticipationStatus::Released;
+            $participation->cancel_reason = $reason;
+            $participation->save();
+            $this->history->record($participation, $from, ParticipationStatus::Released, $actor, $reason);
+
+            foreach ($participation->payments()->whereIn('status', [PaymentStatus::PendingAuthorization, PaymentStatus::Authorized])->get() as $payment) {
+                $this->holds->release($payment, RejectionReason::CampaignClosed, $actor);
+            }
+
+            $released++;
+        }
+
+        if ($reservedUnits > 0) {
+            $freed = DB::update(
+                'UPDATE campaigns SET reserved_qty = reserved_qty - ? WHERE id = ? AND reserved_qty >= ?',
+                [$reservedUnits, $campaign->id, $reservedUnits],
+            );
+
+            if ($freed !== 1) {
+                throw new LogicException("Campaign {$campaign->id} has fewer reserved units than its waiting joins hold.");
+            }
+
+            $campaign->reserved_qty -= $reservedUnits;
+            $campaign->syncOriginalAttribute('reserved_qty');
+        }
+
+        return $released;
     }
 
     /**

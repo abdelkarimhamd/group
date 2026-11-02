@@ -78,6 +78,12 @@ return [
         // No capture is attempted in the last 24 hours before a hold expires.
         'capture_cutoff_hours' => 24,
 
+        // A capture whose outcome is unknown (timeout, Moyasar down) is
+        // retried with backoff for up to this long, never past the cutoff,
+        // and ops are alerted once it has been failing for this many minutes.
+        'capture_retry_hours' => 24,
+        'capture_alert_after_minutes' => 60,
+
         // Finance and ops are alerted this many days before a hold expires.
         'expiry_alert_days' => 3,
 

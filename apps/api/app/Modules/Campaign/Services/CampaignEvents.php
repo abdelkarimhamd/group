@@ -43,6 +43,27 @@ final class CampaignEvents
 
     public const CANCELLED = 'cancelled';
 
+    /** Closing step 4 opened: final quantity and price set, supplier to reconfirm. */
+    public const AWAITING_SUPPLIER = 'awaiting_supplier';
+
+    public const SUPPLIER_CONFIRMED = 'supplier_confirmed';
+
+    public const SUPPLIER_REJECTED = 'supplier_rejected';
+
+    /** Captures finished below the target or the supplier MOQ. */
+    public const NEEDS_ADMIN = 'needs_admin';
+
+    public const BELOW_TARGET_DECISION = 'below_target_decision';
+
+    /** A cancellation that needs a finance approval was asked for. */
+    public const CANCELLATION_REQUESTED = 'cancellation_requested';
+
+    /** closing -> purchasing. */
+    public const CAPTURES_COMPLETED = 'captures_completed';
+
+    /** closing -> failed. */
+    public const FAILED = 'failed';
+
     /**
      * @param  array<string, mixed>  $payload
      */

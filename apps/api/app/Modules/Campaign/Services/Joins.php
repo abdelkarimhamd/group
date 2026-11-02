@@ -8,6 +8,7 @@ use App\Modules\Campaign\Enums\ClosingStep;
 use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Events\CampaignDealConfirmed;
 use App\Modules\Campaign\Events\CampaignProgressChanged;
+use App\Modules\Campaign\Jobs\CloseCampaign;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Models\CampaignPriceTier;
@@ -198,6 +199,7 @@ class Joins
             $this->lifecycle->enterClosing($campaign, $actor);
         }
 
+        $this->wakeClosingIfSettled($campaign);
         CampaignProgressChanged::dispatch($campaign->id);
 
         return true;
@@ -273,7 +275,23 @@ class Joins
             $this->holds->release($payment, $rejection, $actor);
         }
 
+        $this->wakeClosingIfSettled($campaign);
         CampaignProgressChanged::dispatch($campaign->id);
+    }
+
+    /**
+     * The closing job waits at settling_joins until no join is in flight;
+     * the join that settles last wakes it (after commit).
+     */
+    private function wakeClosingIfSettled(Campaign $campaign): void
+    {
+        if ($campaign->status !== CampaignStatus::Closing || $campaign->closing_step !== ClosingStep::SettlingJoins) {
+            return;
+        }
+
+        if ((int) DB::table('campaigns')->where('id', $campaign->id)->value('reserved_qty') === 0) {
+            CloseCampaign::dispatch($campaign->id)->afterCommit();
+        }
     }
 
     private function reserve(User $user, Campaign $campaign, int $variantId, array $addressSnapshot, int $addressId, array $input): CampaignParticipation

@@ -4,7 +4,8 @@ namespace App\Modules\Payments\Enums;
 
 /**
  * Why a payment was voided or failed on our side. Mirrors the CHECK
- * constraint on payment_authorizations.rejection_reason.
+ * constraint on payment_authorizations.rejection_reason. The capture
+ * reasons mark a hold that could not be captured at close and is voided.
  */
 enum RejectionReason: string
 {
@@ -17,4 +18,6 @@ enum RejectionReason: string
     case CampaignClosed = 'campaign_closed';
     case ParticipationCancelled = 'participation_cancelled';
     case DuplicateHold = 'duplicate_hold';
+    case CaptureDeclined = 'capture_declined';
+    case CaptureCutoffPassed = 'capture_cutoff_passed';
 }

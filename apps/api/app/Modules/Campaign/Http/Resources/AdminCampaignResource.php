@@ -6,6 +6,7 @@ use App\Http\Resources\ActorJson;
 use App\Modules\Campaign\Enums\CampaignStatus;
 use App\Modules\Campaign\Enums\ClosingStep;
 use App\Modules\Campaign\Models\Campaign;
+use App\Modules\Campaign\Services\Closing;
 use App\Modules\Catalog\Http\Resources\AdminVariantResource;
 use App\Modules\Identity\Models\AdminUser;
 use App\Modules\Pricing\Tier;
@@ -65,9 +66,7 @@ class AdminCampaignResource extends JsonResource
             'final_qty' => $this->final_qty,
             'final_unit_price' => $this->final_unit_price_halalas === null ? null : Money::sar($this->final_unit_price_halalas),
             'capture_by' => $this->capture_by?->toIso8601ZuluString(),
-            'supplier_decision_due_at' => $awaitingSupplier && $this->capture_by !== null
-                ? $this->capture_by->subHours((int) config('groupbuy.campaigns.supplier_decision_lead_hours'))->toIso8601ZuluString()
-                : null,
+            'supplier_decision_due_at' => $awaitingSupplier ? Closing::supplierDecisionDueAt($this->resource)?->toIso8601ZuluString() : null,
             'captured_qty' => $this->captured_qty,
             'end_reason' => $this->end_reason,
             'tier_version' => $this->current_tier_version,
@@ -100,7 +99,9 @@ class AdminCampaignResource extends JsonResource
 
         $status = $this->status;
         $step = $this->closing_step;
-        $beforeCapture = in_array($step, [ClosingStep::SettlingJoins, ClosingStep::AwaitingSupplier], true);
+        // Before captures a cancel takes effect at once; after, it asks finance to approve (202).
+        $cancellable = in_array($status, [CampaignStatus::Draft, CampaignStatus::PendingApproval, CampaignStatus::Scheduled, CampaignStatus::Active, CampaignStatus::Purchasing], true)
+            || ($status === CampaignStatus::Closing && $step !== ClosingStep::Done);
         $actions = [
             'edit' => $status === CampaignStatus::Draft && $admin->can('campaigns.edit'),
             'edit_tiers' => $status === CampaignStatus::Draft && $admin->can('pricing.edit'),
@@ -109,8 +110,7 @@ class AdminCampaignResource extends JsonResource
             'reject' => $status === CampaignStatus::PendingApproval && $admin->can('campaigns.approve'),
             'extend' => $status === CampaignStatus::Active && $this->extended_at === null
                 && $this->deal_confirmed_at === null && $admin->can('campaigns.extend'),
-            'cancel' => (in_array($status, [CampaignStatus::Draft, CampaignStatus::PendingApproval, CampaignStatus::Scheduled, CampaignStatus::Active], true)
-                || ($status === CampaignStatus::Closing && $beforeCapture)) && $admin->can('campaigns.cancel'),
+            'cancel' => $cancellable && $admin->can('campaigns.cancel'),
             'record_supplier_decision' => $status === CampaignStatus::Closing && $step === ClosingStep::AwaitingSupplier && $admin->can('campaigns.close'),
             'decide_below_target' => $status === CampaignStatus::Closing && $step === ClosingStep::NeedsAdmin && $admin->can('campaigns.close'),
         ];

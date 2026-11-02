@@ -49,6 +49,8 @@ return [
         'product_not_active' => 'The product must be active first.',
         'margin_below_floor' => 'At least one price tier is below the minimum margin.',
         'extension_not_allowed' => 'The deadline cannot be moved to that date.',
+        'supplier_decision_overdue' => 'The supplier decision deadline has passed. The campaign will fail and every hold will be released.',
+        'supplier_stock_short' => 'The supplier cannot supply every unit sold. Record the decision as rejected instead.',
         'privacy_consent_required' => 'Please accept the privacy policy before joining.',
         'variant_not_in_campaign' => 'This option is not part of this group buy.',
         'address_not_found' => 'We could not find that address. Choose another one.',

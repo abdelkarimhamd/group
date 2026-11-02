@@ -2,6 +2,8 @@
 
 namespace App\Modules\Payments\Services;
 
+use App\Modules\Campaign\Models\Campaign;
+use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
 use App\Modules\Payments\Enums\TransactionStatus;
@@ -13,6 +15,7 @@ use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\PaymentTransaction;
 use App\Support\Actor;
 use App\Support\Audit\StatusHistory;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LogicException;
@@ -69,7 +72,94 @@ class Holds
     }
 
     /**
-     * Void an authorized hold now. Run from VoidPayment, outside any transaction.
+     * A hold that could not be captured at close (declined, or past its
+     * capture cutoff): authorized -> capture_failed, voided after commit.
+     * Call inside the transaction that records it, with the campaign and
+     * participation locked first (lock order).
+     */
+    public function captureFailed(PaymentAuthorization $payment, RejectionReason $reason, Actor $actor): void
+    {
+        if (app('db.transactions')->callbackApplicableTransactions()->isEmpty()) {
+            throw new LogicException('Record a failed capture inside a transaction.');
+        }
+
+        $payment = PaymentAuthorization::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
+        if ($payment->status !== PaymentStatus::Authorized) {
+            return;
+        }
+
+        $payment->status = PaymentStatus::CaptureFailed;
+        $payment->rejection_reason = $reason;
+        $payment->save();
+        $this->history->record($payment, PaymentStatus::Authorized, PaymentStatus::CaptureFailed, $actor, $reason->value);
+
+        VoidPayment::dispatch($payment->id, $actor->type->value, $actor->id)->afterCommit();
+    }
+
+    /**
+     * Holds past their expiry: authorized and capture_failed payments become
+     * `expired` (spec, Expiry clock). One being voided gets one last void
+     * attempt first. Returns how many expired.
+     */
+    public function expireDue(?CarbonImmutable $now = null, int $limit = 500): int
+    {
+        if (app('db.transactions')->callbackApplicableTransactions()->isNotEmpty()) {
+            throw new LogicException('Never call the payment provider inside a database transaction.');
+        }
+
+        $now ??= CarbonImmutable::now();
+        $due = PaymentAuthorization::query()
+            ->whereIn('status', [PaymentStatus::Authorized, PaymentStatus::CaptureFailed])
+            ->where('expires_at', '<=', $now)
+            ->orderBy('expires_at')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+
+        $expired = 0;
+
+        foreach ($due as $payment) {
+            if ($payment->status === PaymentStatus::CaptureFailed || $payment->rejection_reason !== null) {
+                try {
+                    $this->void($payment, Actor::system());
+                } catch (\Throwable $e) {
+                    Log::warning('payments.void.last_attempt_failed', ['payment' => $payment->uuid, 'error' => $e->getMessage()]);
+                }
+            }
+
+            $expired += DB::transaction(function () use ($payment, $now): int {
+                // Lock order: campaign, participation, payment.
+                $campaignId = CampaignParticipation::query()->whereKey($payment->participation_id)->value('campaign_id');
+                Campaign::query()->whereKey($campaignId)->lockForUpdate()->firstOrFail();
+                $participation = CampaignParticipation::query()->whereKey($payment->participation_id)->lockForUpdate()->firstOrFail();
+                $locked = PaymentAuthorization::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
+                if (! in_array($locked->status, [PaymentStatus::Authorized, PaymentStatus::CaptureFailed], true) || $locked->expires_at->greaterThan($now)) {
+                    return 0;
+                }
+
+                $from = $locked->status;
+                $locked->status = PaymentStatus::Expired;
+                $locked->save();
+                $this->history->record($locked, $from, PaymentStatus::Expired, Actor::system(), 'hold_expired');
+
+                // A live hold should never run out: the extension rule and the
+                // capture cutoff keep it capturable through close.
+                if ($from === PaymentStatus::Authorized && $locked->rejection_reason === null) {
+                    Log::critical('payments.hold.expired_uncaptured', ['payment' => $locked->uuid, 'participation' => $participation->uuid, 'participation_status' => $participation->status->value]);
+                }
+
+                return 1;
+            });
+        }
+
+        return $expired;
+    }
+
+    /**
+     * Void a hold now: an authorized one, or one whose capture failed. Run
+     * from VoidPayment, outside any transaction.
      *
      * @throws GatewayException when the outcome is unknown; the job retries
      */
@@ -81,7 +171,7 @@ class Holds
 
         $payment->refresh();
 
-        if ($payment->status !== PaymentStatus::Authorized || $payment->provider_payment_id === null) {
+        if (! in_array($payment->status, [PaymentStatus::Authorized, PaymentStatus::CaptureFailed], true) || $payment->provider_payment_id === null) {
             return;
         }
 
@@ -156,12 +246,13 @@ class Holds
                 'completed_at' => now(),
             ])->save();
 
-            if ($succeeded && $locked->status === PaymentStatus::Authorized) {
+            if ($succeeded && in_array($locked->status, [PaymentStatus::Authorized, PaymentStatus::CaptureFailed], true)) {
+                $from = $locked->status;
                 $locked->status = PaymentStatus::Voided;
                 $locked->voided_at = now();
                 $locked->provider_status = 'voided';
                 $locked->save();
-                $this->history->record($locked, PaymentStatus::Authorized, PaymentStatus::Voided, $actor, $locked->rejection_reason?->value);
+                $this->history->record($locked, $from, PaymentStatus::Voided, $actor, $locked->rejection_reason?->value);
             }
         });
     }

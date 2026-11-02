@@ -7,7 +7,7 @@ use Illuminate\Foundation\Events\Dispatchable;
 
 /**
  * The campaign moved from active to closing (deadline passed or maximum
- * reached). Fired after commit. The closing job (E10) listens for it.
+ * reached). Fired after commit; StartClosingJob queues the closing job.
  */
 final class CampaignClosingStarted implements ShouldDispatchAfterCommit
 {

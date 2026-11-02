@@ -367,11 +367,13 @@ class AdminCampaignsTest extends TestCase
         $this->artisan('campaigns:tick')->assertSuccessful();
         $this->assertSame('active', $campaign->refresh()->status->value);
 
+        // Closing starts at the deadline; with no joins the closing job then fails it below target.
         $this->travelTo($campaign->deadline_at);
         $this->artisan('campaigns:tick')->assertSuccessful();
         $campaign->refresh();
-        $this->assertSame(['closing', 'deadline', 'settling_joins'], [$campaign->status->value, $campaign->close_reason->value, $campaign->closing_step->value]);
-        $this->assertSame(['published', 'closed'], $campaign->events()->whereIn('event_type', ['published', 'closed'])->orderBy('id')->pluck('event_type')->all());
+        $this->assertSame(['failed', 'deadline', 'target_missed'], [$campaign->status->value, $campaign->close_reason->value, $campaign->end_reason]);
+        $this->assertSame(['published', 'closed', 'failed'], $campaign->events()->whereIn('event_type', ['published', 'closed', 'failed'])->orderBy('id')->pluck('event_type')->all());
+        $this->assertSame(['active', 'closing'], [$campaign->events()->where('event_type', 'closed')->sole()->from_status->value, $campaign->events()->where('event_type', 'closed')->sole()->to_status->value]);
     }
 
     #[Test]
@@ -479,13 +481,14 @@ class AdminCampaignsTest extends TestCase
     public function once_captures_start_a_campaign_cannot_simply_be_cancelled(): void
     {
         $campaign = Campaign::factory()->active()->create();
-        $campaign->forceFill(['status' => 'closing', 'closing_step' => 'capturing', 'close_reason' => 'deadline', 'closed_at' => now()])->save();
+        $campaign->forceFill(['status' => 'fulfilling', 'closing_step' => 'done', 'close_reason' => 'deadline', 'closed_at' => now()])->save();
 
         $this->withToken($this->token)->postJson("/api/v1/admin/campaigns/{$campaign->uuid}/cancel", ['reason' => 'Too late'])
             ->assertStatus(409)
             ->assertJsonPath('code', 'invalid_transition');
 
-        $campaign->forceFill(['closing_step' => 'awaiting_supplier'])->save();
+        // While capturing, the cancellation waits for a finance approval (CancellingAfterCaptureTest).
+        $campaign->forceFill(['status' => 'closing', 'closing_step' => 'awaiting_supplier'])->save();
         $this->withToken($this->token)->postJson("/api/v1/admin/campaigns/{$campaign->uuid}/cancel", ['reason' => 'Supplier said no'])
             ->assertOk()
             ->assertJsonPath('data.status', 'cancelled');
@@ -504,7 +507,7 @@ class AdminCampaignsTest extends TestCase
             ->assertOk()
             ->assertJsonCount(2, 'data')
             ->assertJsonPath('data.0.id', $stuck->uuid)
-            ->assertJsonPath('data.0.available_actions', ['decide_below_target'])
+            ->assertJsonPath('data.0.available_actions', ['cancel', 'decide_below_target'])
             ->assertJsonPath('data.1.id', $waiting->uuid);
 
         $this->withToken($this->token)->getJson('/api/v1/admin/campaigns?status=draft&per_page=1')

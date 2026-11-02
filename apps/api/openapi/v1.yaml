@@ -2241,12 +2241,16 @@ paths:
       operationId: adminCancelCampaign
       summary: Cancel a campaign
       description: |
-        Allowed from `draft`, `pending_approval`, `scheduled`, `active`, and
-        `closing` before captures start. Cancels at once, releases every join
-        and voids every hold. Once any capture succeeded, money must go back,
-        so this will open an approval request for a second admin with the
-        finance role (202) instead; until that flow ships (E10) it answers 409
-        `invalid_transition`.
+        From `draft`, `pending_approval`, `scheduled`, `active`, and
+        `closing` at `settling_joins` or `awaiting_supplier`, it cancels at
+        once (200): every join is released and every hold voided. Once
+        captures have started (`closing` at `capturing` or `needs_admin`, or
+        `purchasing`), money may have to go back, so it opens a
+        `campaign_cancellation` approval request for a second admin with the
+        finance role instead (202) and changes nothing else; asking again
+        returns the request already waiting. Approving it (refunds, order
+        cancellation) comes with the approvals flow. `fulfilling` and ended
+        campaigns answer 409 `invalid_transition`.
       x-epic: E7
       x-status: live
       x-permission: campaigns.cancel
@@ -2281,11 +2285,19 @@ paths:
       operationId: adminRecordSupplierDecision
       summary: Record the supplier's reconfirmation before capture
       description: |
-        Only while `closing_step` is `awaiting_supplier`. `confirmed` resumes
-        closing and starts captures; `rejected` fails the campaign and voids
-        every hold.
+        Only while `closing_step` is `awaiting_supplier` and before
+        `supplier_decision_due_at` (409 `supplier_decision_overdue` after it;
+        the closing sweep then fails the campaign). `confirmed` records the
+        unit cost (in `currency`, the quotation's currency when left out),
+        stock and quotation reference in a `supplier_confirmed` event, moves
+        `closing_step` to `capturing` and starts captures. `available_qty`
+        below `final_qty` is 422 `supplier_stock_short`: a supplier that
+        cannot supply every unit is recorded as `rejected`. `rejected` fails
+        the campaign (`end_reason` `supplier_rejected`) and voids every hold.
+        Captures run in the background, so the campaign returned may already
+        have moved on.
       x-epic: E10
-      x-status: mock
+      x-status: live
       x-permission: campaigns.close
       security: [{adminToken: []}]
       requestBody:
@@ -2298,8 +2310,16 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '409': {$ref: '#/components/responses/InvalidTransition'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '409':
+          description: '`invalid_transition` (not awaiting the supplier) or `supplier_decision_overdue`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422':
+          description: '`supplier_stock_short`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /admin/campaigns/{campaign_id}/below-target-decision:
     parameters:
@@ -2308,9 +2328,14 @@ paths:
       tags: [Admin campaigns]
       operationId: adminDecideBelowTarget
       summary: Proceed or cancel when captures fell short
-      description: Only while `closing_step` is `needs_admin` (captured units below target or supplier MOQ).
+      description: |
+        Only while `closing_step` is `needs_admin` (captured units below the
+        target or the supplier's MOQ). `proceed` buys the captured units: the
+        campaign moves to `purchasing`. `cancel` opens a
+        `campaign_cancellation` approval request for a second admin with the
+        finance role (202) and changes nothing else until it is approved.
       x-epic: E10
-      x-status: mock
+      x-status: live
       x-permission: campaigns.close
       security: [{adminToken: []}]
       requestBody:
@@ -4092,7 +4117,10 @@ components:
         capture_by: {type: string, format: date-time, nullable: true, description: Earliest capture cutoff among the holds.}
         supplier_decision_due_at: {type: string, format: date-time, nullable: true, description: '`capture_by` minus 24 hours, while awaiting the supplier.'}
         captured_qty: {type: integer, nullable: true}
-        end_reason: {type: string, nullable: true}
+        end_reason:
+          type: string
+          nullable: true
+          description: The admin's reason for a cancellation; for a failure, one of target_missed, supplier_rejected, no_supplier_decision or captures_failed.
         tier_version: {type: integer, nullable: true, description: Null until the first tier set is saved.}
         tiers:
           type: array
@@ -4172,10 +4200,14 @@ components:
       required: [decision]
       properties:
         decision: {type: string, enum: [confirmed, rejected]}
-        unit_cost_minor: {type: integer, minimum: 1, description: Required when confirmed.}
-        currency: {type: string, enum: [USD, CNY, SAR]}
-        available_qty: {type: integer, minimum: 0, description: Required when confirmed; must cover the final quantity.}
-        quotation_reference: {type: string, maxLength: 200}
+        unit_cost_minor: {type: integer, minimum: 1, maximum: 100000000000, description: Required when confirmed. In the minor unit of `currency`.}
+        currency:
+          type: string
+          enum: [USD, CNY, SAR]
+          nullable: true
+          description: The supplier's currency; the quotation's when left out.
+        available_qty: {type: integer, minimum: 0, maximum: 10000000, description: Required when confirmed; must cover the final quantity.}
+        quotation_reference: {type: string, maxLength: 200, nullable: true}
         note: {type: string, maxLength: 2000, nullable: true}
 
     CampaignEvent:
@@ -4186,7 +4218,7 @@ components:
         event_type:
           type: string
           example: price_changed
-          description: For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed, max_reached, tiers_changed, extended, closed, supplier_confirmed, captures_completed, failed.
+          description: For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, failed, cancelled.
         from_status:
           type: string
           allOf: [{$ref: '#/components/schemas/CampaignStatus'}]
