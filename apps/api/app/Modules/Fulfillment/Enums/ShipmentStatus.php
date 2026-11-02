@@ -23,4 +23,15 @@ enum ShipmentStatus: string
     {
         return in_array($this, [self::Delivered, self::Returned, self::Cancelled], true);
     }
+
+    /**
+     * What a tracking update may say. Returns and cancelled shipments need
+     * their order moved too, which comes with returns handling.
+     *
+     * @return list<self>
+     */
+    public static function trackable(): array
+    {
+        return [self::PickedUp, self::InTransit, self::OutForDelivery, self::FailedAttempt, self::Delivered];
+    }
 }

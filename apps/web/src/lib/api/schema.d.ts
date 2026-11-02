@@ -1534,8 +1534,9 @@ export interface paths {
          *     `delivered` always does. `delivered` marks the order delivered and
          *     starts its 7-day return window (`groupbuy.orders.return_window_days`);
          *     once every order of the campaign is delivered or cancelled, the
-         *     campaign is `completed`. A delivered, returned or cancelled shipment
-         *     takes no more updates (409).
+         *     campaign is `completed`. No update is dated before the pickup
+         *     (`event_before_shipment`, 422). A delivered shipment takes no more
+         *     updates (409).
          */
         post: operations["adminAddShipmentEvent"];
         delete?: never;
@@ -2809,7 +2810,11 @@ export interface components {
             shipping_cost_halalas?: number | null;
         };
         ShipmentEventInput: {
-            status: components["schemas"]["ShipmentStatus"];
+            /**
+             * @description Returns and cancelled shipments come with returns handling.
+             * @enum {string}
+             */
+            status: "picked_up" | "in_transit" | "out_for_delivery" | "failed_attempt" | "delivered";
             description?: string | null;
             location?: string | null;
             /** Format: date-time */

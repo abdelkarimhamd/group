@@ -151,6 +151,14 @@ class FulfilmentTest extends TestCase
             ->assertJsonPath('data.events.1.status', 'failed_attempt')
             ->assertJsonPath('data.events.2.status', 'in_transit');
         $this->track($shipment['id'], ['status' => 'teleported', 'occurred_at' => now()->toIso8601ZuluString()])->assertUnprocessable();
+        // Returns and cancellations need their order moved too: not by a tracking update yet.
+        $this->track($shipment['id'], ['status' => 'returned', 'occurred_at' => now()->toIso8601ZuluString()])->assertUnprocessable()->assertJsonValidationErrors('status');
+        $this->track($shipment['id'], ['status' => 'cancelled', 'occurred_at' => now()->toIso8601ZuluString()])->assertUnprocessable()->assertJsonValidationErrors('status');
+        // Nothing happens before the pickup, so a delivery cannot wipe out the return window.
+        $this->track($shipment['id'], ['status' => 'delivered', 'occurred_at' => now()->subDays(10)->toIso8601ZuluString()])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'event_before_shipment')
+            ->assertJsonValidationErrors('occurred_at');
         $this->track($shipment['id'], ['status' => 'out_for_delivery', 'occurred_at' => now()->addDay()->toIso8601ZuluString()])->assertUnprocessable()->assertJsonValidationErrors('occurred_at');
 
         // The customer follows it.
@@ -171,7 +179,14 @@ class FulfilmentTest extends TestCase
         $order->refresh();
         $this->assertSame(['delivered', $deliveredAt->toIso8601ZuluString(), $deliveredAt->addDays(7)->toIso8601ZuluString()], [$order->status->value, $order->delivered_at->toIso8601ZuluString(), $order->return_window_ends_at->toIso8601ZuluString()]);
         $this->assertSame('fulfilling', $this->campaign->refresh()->status->value);
-        $this->track($shipment['id'], ['status' => 'returned', 'occurred_at' => now()->toIso8601ZuluString()])->assertStatus(409);
+        $this->track($shipment['id'], ['status' => 'in_transit', 'occurred_at' => now()->toIso8601ZuluString()])->assertStatus(409);
+
+        // Each status the shipment took is in its history; the late update changed nothing.
+        $this->assertSame(
+            [[null, 'picked_up'], ['picked_up', 'in_transit'], ['in_transit', 'delivered']],
+            StatusTransition::query()->where('subject_type', 'shipment')->where('subject_id', Shipment::query()->where('uuid', $shipment['id'])->value('id'))->orderBy('id')->get()
+                ->map(fn (StatusTransition $row) => [$row->from_status, $row->to_status])->all(),
+        );
 
         // The last delivery completes the campaign.
         $other = $this->ship($this->orderOf($second))->assertCreated()->json('data.id');

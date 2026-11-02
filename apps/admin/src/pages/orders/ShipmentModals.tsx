@@ -4,7 +4,7 @@ import type { Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../api/client';
-import type { ShipmentStatus } from '../../api/types';
+import type { ShipmentEventInput } from '../../api/types';
 import { ApiErrorAlert } from '../../components/ApiErrorAlert';
 import {
   applyFieldErrors,
@@ -116,6 +116,15 @@ export function CreateShipmentModal({
   );
 }
 
+/** What a tracking update may say; returns and cancellations come with returns handling. */
+const TRACKABLE: string[] = [
+  'picked_up',
+  'in_transit',
+  'out_for_delivery',
+  'failed_attempt',
+  'delivered',
+] satisfies ShipmentEventInput['status'][];
+
 /** A tracking update typed by hand, for couriers without a tracking API. */
 export function ShipmentEventModal({
   shipmentId,
@@ -128,7 +137,7 @@ export function ShipmentEventModal({
   const { message } = App.useApp();
   const refresh = useRefreshOrder();
   const [form] = Form.useForm<{
-    status: ShipmentStatus;
+    status: ShipmentEventInput['status'];
     description?: string;
     location?: string;
     occurred_at: Dayjs;
@@ -184,7 +193,9 @@ export function ShipmentEventModal({
           extra={status === 'delivered' ? t('orders.deliveredStartsReturnWindow') : undefined}
           rules={[{ required: true, message: t('validation.required') }]}
         >
-          <Select options={statusOptions(t, 'shipment')} />
+          <Select
+            options={statusOptions(t, 'shipment').filter((o) => TRACKABLE.includes(o.value))}
+          />
         </Form.Item>
         <Form.Item
           name="occurred_at"

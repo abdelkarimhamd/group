@@ -2788,8 +2788,9 @@ paths:
         `delivered` always does. `delivered` marks the order delivered and
         starts its 7-day return window (`groupbuy.orders.return_window_days`);
         once every order of the campaign is delivered or cancelled, the
-        campaign is `completed`. A delivered, returned or cancelled shipment
-        takes no more updates (409).
+        campaign is `completed`. No update is dated before the pickup
+        (`event_before_shipment`, 422). A delivered shipment takes no more
+        updates (409).
       x-epic: E13
       x-status: live
       x-permission: fulfilment.edit
@@ -4454,7 +4455,10 @@ components:
       type: object
       required: [status, occurred_at]
       properties:
-        status: {$ref: '#/components/schemas/ShipmentStatus'}
+        status:
+          type: string
+          enum: [picked_up, in_transit, out_for_delivery, failed_attempt, delivered]
+          description: Returns and cancelled shipments come with returns handling.
         description: {type: string, maxLength: 500, nullable: true}
         location: {type: string, maxLength: 200, nullable: true}
         occurred_at: {type: string, format: date-time}
