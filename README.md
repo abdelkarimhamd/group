@@ -9,7 +9,7 @@ The product rules live in the [MVP build spec](https://claude.ai/artifact/WZRndB
 | Path | What it is | Status |
 | --- | --- | --- |
 | `apps/api` | Laravel 13 API used by every client (`/api/v1`) | Foundation in place |
-| `apps/web` | Next.js customer website (pilot channel) | Not started (E16) |
+| `apps/web` | Next.js customer website (pilot channel), Arabic first | Built against the contract mock; payments behind a fake form until Moyasar ([README](apps/web/README.md)) |
 | `apps/admin` | React admin portal ([how to run it](apps/admin/README.md)) | All screens built against the contract (E17) |
 | `apps/mobile` | React Native app, after the website pilot | Not started (E18) |
 | `docs/` | Architecture notes and conventions | |
@@ -76,5 +76,16 @@ npx @stoplight/prism-cli@5 mock apps/api/openapi/v1.yaml
 ```
 
 Add `-d` to the Prism command for varied fake data, and send a `Prefer: code=409` header to get a specific documented response. Lint the contract with `npx @redocly/cli@1 lint apps/api/openapi/v1.yaml`.
+
+## Run the website locally
+
+```bash
+cd apps/web
+npm install
+npm run mock    # fixture API behind a contract-checking Prism proxy on :4010
+npm run dev     # http://localhost:3000, sign in with any 05x number and code 123456
+```
+
+See [apps/web/README.md](apps/web/README.md) for the fake payment form, tests and layout.
 
 More detail: [docs/architecture.md](docs/architecture.md).
