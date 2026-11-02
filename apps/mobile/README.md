@@ -32,26 +32,26 @@ The mock answers with fixed example data, so screens after a call show the contr
 
 Third-party integrations come last, behind the same interfaces:
 
-| What | Now | Later |
-| --- | --- | --- |
-| Card hold | `src/payments/FakePaymentSheet.tsx`: no card is charged. Approving sends `fake_authorized_<payment_id>` to `POST /payments/{id}/sync`, declining sends `fake_declined_<payment_id>`. The API's fake provider understands both. | Moyasar card form and Apple Pay, selected in `src/payments/index.tsx` |
-| Push notifications | `src/push/index.ts` does nothing | Firebase Cloud Messaging, registering with `POST /me/device-tokens` |
-| Live campaign progress | Polls `GET /campaigns/{id}/progress` every 5 seconds while a deal is open | Laravel Reverb |
+| What                   | Now                                                                                                                                                                                                                            | Later                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| Card hold              | `src/payments/FakePaymentSheet.tsx`: no card is charged. Approving sends `fake_authorized_<payment_id>` to `POST /payments/{id}/sync`, declining sends `fake_declined_<payment_id>`. The API's fake provider understands both. | Moyasar card form and Apple Pay, selected in `src/payments/index.tsx` |
+| Push notifications     | `src/push/index.ts` does nothing                                                                                                                                                                                               | Firebase Cloud Messaging, registering with `POST /me/device-tokens`   |
+| Live campaign progress | Polls `GET /campaigns/{id}/progress` every 5 seconds while a deal is open                                                                                                                                                      | Laravel Reverb                                                        |
 
 The account screen shows a "Test payments" banner while the fake provider is active.
 
 ## How the code is laid out
 
-| Path | What it holds |
-| --- | --- |
-| `src/app/` | Screens. Every file is a route (Expo Router); `(tabs)` holds Deals, My joins, Orders and Account. Keep everything else out of this folder. |
-| `src/api/` | `schema.d.ts` (generated, never edit), the fetch client with auth and language headers, one function per operation in `endpoints.ts`, and the query hooks in `queries.ts`. |
-| `src/auth/` | The bearer token in the Keychain/Keystore and the session provider. |
-| `src/i18n/` | `ar.ts` and `en.ts` strings, Arabic plural rules, `useFormat()` for money, dates and countdowns, and the right-to-left switch. |
-| `src/lib/` | Plain functions with tests: money, phone numbers, Riyadh time, campaign progress, addresses, payment states. |
-| `src/components/` | Shared UI: progress bar, tier ladder, cards, buttons, fields. |
-| `src/payments/`, `src/push/` | The integration seams above. |
-| `src/test/` | Fixtures shaped by the contract types and a fetch stand-in for tests. |
+| Path                         | What it holds                                                                                                                                                              |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/`                   | Screens. Every file is a route (Expo Router); `(tabs)` holds Deals, My joins, Orders and Account. Keep everything else out of this folder.                                 |
+| `src/api/`                   | `schema.d.ts` (generated, never edit), the fetch client with auth and language headers, one function per operation in `endpoints.ts`, and the query hooks in `queries.ts`. |
+| `src/auth/`                  | The bearer token in the Keychain/Keystore and the session provider.                                                                                                        |
+| `src/i18n/`                  | `ar.ts` and `en.ts` strings, Arabic plural rules, `useFormat()` for money, dates and countdowns, and the right-to-left switch.                                             |
+| `src/lib/`                   | Plain functions with tests: money, phone numbers, Riyadh time, campaign progress, addresses, payment states.                                                               |
+| `src/components/`            | Shared UI: progress bar, tier ladder, cards, buttons, fields.                                                                                                              |
+| `src/payments/`, `src/push/` | The integration seams above.                                                                                                                                               |
+| `src/test/`                  | Fixtures shaped by the contract types and a fetch stand-in for tests.                                                                                                      |
 
 ## Rules that matter here
 
