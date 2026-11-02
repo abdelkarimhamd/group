@@ -181,7 +181,10 @@ class Joins
 
     /**
      * Reservations whose 15 minutes ran out without an authorized payment
-     * free their units. Returns how many expired.
+     * free their units: `payment_failed` when the last card tried was
+     * declined or its hold refused, `reservation_expired` otherwise. campaigns:tick asks the
+     * provider about unsettled payments first, so a hold that went through
+     * is counted rather than voided. Returns how many expired.
      */
     public function expireReservations(?CarbonImmutable $now = null, int $limit = 500): int
     {
@@ -204,7 +207,10 @@ class Joins
                     return 0;
                 }
 
-                $this->releaseUnits($campaign, $participation, ParticipationStatus::ReservationExpired, Actor::system(), 'reservation_expired');
+                // After a declined or refused card the customer was told; otherwise they never finished paying.
+                $last = $participation->payments()->attempts()->latest('id')->first();
+                $refused = $last !== null && ($last->status === PaymentStatus::Failed || $last->rejection_reason !== null);
+                $this->releaseUnits($campaign, $participation, $refused ? ParticipationStatus::PaymentFailed : ParticipationStatus::ReservationExpired, Actor::system(), 'reservation_expired');
 
                 return 1;
             });
@@ -235,7 +241,9 @@ class Joins
         $participation->save();
         $this->history->record($participation, $from, $to, $actor, $reason);
 
-        $rejection = $to === ParticipationStatus::ReservationExpired ? RejectionReason::ReservationExpired : RejectionReason::CampaignClosed;
+        $rejection = in_array($to, [ParticipationStatus::ReservationExpired, ParticipationStatus::PaymentFailed], true)
+            ? RejectionReason::ReservationExpired
+            : RejectionReason::CampaignClosed;
 
         foreach ($participation->payments()->whereIn('status', [PaymentStatus::PendingAuthorization, PaymentStatus::Authorized])->get() as $payment) {
             $this->holds->release($payment, $rejection, $actor);

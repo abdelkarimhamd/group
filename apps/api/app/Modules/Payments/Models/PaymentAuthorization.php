@@ -6,6 +6,8 @@ use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -90,6 +92,20 @@ class PaymentAuthorization extends Model
     public function captureCutoffAt(): CarbonImmutable
     {
         return $this->expires_at->subHours((int) config('groupbuy.payments.capture_cutoff_hours'));
+    }
+
+    /**
+     * Attempts the customer made, leaving out second holds found for a
+     * form that already had one (recorded only so they can be voided).
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function attempts(Builder $query): void
+    {
+        $query->where(fn (Builder $query) => $query
+            ->whereNull('payment_authorizations.rejection_reason')
+            ->orWhere('payment_authorizations.rejection_reason', '!=', RejectionReason::DuplicateHold->value));
     }
 
     /**

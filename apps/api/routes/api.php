@@ -14,6 +14,9 @@ use App\Modules\Identity\Http\Controllers\AddressController;
 use App\Modules\Identity\Http\Controllers\AdminAccountsController;
 use App\Modules\Identity\Http\Controllers\AdminAuthController;
 use App\Modules\Identity\Http\Controllers\CustomerAuthController;
+use App\Modules\Payments\Http\Controllers\AdminPaymentController;
+use App\Modules\Payments\Http\Controllers\MoyasarWebhookController;
+use App\Modules\Payments\Http\Controllers\PaymentController;
 use App\Modules\Supplier\Http\Controllers\AdminQuotationController;
 use App\Modules\Supplier\Http\Controllers\AdminSupplierController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +36,9 @@ Route::prefix('v1')->name('v1.')->group(function () {
     Route::get('campaigns', [CampaignController::class, 'index'])->name('campaigns.index');
     Route::get('campaigns/{campaign}', [CampaignController::class, 'show'])->whereUuid('campaign')->name('campaigns.show');
     Route::get('campaigns/{campaign}/progress', [CampaignController::class, 'progress'])->whereUuid('campaign')->name('campaigns.progress');
+
+    // ------------------------------------------------------------ Moyasar (E9)
+    Route::post('webhooks/moyasar', MoyasarWebhookController::class)->middleware('throttle:webhooks')->name('webhooks.moyasar');
 
     // ------------------------------------------------------------ Customers (E5)
     Route::post('auth/otp', [CustomerAuthController::class, 'requestOtp'])
@@ -54,6 +60,12 @@ Route::prefix('v1')->name('v1.')->group(function () {
 
         Route::post('campaigns/{campaign}/participations', [ParticipationController::class, 'store'])->whereUuid('campaign')
             ->middleware('throttle:joins')->name('campaigns.join');
+
+        // Payments (E9)
+        Route::post('payments/{payment}/sync', [PaymentController::class, 'sync'])->whereUuid('payment')
+            ->middleware('throttle:payment-sync')->name('payments.sync');
+        Route::post('me/participations/{participation}/payments', [PaymentController::class, 'retry'])->whereUuid('participation')
+            ->middleware('throttle:joins')->name('me.participations.payments');
     });
 
     // ------------------------------------------------------------ Admins (E5)
@@ -133,6 +145,11 @@ Route::prefix('v1')->name('v1.')->group(function () {
                 Route::get('participations', [AdminCampaignController::class, 'participations'])->can('campaigns.view')->name('participations');
                 Route::get('events', [AdminCampaignController::class, 'events'])->can('campaigns.view')->name('events');
             });
+
+            // Payments (E9)
+            Route::get('payments', [AdminPaymentController::class, 'index'])->can('payments.view')->name('payments.index');
+            Route::get('payments/{payment}', [AdminPaymentController::class, 'show'])->whereUuid('payment')
+                ->can('payments.view')->name('payments.show');
         });
     });
 });

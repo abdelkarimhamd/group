@@ -48,6 +48,9 @@ return [
     'moyasar' => [
         'driver' => env('MOYASAR_DRIVER', 'fake'),
         'publishable_key' => env('MOYASAR_PUBLISHABLE_KEY', 'pk_test_fake'),
+        // The secret token set on the webhook in the Moyasar dashboard. Empty
+        // means every webhook fails verification.
+        'webhook_secret' => env('MOYASAR_WEBHOOK_SECRET', ''),
         // Where Moyasar sends the customer after the payment form.
         'callback_base_url' => env('WEB_URL', 'http://localhost:3000'),
     ],

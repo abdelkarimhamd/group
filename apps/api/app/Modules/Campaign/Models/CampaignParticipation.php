@@ -8,6 +8,7 @@ use App\Modules\Identity\Models\Address;
 use App\Modules\Identity\Models\User;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -124,12 +125,14 @@ class CampaignParticipation extends Model
     }
 
     /**
-     * The latest payment attempt.
+     * The latest payment attempt (a second hold found for the same form,
+     * which is only voided, does not count).
      *
      * @return HasOne<PaymentAuthorization, $this>
      */
     public function latestPayment(): HasOne
     {
-        return $this->hasOne(PaymentAuthorization::class, 'participation_id')->latestOfMany();
+        return $this->hasOne(PaymentAuthorization::class, 'participation_id')
+            ->ofMany(['id' => 'max'], fn (Builder $query) => $query->attempts());
     }
 }

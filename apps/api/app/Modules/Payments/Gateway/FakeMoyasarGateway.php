@@ -30,11 +30,11 @@ final class FakeMoyasarGateway implements PaymentGateway
     public function fetch(string $providerPaymentId): ProviderPayment
     {
         if (preg_match(self::PATTERN, $providerPaymentId, $match) !== 1) {
-            throw new GatewayException("Unknown fake payment [{$providerPaymentId}].");
+            throw new ProviderPaymentNotFound("Unknown fake payment [{$providerPaymentId}].");
         }
 
         $payment = PaymentAuthorization::query()->where('uuid', $match[2])->first()
-            ?? throw new GatewayException("Unknown fake payment [{$providerPaymentId}].");
+            ?? throw new ProviderPaymentNotFound("Unknown fake payment [{$providerPaymentId}].");
 
         $authorized = $match[1] === 'authorized';
         $status = match (true) {

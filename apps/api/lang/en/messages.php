@@ -55,6 +55,10 @@ return [
         'sold_out' => 'Not enough units are left for this quantity.',
         'campaign_not_joinable' => 'This group buy is no longer open.',
         'per_customer_limit_exceeded' => 'This is more than one customer can buy in this group buy.',
+        'provider_payment_mismatch' => 'That payment does not match this order. Please try paying again.',
+        'reservation_expired' => 'Your reserved units were released. Join again to try another card.',
+        'payment_in_progress' => 'Your last payment is still being processed. Wait for it to finish before trying another card.',
+        'payment_provider_unavailable' => 'We could not check your payment right now. We will update it shortly.',
     ],
 
     'sms' => [
