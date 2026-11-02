@@ -1,11 +1,18 @@
 <?php
 
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Modules\Catalog\Http\Controllers\AdminCategoryController;
+use App\Modules\Catalog\Http\Controllers\AdminProductController;
+use App\Modules\Catalog\Http\Controllers\AdminProductImageController;
+use App\Modules\Catalog\Http\Controllers\AdminVariantController;
+use App\Modules\Catalog\Http\Controllers\CategoryController;
 use App\Modules\Identity\Http\Controllers\AccountController;
 use App\Modules\Identity\Http\Controllers\AddressController;
 use App\Modules\Identity\Http\Controllers\AdminAccountsController;
 use App\Modules\Identity\Http\Controllers\AdminAuthController;
 use App\Modules\Identity\Http\Controllers\CustomerAuthController;
+use App\Modules\Supplier\Http\Controllers\AdminQuotationController;
+use App\Modules\Supplier\Http\Controllers\AdminSupplierController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -15,6 +22,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('v1.')->group(function () {
     Route::get('health', HealthController::class)->name('health');
+
+    // ------------------------------------------------------------ Catalog (E6)
+    Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
 
     // ------------------------------------------------------------ Customers (E5)
     Route::post('auth/otp', [CustomerAuthController::class, 'requestOtp'])
@@ -54,6 +64,46 @@ Route::prefix('v1')->name('v1.')->group(function () {
             Route::post('admins', [AdminAccountsController::class, 'store'])->can('admins.manage')->name('admins.store');
             Route::patch('admins/{admin}', [AdminAccountsController::class, 'update'])->whereUuid('admin')
                 ->can('admins.manage')->name('admins.update');
+
+            // Catalog (E6)
+            Route::get('categories', [AdminCategoryController::class, 'index'])->can('catalog.view')->name('categories.index');
+            Route::post('categories', [AdminCategoryController::class, 'store'])->can('catalog.edit')->name('categories.store');
+            Route::patch('categories/{category}', [AdminCategoryController::class, 'update'])->whereUuid('category')
+                ->can('catalog.edit')->name('categories.update');
+
+            Route::get('products', [AdminProductController::class, 'index'])->can('catalog.view')->name('products.index');
+            Route::post('products', [AdminProductController::class, 'store'])->can('catalog.edit')->name('products.store');
+            Route::get('products/{product}', [AdminProductController::class, 'show'])->whereUuid('product')
+                ->can('catalog.view')->name('products.show');
+            Route::patch('products/{product}', [AdminProductController::class, 'update'])->whereUuid('product')
+                ->can('catalog.edit')->name('products.update');
+            Route::post('products/{product}/variants', [AdminVariantController::class, 'store'])->whereUuid('product')
+                ->can('catalog.edit')->name('variants.store');
+            Route::patch('variants/{variant}', [AdminVariantController::class, 'update'])->whereUuid('variant')
+                ->can('catalog.edit')->name('variants.update');
+            Route::post('products/{product}/images', [AdminProductImageController::class, 'store'])->whereUuid('product')
+                ->can('catalog.edit')->name('product-images.store');
+            Route::delete('product-images/{image}', [AdminProductImageController::class, 'destroy'])->whereUuid('image')
+                ->can('catalog.edit')->name('product-images.destroy');
+
+            // Suppliers and quotations (E6)
+            Route::get('suppliers', [AdminSupplierController::class, 'index'])->can('suppliers.view')->name('suppliers.index');
+            Route::post('suppliers', [AdminSupplierController::class, 'store'])->can('suppliers.edit')->name('suppliers.store');
+            Route::get('suppliers/{supplier}', [AdminSupplierController::class, 'show'])->whereUuid('supplier')
+                ->can('suppliers.view')->name('suppliers.show');
+            Route::patch('suppliers/{supplier}', [AdminSupplierController::class, 'update'])->whereUuid('supplier')
+                ->can('suppliers.edit')->name('suppliers.update');
+            Route::post('suppliers/{supplier}/review', [AdminSupplierController::class, 'review'])->whereUuid('supplier')
+                ->can('suppliers.approve')->name('suppliers.review');
+
+            Route::get('quotations', [AdminQuotationController::class, 'index'])->can('suppliers.view')->name('quotations.index');
+            Route::post('quotations', [AdminQuotationController::class, 'store'])->can('suppliers.edit')->name('quotations.store');
+            Route::get('quotations/{quotation}', [AdminQuotationController::class, 'show'])->whereUuid('quotation')
+                ->can('suppliers.view')->name('quotations.show');
+            Route::patch('quotations/{quotation}', [AdminQuotationController::class, 'update'])->whereUuid('quotation')
+                ->can('suppliers.edit')->name('quotations.update');
+            Route::post('quotations/{quotation}/attachment', [AdminQuotationController::class, 'attach'])->whereUuid('quotation')
+                ->can('suppliers.edit')->name('quotations.attachment');
         });
     });
 });

@@ -96,4 +96,14 @@ return [
         'max_addresses' => 20,
     ],
 
+    'media' => [
+        // Product photos are public. Supplier quotation files are private and
+        // shown through short-lived signed links.
+        'disk' => env('MEDIA_DISK', 'public'),
+        'documents_disk' => env('DOCUMENTS_DISK', 'local'),
+        'image_max_kb' => 10240,
+        'attachment_max_kb' => 20480,
+        'attachment_url_minutes' => 30,
+    ],
+
 ];
