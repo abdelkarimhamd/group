@@ -191,9 +191,55 @@ class PurchaseOrdersTest extends TestCase
             ->assertJsonPath('data.fx_rate_to_sar', '1.00000000')
             ->assertJsonPath('data.total_sar.amount_minor', 160000);
 
-        // Back to dollars: the old rate no longer applies.
-        $this->admin('patch', $uri, ['currency' => 'USD'])->assertOk()->assertJsonPath('data.fx_rate_to_sar', null)->assertJsonPath('data.total_sar', null);
+        // A SAR order's rate stays 1, even when only the rate is sent.
+        $this->admin('patch', $uri, ['fx_rate_to_sar' => '3.75'])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'sar_rate_must_be_one')
+            ->assertJsonValidationErrors('fx_rate_to_sar');
+
+        // Back to dollars: the total must come in dollars, the old rate no
+        // longer applies, and the lines keep the currency the supplier quoted.
+        $this->admin('patch', $uri, ['currency' => 'USD'])->assertUnprocessable()->assertJsonValidationErrors('total_minor');
+        $this->admin('patch', $uri, ['currency' => 'USD', 'total_minor' => 11800])
+            ->assertOk()
+            ->assertJsonPath('data.total.amount_minor', 11800)
+            ->assertJsonPath('data.total.currency', 'USD')
+            ->assertJsonPath('data.fx_rate_to_sar', null)
+            ->assertJsonPath('data.total_sar', null)
+            ->assertJsonPath('data.lines.0.unit_cost.amount_minor', 28000)
+            ->assertJsonPath('data.lines.0.unit_cost.currency', 'CNY');
         $this->admin('patch', $uri, ['fx_rate_to_sar' => '0'])->assertUnprocessable()->assertJsonValidationErrors('fx_rate_to_sar');
+    }
+
+    #[Test]
+    public function step_dates_never_go_backwards_and_the_payment_date_can_be_corrected(): void
+    {
+        $this->paidJoin($this->campaign, 3);
+        $this->captureAll($this->campaign);
+        $order = SupplierPurchaseOrder::query()->sole();
+        $uri = "/api/v1/admin/purchase-orders/{$order->uuid}";
+        $this->admin('patch', $uri, ['alibaba_order_ref' => 'ALI-1'])->assertOk();
+
+        // No payment date before the order is paid.
+        $this->admin('patch', $uri, ['paid_at' => now()->subDay()->toIso8601ZuluString()])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'purchase_order_not_paid')
+            ->assertJsonValidationErrors('paid_at');
+
+        $this->advance($order, ['status' => 'placed', 'occurred_at' => now()->subDays(2)->toIso8601ZuluString()])->assertOk();
+        $this->advance($order, ['status' => 'paid', 'occurred_at' => now()->subDays(3)->toIso8601ZuluString()])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'step_date_out_of_order')
+            ->assertJsonValidationErrors('occurred_at');
+        $this->advance($order, ['status' => 'paid', 'occurred_at' => now()->subDay()->toIso8601ZuluString()])->assertOk();
+
+        // Corrected later, but never to before the order was placed.
+        $this->admin('patch', $uri, ['paid_at' => now()->subDays(3)->toIso8601ZuluString()])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'step_date_out_of_order');
+        $corrected = now()->subHours(30)->startOfSecond()->toIso8601ZuluString();
+        $this->admin('patch', $uri, ['paid_at' => $corrected])->assertOk()->assertJsonPath('data.paid_at', $corrected);
+        $this->assertSame($corrected, $order->fresh()->paid_at->toIso8601ZuluString());
     }
 
     #[Test]

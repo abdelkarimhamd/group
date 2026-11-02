@@ -70,6 +70,9 @@ return [
         'purchase_order_incomplete' => 'سجّل رقم طلب علي بابا وسعر الصرف أولًا، ورقم تتبع الشحن قبل الشحن.',
         'shipment_exists' => 'لهذا الطلب شحنة بالفعل.',
         'receipt_lines_mismatch' => 'سجّل كل صنف في أمر الشراء مرة واحدة فقط، ولا شيء غيره.',
+        'sar_rate_must_be_one' => 'سعر الصرف لطلب بالريال هو 1.',
+        'purchase_order_not_paid' => 'سجّل تاريخ الدفع بعد دفع الطلب.',
+        'step_date_out_of_order' => 'هذا التاريخ أقدم من خطوة مر بها الطلب.',
         'payment_provider_unavailable' => 'تعذّر التحقق من الدفع الآن. سنحدّثه قريبًا.',
     ],
 
