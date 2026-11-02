@@ -46,10 +46,14 @@ return [
         // Decision 5: campaigns run for 7 days.
         'duration_days' => 7,
 
-        // Decision 3: one extension, and only if the new deadline stays at
+        // Decision 3: one extension (campaigns.extended_at records it, so the
+        // limit is not configurable), and only if the new deadline stays at
         // least this many days before the earliest active hold expires.
-        'max_extensions' => 1,
         'extension_buffer_days' => 3,
+
+        // The supplier must confirm the order this long before the capture
+        // deadline (capture_by), shown to admins as supplier_decision_due_at.
+        'supplier_decision_lead_hours' => 24,
 
         // Units are reserved while the customer is on the payment form.
         'reservation_minutes' => (int) env('GROUPBUY_RESERVATION_MINUTES', 15),

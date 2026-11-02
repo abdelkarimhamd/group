@@ -141,7 +141,7 @@ final class AdminCampaignController extends AdminController
         $page = $model->events()
             ->with(CampaignEventResource::RELATIONS)
             ->orderBy('id')
-            ->cursorPaginate((int) $request->validated('per_page', 50));
+            ->cursorPaginate((int) $request->validated('per_page', 20));
 
         return CursorPage::response($page, CampaignEventResource::class);
     }

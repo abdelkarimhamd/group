@@ -59,9 +59,11 @@ final class CampaignController extends Controller
         $data = Cache::remember(
             'campaign-progress:'.$campaign,
             (int) config('groupbuy.campaigns.progress_cache_seconds'),
+            // Plain arrays only: a real cache store serializes what it keeps,
+            // and value objects such as Money would not come back whole.
             fn (): ?array => ($model = self::visible()->with('currentTiers')->where('uuid', $campaign)->first()) === null
                 ? null
-                : Progress::of($model),
+                : json_decode(json_encode(Progress::of($model), JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR),
         );
 
         abort_if($data === null, 404);

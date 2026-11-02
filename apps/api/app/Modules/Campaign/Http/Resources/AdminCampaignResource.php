@@ -66,7 +66,7 @@ class AdminCampaignResource extends JsonResource
             'final_unit_price' => $this->final_unit_price_halalas === null ? null : Money::sar($this->final_unit_price_halalas),
             'capture_by' => $this->capture_by?->toIso8601ZuluString(),
             'supplier_decision_due_at' => $awaitingSupplier && $this->capture_by !== null
-                ? $this->capture_by->subHours(24)->toIso8601ZuluString()
+                ? $this->capture_by->subHours((int) config('groupbuy.campaigns.supplier_decision_lead_hours'))->toIso8601ZuluString()
                 : null,
             'captured_qty' => $this->captured_qty,
             'end_reason' => $this->end_reason,

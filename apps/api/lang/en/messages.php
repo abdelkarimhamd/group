@@ -37,6 +37,7 @@ return [
         'quotation_not_usable' => 'This quote was rejected or has expired. Choose another quote.',
         'quotation_not_for_variants' => 'This quote covers one variant only, so the campaign can only sell that variant.',
         'variant_not_in_product' => 'One of the chosen variants does not belong to this product.',
+        'variant_not_active' => 'One of the chosen variants is archived. Choose active variants only.',
         'tiers_missing' => 'Add price tiers first.',
         'tiers_gap' => 'The price tiers leave a gap. Each tier must start right after the one before it.',
         'tiers_overlap' => 'Two price tiers overlap. Each quantity must fall in exactly one tier.',

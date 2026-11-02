@@ -550,6 +550,25 @@ class AdminCampaignsTest extends TestCase
         $this->withToken($support)->postJson("/api/v1/admin/campaigns/{$campaign->uuid}/cancel", ['reason' => 'No'])->assertForbidden();
     }
 
+    #[Test]
+    public function archived_variants_cannot_be_put_on_sale(): void
+    {
+        $quotation = $this->quotation();
+        $archived = ProductVariant::factory()->archived()->for($quotation->product)->create();
+
+        $this->withToken($this->token)->postJson('/api/v1/admin/campaigns', $this->input($quotation, ['product_variant_ids' => [$archived->uuid]]))
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'variant_not_active');
+
+        // A variant archived after the draft was made stops it going to review.
+        $campaign = Campaign::factory()->withTiers()->create();
+        $campaign->variants()->firstOrFail()->forceFill(['status' => 'archived'])->save();
+
+        $this->withToken($this->token)->postJson("/api/v1/admin/campaigns/{$campaign->uuid}/submit")
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 'variant_not_active');
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>

@@ -11,6 +11,7 @@ use App\Modules\Campaign\Events\CampaignProgressChanged;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Models\CampaignPriceTier;
+use App\Modules\Catalog\Enums\VariantStatus;
 use App\Modules\Identity\Models\User;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
@@ -71,17 +72,31 @@ class Joins
             throw new ApiException(403, 'privacy_consent_required');
         }
 
-        $variantId = $campaign->variants()->where('product_variants.uuid', $input['product_variant_id'])->value('product_variants.id')
+        // A variant archived after approval is no longer sold.
+        $variantId = $campaign->variants()
+            ->where('product_variants.uuid', $input['product_variant_id'])
+            ->where('product_variants.status', VariantStatus::Active)
+            ->value('product_variants.id')
             ?? throw ApiException::unprocessable('variant_not_in_campaign', 'product_variant_id');
 
         $address = $user->addresses()->where('uuid', $input['delivery_address_id'])->first()
             ?? throw ApiException::unprocessable('address_not_found', 'delivery_address_id');
 
+        $snapshot = $address->only([
+            'recipient_name', 'recipient_phone', 'city', 'district', 'street', 'building_no',
+            'postal_code', 'additional_no', 'short_address', 'lat', 'lng',
+        ]) + ['id' => $address->uuid];
+
         try {
-            $participation = DB::transaction(fn (): CampaignParticipation => $this->reserve($user, $campaign, (int) $variantId, $address->only([
-                'recipient_name', 'recipient_phone', 'city', 'district', 'street', 'building_no',
-                'postal_code', 'additional_no', 'short_address', 'lat', 'lng',
-            ]) + ['id' => $address->uuid], $address->id, $input));
+            $participation = DB::transaction(function () use ($user, $campaign, $variantId, $snapshot, $address, $input): CampaignParticipation {
+                // Copies of one join sent at once wait here for each other, so
+                // a retry finds the first instead of failing the unit or
+                // per-customer checks against the first one's reservation.
+                DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', ['join:'.$user->id.':'.$input['client_request_id']]);
+
+                return $this->earlier($user, $campaign, $input['client_request_id'])
+                    ?? $this->reserve($user, $campaign, (int) $variantId, $snapshot, $address->id, $input);
+            });
         } catch (UniqueConstraintViolationException $e) {
             // The same join retried at the same moment: answer with the one that won.
             return $this->earlier($user, $campaign, $input['client_request_id']) ?? throw $e;
@@ -96,8 +111,9 @@ class Joins
      * closing when the maximum is reached. Runs inside the caller's
      * transaction.
      *
-     * Returns false when the join can no longer count, because the
-     * participation is no longer waiting for payment or the campaign is past
+     * Returns true when the join counts, now or already (the same hold
+     * confirmed twice changes nothing). Returns false when the join can no
+     * longer count, because the participation ended or the campaign is past
      * settling its in-flight joins. Any units it still reserved are released
      * then (which voids an authorized hold after commit); for a join that had
      * already ended, the caller must release the hold itself.
@@ -112,6 +128,10 @@ class Joins
 
         $campaign = Campaign::query()->whereKey($participation->campaign_id)->lockForUpdate()->firstOrFail();
         $participation = CampaignParticipation::query()->whereKey($participation->id)->lockForUpdate()->firstOrFail();
+
+        if ($participation->status === ParticipationStatus::Authorized) {
+            return true;
+        }
 
         if ($participation->status !== ParticipationStatus::PendingPayment) {
             return false;
@@ -160,7 +180,9 @@ class Joins
 
         $priceAfter = $tiers->current($campaign->committed_qty);
 
-        if ($priceAfter->unitPriceHalalas !== $priceBefore->unitPriceHalalas) {
+        // Recorded whenever the current tier changes, even to one at the same
+        // price, so the event log shows every tier the campaign reached.
+        if ($priceAfter->minQty !== $priceBefore->minQty) {
             $this->events->record($campaign, CampaignEvents::PRICE_CHANGED, $actor, [
                 'from_unit_price_halalas' => $priceBefore->unitPriceHalalas,
                 'to_unit_price_halalas' => $priceAfter->unitPriceHalalas,
@@ -169,7 +191,9 @@ class Joins
             ]);
         }
 
-        if ($campaign->committed_qty === $campaign->max_qty) {
+        // A late payment counted while closing settles its joins can fill the
+        // campaign too, but closing has already started for the deadline.
+        if ($campaign->status === CampaignStatus::Active && $campaign->committed_qty === $campaign->max_qty) {
             $this->events->record($campaign, CampaignEvents::MAX_REACHED, $actor, ['max_qty' => $campaign->max_qty]);
             $this->lifecycle->enterClosing($campaign, $actor);
         }

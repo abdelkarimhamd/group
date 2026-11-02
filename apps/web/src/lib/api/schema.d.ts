@@ -992,7 +992,8 @@ export interface paths {
          *     and its supplier must not be blocked. A quotation for one variant can
          *     only price a campaign for that variant. Errors are 422 with codes
          *     `quotation_not_for_product`, `quotation_not_usable`, `supplier_blocked`,
-         *     `variant_not_in_product` or `quotation_not_for_variants`.
+         *     `variant_not_in_product`, `variant_not_active` (an archived variant)
+         *     or `quotation_not_for_variants`.
          */
         post: operations["adminCreateCampaign"];
         delete?: never;
@@ -2389,6 +2390,7 @@ export interface components {
             min_target_qty: number;
             /** @description Must be at least `min_target_qty`. */
             max_qty: number;
+            /** @description At most `max_qty`. */
             per_customer_max_qty?: number | null;
             /**
              * Format: date-time
@@ -3547,8 +3549,8 @@ export interface operations {
                 };
             };
             /**
-             * @description `per_customer_limit_exceeded`, `variant_not_in_campaign`,
-             *     `address_not_found`, a `client_request_id` already used for another
+             * @description `per_customer_limit_exceeded`, `variant_not_in_campaign` (not in
+             *     this campaign, or archived), `address_not_found`, a `client_request_id` already used for another
              *     campaign, or invalid input.
              */
             422: {
@@ -5054,7 +5056,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
-            /** @description `tiers_missing`, a tier error (`tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`), `landed_cost_missing`, `supplier_not_approved`, `quotation_not_usable` or `product_not_active`. */
+            /** @description `tiers_missing`, a tier error (`tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`), `landed_cost_missing`, `supplier_not_approved`, `quotation_not_usable`, `product_not_active` or `variant_not_active`. */
             422: {
                 headers: {
                     [name: string]: unknown;

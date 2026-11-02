@@ -31,9 +31,9 @@ final class CursorPage
     /**
      * Validation rules for the `cursor` and `per_page` query parameters. A
      * cursor must decode to exactly the columns the list orders by: an
-     * integer `id` and, for lists sorted by something else first, a string
-     * for each other column. Anything else is refused here instead of
-     * reaching the database.
+     * integer `id` and, for lists sorted by a timestamp first, a valid
+     * timestamp for each other column. Anything else is refused here instead
+     * of reaching the database.
      *
      * @param  list<string>  $columns  The list's order columns, ending with `id`.
      * @return array<string, list<mixed>>
@@ -64,7 +64,7 @@ final class CursorPage
             $valid = $cursor !== null && $keys === $expected && is_int($parameters['id'] ?? null);
 
             foreach ($columns as $column) {
-                if ($column !== 'id' && ! is_string($parameters[$column] ?? null)) {
+                if ($column !== 'id' && ! self::isTimestamp($parameters[$column] ?? null)) {
                     $valid = false;
                 }
             }
@@ -73,5 +73,17 @@ final class CursorPage
                 $fail(__('validation.regex', ['attribute' => $attribute]));
             }
         };
+    }
+
+    /**
+     * An ISO 8601 date and time as the paginator writes it, with a real date.
+     */
+    private static function isTimestamp(mixed $value): bool
+    {
+        if (! is_string($value) || preg_match('/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d{1,6})?(Z|[+-]\d{2}:?\d{2})?$/', $value, $m) !== 1) {
+            return false;
+        }
+
+        return checkdate((int) $m[2], (int) $m[3], (int) $m[1]) && (int) $m[4] < 24 && (int) $m[5] < 60 && (int) $m[6] < 60;
     }
 }

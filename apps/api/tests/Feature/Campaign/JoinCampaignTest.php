@@ -121,6 +121,20 @@ class JoinCampaignTest extends TestCase
     }
 
     #[Test]
+    public function a_variant_archived_after_approval_is_no_longer_sold(): void
+    {
+        $variant = $this->campaign->variants()->firstOrFail();
+        $variant->forceFill(['status' => 'archived'])->save();
+
+        $this->getJson("/api/v1/campaigns/{$this->campaign->uuid}")->assertOk()->assertJsonPath('data.variants', []);
+        $this->withToken($this->token)->postJson($this->url(), $this->joinInput($this->campaign, $this->address, ['product_variant_id' => $variant->uuid]))
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'variant_not_in_campaign');
+
+        $this->assertSame(0, $this->campaign->refresh()->reserved_qty);
+    }
+
+    #[Test]
     public function a_price_the_customer_did_not_see_is_never_held(): void
     {
         $this->withToken($this->token)->postJson($this->url(), $this->joinInput($this->campaign, $this->address, ['shown_unit_price_halalas' => 10500]))

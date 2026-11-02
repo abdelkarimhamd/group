@@ -3,6 +3,7 @@
 namespace App\Modules\Campaign\Http\Resources;
 
 use App\Modules\Campaign\Models\Campaign;
+use App\Modules\Catalog\Enums\VariantStatus;
 use App\Modules\Catalog\Http\Resources\CategoryResource;
 use App\Modules\Catalog\Models\ProductImage;
 use App\Modules\Catalog\Models\ProductVariant;
@@ -33,7 +34,8 @@ class CampaignDetailResource extends CampaignSummaryResource
         return parent::toArray($request) + [
             'description' => (string) ($locale === 'en' ? $this->product->description_en : $this->product->description_ar),
             'category' => $category === null ? null : CategoryResource::make($category)->resolve($request),
-            'variants' => $this->variants->map(fn (ProductVariant $variant) => self::variant($variant))->all(),
+            // Archived variants are no longer sold, so customers do not see them.
+            'variants' => $this->variants->where('status', VariantStatus::Active)->values()->map(fn (ProductVariant $variant) => self::variant($variant))->all(),
             'images' => $this->product->images
                 ->sortBy([['sort_order', 'asc'], ['id', 'asc']])
                 ->map(fn (ProductImage $image) => self::image($image))

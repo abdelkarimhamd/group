@@ -111,6 +111,32 @@ class ConcurrentJoinsTest extends TestCase
     }
 
     #[Test]
+    public function the_same_join_retried_at_once_is_found_even_at_the_customers_limit(): void
+    {
+        $campaign = $this->campaign(maxQty: 100, perCustomerMax: 2);
+        $customer = $this->customers(1)[0];
+        $requestId = (string) Str::uuid();
+
+        $results = $this->inParallel(array_fill(0, 6, fn () => $this->join($customer, $campaign, 2, $requestId)));
+
+        $this->assertSame(array_fill(0, 6, 'joined:'.CampaignParticipation::sole()->uuid), $results);
+        $this->assertSame(2, $campaign->refresh()->reserved_qty);
+    }
+
+    #[Test]
+    public function the_same_join_retried_at_once_is_found_even_for_the_last_units(): void
+    {
+        $campaign = $this->campaign(maxQty: 2);
+        $customer = $this->customers(1)[0];
+        $requestId = (string) Str::uuid();
+
+        $results = $this->inParallel(array_fill(0, 6, fn () => $this->join($customer, $campaign, 2, $requestId)));
+
+        $this->assertSame(array_fill(0, 6, 'joined:'.CampaignParticipation::sole()->uuid), $results);
+        $this->assertSame(2, $campaign->refresh()->reserved_qty);
+    }
+
+    #[Test]
     public function payments_completing_at_once_fill_the_campaign_and_close_it_once(): void
     {
         $campaign = $this->campaign(maxQty: 10, minTarget: 4);
