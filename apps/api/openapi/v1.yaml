@@ -691,9 +691,10 @@ paths:
       operationId: cancelMyParticipation
       summary: Cancel a join before close
       description: |
-        Allowed while `can_cancel` is true: the campaign is `active` and the
-        deal is not yet confirmed (proposed rule, open question Q16). The hold
-        is released and the units go back on sale.
+        Allowed while `can_cancel` is true: the campaign is `active`, its
+        deadline has not passed and the deal is not yet confirmed (proposed
+        rule, open question Q16). The hold is released and the units go back
+        on sale.
       x-epic: E11
       x-status: live
       security: [{customerToken: []}]
@@ -714,6 +715,7 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
 
   /me/participations/{participation_id}/payments:
     parameters:

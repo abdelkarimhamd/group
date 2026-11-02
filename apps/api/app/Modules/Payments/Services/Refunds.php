@@ -51,7 +51,7 @@ final class Refunds
 
             $order = CustomerOrder::query()->where('payment_authorization_id', $payment->id)->first();
 
-            if (($input['customer_order_id'] ?? null) !== null && $order?->uuid !== $input['customer_order_id']) {
+            if (($input['customer_order_id'] ?? null) !== null && $order?->uuid !== strtolower($input['customer_order_id'])) {
                 throw ApiException::unprocessable('order_not_for_payment', 'customer_order_id');
             }
 

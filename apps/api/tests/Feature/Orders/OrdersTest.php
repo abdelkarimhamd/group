@@ -7,12 +7,14 @@ use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Services\Closing;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
+use App\Modules\Orders\Services\Invoices;
 use App\Modules\Orders\Support\ZatcaQr;
 use App\Modules\Payments\Jobs\CapturePayment;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\ClosesCampaigns;
 use Tests\TestCase;
@@ -174,5 +176,31 @@ class OrdersTest extends TestCase
         $this->forgetAuthenticatedUsers();
 
         return $this->withToken($token);
+    }
+
+    #[Test]
+    public function production_will_not_start_with_the_placeholder_seller_of_record(): void
+    {
+        config(['groupbuy.seller.legal_name_en' => 'Group Buying Co.']);
+        Invoices::assertSellerConfigured();
+
+        foreach ([
+            ['groupbuy.seller.vat_number' => '300000000000003'],
+            ['groupbuy.seller.vat_number' => '31012345670000'],
+            ['groupbuy.seller.legal_name_ar' => 'اسم البائع غير محدد'],
+            ['groupbuy.seller.legal_name_en' => ' '],
+        ] as $placeholder) {
+            $configured = config('groupbuy.seller');
+            config($placeholder);
+
+            try {
+                Invoices::assertSellerConfigured();
+                $this->fail('Accepted '.json_encode($placeholder));
+            } catch (LogicException $e) {
+                $this->assertStringContainsString('GROUPBUY_SELLER_VAT_NUMBER', $e->getMessage());
+            } finally {
+                config(['groupbuy.seller' => $configured]);
+            }
+        }
     }
 }

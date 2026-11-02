@@ -11,6 +11,7 @@ use App\Support\Audit\StatusHistory;
 use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
+use LogicException;
 
 /**
  * VAT invoices (spec, Orders and invoices: invoices). The company is the
@@ -24,6 +25,17 @@ use Illuminate\Support\Str;
  */
 final class Invoices
 {
+    /**
+     * The defaults in config/groupbuy.php, which mark invoices made before
+     * the real registration exists. 300000000000003 has the shape of a
+     * real VAT number, so nothing else would flag it.
+     */
+    private const PLACEHOLDERS = [
+        'legal_name_ar' => 'اسم البائع غير محدد',
+        'legal_name_en' => 'Seller name not set',
+        'vat_number' => '300000000000003',
+    ];
+
     public function __construct(
         private readonly DocumentNumbers $numbers,
         private readonly StatusHistory $history,
@@ -75,6 +87,28 @@ final class Invoices
         $this->history->record($invoice, null, 'issued', $actor);
 
         return $invoice;
+    }
+
+    /**
+     * Production never issues a tax invoice with the placeholder seller:
+     * invoices cannot be changed, so each one would need a credit note.
+     * Checked when the app boots, because an invoice is issued after the
+     * money is taken and must not fail then.
+     *
+     * @throws LogicException
+     */
+    public static function assertSellerConfigured(): void
+    {
+        $seller = self::seller();
+        $unset = array_keys(array_filter(
+            self::PLACEHOLDERS,
+            fn (string $placeholder, string $field) => trim($seller[$field]) === '' || $seller[$field] === $placeholder,
+            ARRAY_FILTER_USE_BOTH,
+        ));
+
+        if ($unset !== [] || preg_match('/^3\d{13}3$/', $seller['vat_number']) !== 1) {
+            throw new LogicException('Set the seller of record for VAT invoices (GROUPBUY_SELLER_NAME_AR, GROUPBUY_SELLER_NAME_EN and GROUPBUY_SELLER_VAT_NUMBER, a 15-digit number starting and ending in 3) before running in production.');
+        }
     }
 
     /**
