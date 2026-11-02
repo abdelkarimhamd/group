@@ -8,6 +8,7 @@ use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Services\Closing;
+use App\Modules\Orders\Services\Invoices;
 use App\Modules\Orders\Services\Orders;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
@@ -62,6 +63,16 @@ class Captures
     {
         if (app('db.transactions')->callbackApplicableTransactions()->isNotEmpty()) {
             throw new LogicException('Never call the payment provider inside a database transaction.');
+        }
+
+        // Each capture issues a tax invoice that can never change, so in
+        // production no money is taken while the seller of record is still
+        // the placeholder. The job retries, and the closing sweep sends it
+        // again, until the settings are fixed.
+        if (app()->isProduction() && ($problem = Invoices::sellerProblem()) !== null) {
+            Log::critical('payments.capture.seller_not_configured', ['payment' => $payment->uuid]);
+
+            throw new LogicException($problem);
         }
 
         $payment->refresh();
