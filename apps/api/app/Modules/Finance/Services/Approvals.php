@@ -15,8 +15,8 @@ use LogicException;
  * Opening requests for a second admin's approval (spec: an admin action
  * that moves money needs a second admin with the finance role). Only one
  * request of a type waits per subject: asking again returns the one that
- * is already waiting. Deciding and carrying out requests comes with the
- * finance epic (E15).
+ * is already waiting. Decisions approves or rejects them and carries
+ * out what was approved.
  */
 class Approvals
 {

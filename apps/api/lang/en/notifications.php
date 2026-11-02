@@ -45,4 +45,8 @@ return [
         'title' => 'Delivered',
         'body' => 'Order :order was delivered. You can return unused items until :return_by.',
     ],
+    'refunded' => [
+        'title' => 'Refund sent',
+        'body' => 'We refunded :amount SAR for order :order to your card. Your bank may take up to 14 days to show it.',
+    ],
 ];

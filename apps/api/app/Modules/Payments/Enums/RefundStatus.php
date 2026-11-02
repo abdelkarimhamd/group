@@ -4,8 +4,9 @@ namespace App\Modules\Payments\Enums;
 
 /**
  * pending_approval -> approved -> processing -> succeeded | failed, or
- * pending_approval -> rejected. Sending approved refunds to Moyasar comes
- * with finance (E15).
+ * pending_approval -> rejected. A refund made by an approved campaign
+ * cancellation starts approved. App\Modules\Payments\Services\Refunds
+ * sends approved ones to Moyasar.
  */
 enum RefundStatus: string
 {

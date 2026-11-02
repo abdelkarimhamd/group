@@ -171,6 +171,11 @@ class VoidingHoldsTest extends TestCase
             {
                 throw new LogicException('Unexpected capture.');
             }
+
+            public function refund(string $providerPaymentId, int $amountHalalas, string $idempotencyKey): GatewayResult
+            {
+                throw new LogicException('Unexpected refund.');
+            }
         };
 
         $this->app->instance(PaymentGateway::class, $gateway);

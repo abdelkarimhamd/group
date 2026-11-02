@@ -33,4 +33,11 @@ interface PaymentGateway
      * @throws GatewayException when the outcome is unknown (timeout, provider down)
      */
     public function capture(string $providerPaymentId, int $amountHalalas, string $idempotencyKey): GatewayResult;
+
+    /**
+     * Return part or all of a captured payment to the card.
+     *
+     * @throws GatewayException when the outcome is unknown (timeout, provider down)
+     */
+    public function refund(string $providerPaymentId, int $amountHalalas, string $idempotencyKey): GatewayResult;
 }

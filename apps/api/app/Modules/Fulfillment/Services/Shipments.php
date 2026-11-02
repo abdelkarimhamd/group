@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Modules\Campaign\Enums\CampaignStatus;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Services\CampaignLifecycle;
+use App\Modules\Finance\Services\Ledger;
 use App\Modules\Fulfillment\Enums\ShipmentStatus;
 use App\Modules\Fulfillment\Models\Shipment;
 use App\Modules\Fulfillment\Models\ShipmentEvent;
@@ -38,6 +39,7 @@ final class Shipments
         private readonly StatusHistory $history,
         private readonly AuditLogger $audit,
         private readonly Notifier $notifier,
+        private readonly Ledger $ledger,
     ) {}
 
     /**
@@ -204,6 +206,7 @@ final class Shipments
         $order->return_window_ends_at = $at->addDays((int) config('groupbuy.orders.return_window_days'));
         $order->save();
         $this->history->record($order, OrderStatus::Shipped, OrderStatus::Delivered, $actor);
+        $this->ledger->recogniseRevenue($order, $actor);
         $this->notifier->send($order->user()->firstOrFail(), NotificationTemplate::Delivered, $order, [
             'order' => $order->order_number,
             'return_by_at' => $order->return_window_ends_at->toIso8601ZuluString(),
