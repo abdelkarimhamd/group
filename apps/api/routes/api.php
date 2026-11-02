@@ -49,6 +49,7 @@ Route::prefix('v1')->name('v1.')->group(function () {
                 ->middleware('throttle:admin-password')->name('me.password');
 
             // Each route checks the permission its contract operation names in x-permission.
+            Route::get('roles', [AdminAccountsController::class, 'roles'])->can('admins.manage')->name('roles.index');
             Route::get('admins', [AdminAccountsController::class, 'index'])->can('admins.manage')->name('admins.index');
             Route::post('admins', [AdminAccountsController::class, 'store'])->can('admins.manage')->name('admins.store');
             Route::patch('admins/{admin}', [AdminAccountsController::class, 'update'])->whereUuid('admin')

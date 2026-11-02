@@ -1016,6 +1016,34 @@ paths:
         '429': {$ref: '#/components/responses/TooManyRequests'}
 
   # ---------------------------------------------------------------- Admin users
+  /admin/roles:
+    get:
+      tags: [Admin users]
+      operationId: adminListRoles
+      summary: Roles, the permissions each grants, and whether you can grant it
+      description: |
+        For the admins screen. You can grant a role only when you hold every
+        one of its permissions (`grantable`); otherwise the API answers 403
+        `cannot_grant_role`.
+      x-epic: E5
+      x-status: live
+      x-permission: admins.manage
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: Every role.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminRole'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
   /admin/admins:
     get:
       tags: [Admin users]
@@ -3561,6 +3589,18 @@ components:
     AdminRoleName:
       type: string
       enum: [super_admin, sourcing, campaign_manager, finance, operations, support]
+
+    AdminRole:
+      type: object
+      required: [name, permissions, grantable]
+      properties:
+        name: {$ref: '#/components/schemas/AdminRoleName'}
+        permissions:
+          type: array
+          items: {$ref: '#/components/schemas/AdminPermission'}
+        grantable:
+          type: boolean
+          description: Whether the signed-in admin holds every permission of this role, and so can grant it.
 
     AdminPermission:
       type: string

@@ -177,6 +177,23 @@ class AdminAccountsTest extends TestCase
     }
 
     #[Test]
+    public function the_roles_list_says_which_roles_you_can_grant(): void
+    {
+        $roles = collect($this->withToken($this->token)->getJson('/api/v1/admin/roles')->assertOk()->json('data'))->keyBy('name');
+
+        $this->assertCount(6, $roles);
+        $this->assertFalse($roles['finance']['grantable']);
+        $this->assertTrue($roles['super_admin']['grantable']);
+        $this->assertTrue($roles['support']['grantable']);
+        $this->assertContains('approvals.decide', $roles['finance']['permissions']);
+        $this->assertNotContains('approvals.decide', $roles['super_admin']['permissions']);
+
+        [, $support] = $this->adminWithToken(AdminRole::Support);
+        $this->forgetAuthenticatedUsers();
+        $this->withToken($support)->getJson('/api/v1/admin/roles')->assertForbidden();
+    }
+
+    #[Test]
     public function nobody_grants_a_role_with_permissions_they_lack(): void
     {
         // super_admin lacks approvals.decide, which only finance holds.

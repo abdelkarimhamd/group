@@ -18,6 +18,7 @@ The full list, including endpoints that so far exist only on the mock server, is
 | POST | `/api/v1/admin/auth/logout` | Revoke the current admin token |
 | GET | `/api/v1/admin/me` | The admin, with roles and permissions |
 | POST | `/api/v1/admin/me/password` | Change your own password; your other sessions end |
+| GET | `/api/v1/admin/roles` | Roles, their permissions and whether you can grant each (`admins.manage`) |
 | GET, POST | `/api/v1/admin/admins` | List and add admins (`admins.manage`) |
 | PATCH | `/api/v1/admin/admins/{admin_id}` | Change an admin's details, roles or status, or reset their password (`admins.manage`) |
 | GET | `/up` | Laravel's liveness check (not part of the contract) |

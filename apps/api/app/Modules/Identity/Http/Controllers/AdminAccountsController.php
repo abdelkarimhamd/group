@@ -10,7 +10,9 @@ use App\Modules\Identity\Http\Requests\ListAdminsRequest;
 use App\Modules\Identity\Http\Requests\UpdateAdminRequest;
 use App\Modules\Identity\Http\Resources\AdminUserResource;
 use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Identity\Permissions\AdminPermissions;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * Admin accounts, for admins with admins.manage (checked on the routes).
@@ -28,6 +30,26 @@ final class AdminAccountsController extends Controller
             ->cursorPaginate((int) $request->validated('per_page', 20));
 
         return CursorPage::response($page, AdminUserResource::class);
+    }
+
+    /**
+     * Every role with its permissions, and whether the caller can grant it.
+     */
+    public function roles(Request $request): JsonResponse
+    {
+        $held = $request->user()->getAllPermissions()->pluck('name')->all();
+        $roles = [];
+
+        foreach (AdminPermissions::roles() as $name => $permissions) {
+            sort($permissions);
+            $roles[] = [
+                'name' => $name,
+                'permissions' => $permissions,
+                'grantable' => array_diff($permissions, $held) === [],
+            ];
+        }
+
+        return response()->json(['data' => $roles]);
     }
 
     public function store(CreateAdminRequest $request): JsonResponse
