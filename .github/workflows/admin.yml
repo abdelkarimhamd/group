@@ -1,0 +1,42 @@
+name: Admin portal
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "apps/admin/**"
+      - "apps/api/openapi/**"
+      - ".github/workflows/admin.yml"
+
+concurrency:
+  group: admin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+
+      - run: npm ci
+
+      # The generated API types must match apps/api/openapi/v1.yaml, so a
+      # contract change that breaks the portal fails here.
+      - name: API types match the contract
+        run: npm run api:check
+
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build

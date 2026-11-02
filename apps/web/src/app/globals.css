@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-plex-arabic), ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #effcf9;
+  --color-brand-100: #c8f5ec;
+  --color-brand-200: #93e9da;
+  --color-brand-500: #14a38b;
+  --color-brand-600: #0d8571;
+  --color-brand-700: #0f6b5d;
+  --color-brand-800: #11564c;
+  --color-brand-900: #123f39;
+
+  --color-deal-50: #fff8eb;
+  --color-deal-100: #feeac7;
+  --color-deal-500: #f59e0b;
+  --color-deal-700: #b45309;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-slate-50);
+  color: var(--color-slate-900);
+}
+
+/* Numbers, codes and phone numbers read left to right inside Arabic text. */
+.ltr-nums {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
