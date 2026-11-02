@@ -2,30 +2,34 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
+        // Customers. They sign in with a Saudi mobile number and an SMS code, so
+        // there is no password. An anonymized account (PDPL erasure) loses its
+        // phone number, which frees the number for a new account.
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->rememberToken();
-            $table->timestamps();
+            $table->uuid('uuid')->unique();
+            $table->string('phone_e164', 16)->nullable()->unique();
+            $table->timestampTz('phone_verified_at')->nullable();
+            $table->string('name', 100)->nullable();
+            $table->string('email', 191)->nullable();
+            $table->string('locale', 2)->default('ar');
+            $table->string('status', 16)->default('active');
+            $table->timestampTz('last_login_at')->nullable();
+            $table->timestampTz('anonymized_at')->nullable();
+            $table->timestampsTz();
         });
 
-        Schema::create('password_reset_tokens', function (Blueprint $table) {
-            $table->string('email')->primary();
-            $table->string('token');
-            $table->timestamp('created_at')->nullable();
-        });
+        DB::statement("ALTER TABLE users ADD CONSTRAINT users_locale_check CHECK (locale IN ('ar', 'en'))");
+        DB::statement("ALTER TABLE users ADD CONSTRAINT users_status_check CHECK (status IN ('active', 'blocked', 'anonymized'))");
+        DB::statement("ALTER TABLE users ADD CONSTRAINT users_phone_check CHECK (phone_e164 ~ '^\\+9665[0-9]{8}$')");
+        DB::statement("ALTER TABLE users ADD CONSTRAINT users_anonymized_check CHECK ((status = 'anonymized') = (anonymized_at IS NOT NULL) AND (status <> 'anonymized' OR phone_e164 IS NULL))");
 
         Schema::create('sessions', function (Blueprint $table) {
             $table->string('id')->primary();
@@ -37,13 +41,9 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::dropIfExists('users');
-        Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('sessions');
+        Schema::dropIfExists('users');
     }
 };

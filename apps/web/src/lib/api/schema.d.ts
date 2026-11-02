@@ -36,7 +36,9 @@ export interface paths {
         /**
          * Send a sign-in code by SMS
          * @description Starts sign-in or sign-up. Sends a 6-digit code that expires after
-         *     5 minutes. Limited per phone number and per IP; a 429 says when to retry.
+         *     5 minutes. One code per number per minute, 5 per number per hour and
+         *     20 per IP per hour; a 429 says when to retry. An earlier code stays
+         *     valid until it expires, so a slow SMS still works after a resend.
          */
         post: operations["requestOtp"];
         delete?: never;
@@ -76,7 +78,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke the current token */
+        /**
+         * Revoke the current token
+         * @description Other devices stay signed in. Tokens otherwise last 90 days.
+         */
         post: operations["logout"];
         delete?: never;
         options?: never;
@@ -115,7 +120,8 @@ export interface paths {
          * Record consent to the privacy policy (PDPL)
          * @description Required before the first join. Stores the policy version and the time.
          *     Call again when `User.privacy_consent.policy_version` is older than
-         *     `current_privacy_policy_version`.
+         *     `current_privacy_policy_version`. Accepting the same version twice is
+         *     harmless.
          */
         post: operations["acceptPrivacyPolicy"];
         delete?: never;
@@ -134,7 +140,10 @@ export interface paths {
         /** Saved delivery addresses */
         get: operations["listAddresses"];
         put?: never;
-        /** Add a delivery address */
+        /**
+         * Add a delivery address
+         * @description The first address becomes the default. Sending `is_default` true makes the new address the default instead of the old one. Up to 20 addresses.
+         */
         post: operations["createAddress"];
         delete?: never;
         options?: never;
@@ -154,13 +163,20 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a delivery address */
+        /**
+         * Remove a delivery address
+         * @description If it was the default, the most recently added remaining address becomes the default.
+         */
         delete: operations["deleteAddress"];
         options?: never;
         head?: never;
         /**
          * Change a delivery address
-         * @description Orders keep a copy of the address they were shipped to, so editing never changes past orders.
+         * @description Send the whole address: optional fields left out are cleared.
+         *     `is_default: true` makes this the default address. The default only
+         *     moves to another address, so `false` (or leaving it out) never unsets
+         *     it. Orders keep a copy of the address they were shipped to, so editing
+         *     never changes past orders.
          */
         patch: operations["updateAddress"];
         trace?: never;
@@ -482,6 +498,7 @@ export interface paths {
         /**
          * Admin sign-in, step 1 of 2
          * @description Checks email and password, then sends a code to the admin's phone.
+         *     Limited to 5 attempts per email and IP, and 20 per IP, every 15 minutes.
          */
         post: operations["adminLogin"];
         delete?: never;
@@ -499,7 +516,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Admin sign-in, step 2 of 2 */
+        /**
+         * Admin sign-in, step 2 of 2
+         * @description Returns a token that lasts 12 hours. After 5 wrong codes, start again from step 1.
+         */
         post: operations["adminVerify"];
         delete?: never;
         options?: never;
@@ -542,6 +562,107 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/admin/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change your own password
+         * @description Needs the current password. Signs out the admin's other sessions; the
+         *     token used for this call keeps working. Limited to 5 tries every 15 minutes.
+         */
+        post: operations["changeAdminPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Roles, the permissions each grants, and whether you can grant it
+         * @description For the admins screen. You can grant a role only when you hold every
+         *     one of its permissions (`grantable`); otherwise the API answers 403
+         *     `cannot_grant_role`.
+         */
+        get: operations["adminListRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admins */
+        get: operations["adminListAdmins"];
+        put?: never;
+        /**
+         * Add an admin
+         * @description The new admin signs in with this email and password, then a code
+         *     texted to `phone`. Each admin needs their own phone number.
+         *
+         *     You can only grant roles whose permissions you hold yourself
+         *     (403 `cannot_grant_role`). A super admin therefore cannot create a
+         *     finance admin here; that is done on the server with `admin:create`.
+         */
+        post: operations["adminCreateAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admins/{admin_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admin_id: components["parameters"]["AdminId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change an admin's details, roles or status, or reset their password
+         * @description Send only the fields to change. Blocking an admin, setting a new
+         *     password or changing their phone signs them out everywhere and cancels
+         *     any sign-in in progress. Nobody can change their own roles, status or
+         *     password here (`cannot_change_own_access`); use
+         *     `POST /admin/me/password` for your own password.
+         *
+         *     You can only grant roles whose permissions you hold yourself
+         *     (403 `cannot_grant_role`). An admin who holds a permission you lack,
+         *     such as a finance admin for a super admin, can only be blocked here;
+         *     any other change answers 403 `cannot_manage_admin` and is done on the
+         *     server with `admin:update`.
+         */
+        patch: operations["adminUpdateAdmin"];
         trace?: never;
     };
     "/admin/categories": {
@@ -733,10 +854,35 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update or review a supplier
-         * @description Setting `status` to `approved` records the reviewer and time. Only approved suppliers can back a campaign.
+         * Update a supplier's details
+         * @description Approving or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
          */
         patch: operations["adminUpdateSupplier"];
+        trace?: never;
+    };
+    "/admin/suppliers/{supplier_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplier_id: components["parameters"]["SupplierId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve, block or reopen a supplier
+         * @description Records the decision, the reviewer and the time. Only approved
+         *     suppliers can back a campaign. Kept apart from editing so that the
+         *     people who add suppliers (`suppliers.edit`) and the people who approve
+         *     them (`suppliers.approve`) can be different.
+         */
+        post: operations["adminReviewSupplier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/admin/quotations": {
@@ -878,7 +1024,7 @@ export interface paths {
         };
         /**
          * Margin per tier against the 15% floor
-         * @description What the approval screen shows. Approval is blocked when any tier fails, unless a `super_admin` overrides.
+         * @description What the approval screen shows. Approval is blocked when any tier fails, unless an admin with `campaigns.override_margin` approves with a reason.
          */
         get: operations["adminGetCampaignMargin"];
         put?: never;
@@ -924,7 +1070,8 @@ export interface paths {
          * @description Needs `campaigns.approve`. Locks tiers, target and maximum, sets
          *     `deadline_at = starts_at + 7 days` (moving `starts_at` to now if it has
          *     passed), and schedules the campaign. A failing margin check returns 422
-         *     `margin_below_floor` unless `override_reason` is sent by a `super_admin`.
+         *     `margin_below_floor` unless `override_reason` is sent, which needs
+         *     `campaigns.override_margin`.
          */
         post: operations["adminApproveCampaign"];
         delete?: never;
@@ -1590,8 +1737,8 @@ export interface components {
             lat?: number | null;
             /** Format: double */
             lng?: number | null;
-            /** @default false */
-            is_default: boolean;
+            /** @description True makes this the default address. The first address is always the default. */
+            is_default?: boolean;
         };
         Address: {
             /** Format: uuid */
@@ -1931,21 +2078,80 @@ export interface components {
             token_type: "Bearer";
             admin: components["schemas"]["AdminUser"];
         };
+        /** @enum {string} */
+        AdminRoleName: "super_admin" | "sourcing" | "campaign_manager" | "finance" | "operations" | "support";
+        AdminRole: {
+            name: components["schemas"]["AdminRoleName"];
+            permissions: components["schemas"]["AdminPermission"][];
+            /** @description Whether the signed-in admin holds every permission of this role, and so can grant it. */
+            grantable: boolean;
+        };
+        /**
+         * @description What an admin may do. Each admin operation names the one it needs in
+         *     `x-permission`. `approvals.decide` belongs to finance only, not to
+         *     super_admin, so releasing money always takes finance; nobody can grant
+         *     a role with permissions they lack, so a super admin cannot make
+         *     themselves finance.
+         * @enum {string}
+         */
+        AdminPermission: "catalog.view" | "catalog.edit" | "suppliers.view" | "suppliers.edit" | "suppliers.approve" | "campaigns.view" | "campaigns.edit" | "pricing.edit" | "campaigns.approve" | "campaigns.override_margin" | "campaigns.extend" | "campaigns.cancel" | "campaigns.close" | "payments.view" | "refunds.request" | "approvals.view" | "approvals.decide" | "orders.view" | "fulfilment.edit" | "purchasing.view" | "purchasing.edit" | "reconciliation.view" | "reconciliation.resolve" | "audit.view" | "admins.manage";
         AdminUser: {
             /** Format: uuid */
             id: string;
             /** Format: email */
             email: string;
+            /** @example Sara Alqahtani */
             name: string;
-            roles: ("super_admin" | "sourcing" | "campaign_manager" | "finance" | "operations" | "support")[];
+            /** @description Receives the sign-in codes. */
+            phone: components["schemas"]["SaudiMobile"];
+            /** @enum {string} */
+            status: "active" | "blocked";
             /**
              * @example [
-             *       "campaigns.approve",
-             *       "pricing.edit",
-             *       "refunds.approve"
+             *       "finance"
              *     ]
              */
-            permissions: string[];
+            roles: components["schemas"]["AdminRoleName"][];
+            /**
+             * @description Everything the admin's roles allow. Use this, not role names, to decide what to show.
+             * @example [
+             *       "approvals.decide",
+             *       "approvals.view",
+             *       "campaigns.approve",
+             *       "campaigns.view",
+             *       "payments.view"
+             *     ]
+             */
+            permissions: components["schemas"]["AdminPermission"][];
+            /** Format: date-time */
+            last_login_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AdminCreateInput: {
+            /** Format: email */
+            email: string;
+            /** @example Sara Alqahtani */
+            name: string;
+            phone: components["schemas"]["SaudiMobile"];
+            roles: components["schemas"]["AdminRoleName"][];
+            /**
+             * Format: password
+             * @description Share it with the new admin privately. They can change it with `POST /admin/me/password`.
+             */
+            password: string;
+        };
+        AdminUpdateInput: {
+            name?: string;
+            phone?: components["schemas"]["SaudiMobile"];
+            roles?: components["schemas"]["AdminRoleName"][];
+            /** @enum {string} */
+            status?: "active" | "blocked";
+            /**
+             * Format: password
+             * @description Sets a new password, for an admin who forgot theirs.
+             */
+            password?: string;
         };
         AdminCategoryInput: {
             slug: string;
@@ -2022,6 +2228,12 @@ export interface components {
             contact_name?: string | null;
             /** @example Alibaba chat */
             contact_channel?: string | null;
+            quality_rating?: number | null;
+            review_notes?: string | null;
+        };
+        SupplierReviewInput: {
+            /** @enum {string} */
+            status: "prospect" | "approved" | "blocked";
             quality_rating?: number | null;
             review_notes?: string | null;
         };
@@ -2689,6 +2901,7 @@ export interface components {
         /** @description `meta.next_cursor` from the previous page. */
         Cursor: string;
         PerPage: number;
+        AdminId: string;
         AddressId: string;
         CampaignId: string;
         CategoryId: string;
@@ -2793,6 +3006,15 @@ export interface operations {
             };
             422: components["responses"]["ValidationFailed"];
             429: components["responses"]["TooManyRequests"];
+            /** @description `sms_unavailable`: the code could not be sent. Try again in a few minutes. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     verifyOtp: {
@@ -2834,7 +3056,8 @@ export interface operations {
             };
             /**
              * @description Wrong or expired code (`code`: `otp_invalid`, `otp_expired`,
-             *     `otp_attempts_exhausted`), or invalid input.
+             *     `otp_attempts_exhausted`), a suspended account (`account_blocked`),
+             *     or invalid input.
              */
             422: {
                 headers: {
@@ -2950,7 +3173,15 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            422: components["responses"]["ValidationFailed"];
+            /** @description `privacy_policy_outdated` when `policy_version` is not the current version, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
         };
     };
     listAddresses: {
@@ -3001,7 +3232,15 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
-            422: components["responses"]["ValidationFailed"];
+            /** @description `address_limit_reached`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
         };
     };
     deleteAddress: {
@@ -3564,7 +3803,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description `invalid_credentials` or `account_blocked`. */
+            /** @description `invalid_credentials` or `account_blocked`. `account_blocked` is only returned after a correct password. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3574,6 +3813,15 @@ export interface operations {
                 };
             };
             429: components["responses"]["TooManyRequests"];
+            /** @description `sms_unavailable`: the code could not be sent. Try again in a few minutes. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     adminVerify: {
@@ -3604,7 +3852,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description `otp_invalid`, `otp_expired` or `otp_attempts_exhausted`. */
+            /** @description `otp_invalid`, `otp_expired`, `otp_attempts_exhausted`, or `account_blocked` if the admin was blocked after step 1. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -3658,6 +3906,185 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
         };
     };
+    changeAdminPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: password */
+                    current_password: string;
+                    /** Format: password */
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Password changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `invalid_credentials` when the current password is wrong, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    adminListRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminRole"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminListAdmins: {
+        parameters: {
+            query?: {
+                /** @description Only admins with this status. All admins when left out. */
+                status?: "active" | "blocked";
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of admins, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminUser"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminCreateAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminUser"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` without `admins.manage`, or `cannot_grant_role`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminUpdateAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admin_id: components["parameters"]["AdminId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description The admin after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminUser"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` without `admins.manage`, `cannot_grant_role` or `cannot_manage_admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `cannot_change_own_access`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
     adminListCategories: {
         parameters: {
             query?: never;
@@ -3679,6 +4106,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminCreateCategory: {
@@ -3771,6 +4199,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminCreateProduct: {
@@ -3827,6 +4256,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4019,6 +4449,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminCreateSupplier: {
@@ -4073,6 +4504,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4087,14 +4519,43 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SupplierInput"] & {
-                    /** @enum {string} */
-                    status?: "prospect" | "approved" | "blocked";
-                };
+                "application/json": components["schemas"]["SupplierInput"];
             };
         };
         responses: {
             /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Supplier"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminReviewSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplier_id: components["parameters"]["SupplierId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierReviewInput"];
+            };
+        };
+        responses: {
+            /** @description The supplier after the decision. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4140,6 +4601,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminCreateQuotation: {
@@ -4194,6 +4656,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4301,6 +4764,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminCreateCampaign: {
@@ -4355,6 +4819,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4457,6 +4922,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             /** @description `tiers_missing` or `landed_cost_missing`. */
             409: {
@@ -4508,7 +4974,7 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    /** @description Only for a `super_admin` approving below the margin floor. Audited. */
+                    /** @description Only for approving below the margin floor; needs `campaigns.override_margin`. Audited. */
                     override_reason?: string | null;
                 };
             };
@@ -4576,6 +5042,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4737,6 +5204,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4768,6 +5236,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4801,6 +5270,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminGetPayment: {
@@ -4826,6 +5296,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -4856,6 +5327,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminRequestRefund: {
@@ -4922,6 +5394,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminApproveRequest: {
@@ -5015,6 +5488,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminGetOrder: {
@@ -5040,6 +5514,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -5143,6 +5618,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminGetPurchaseOrder: {
@@ -5168,6 +5644,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -5301,6 +5778,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminListReconciliationItems: {
@@ -5332,6 +5810,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

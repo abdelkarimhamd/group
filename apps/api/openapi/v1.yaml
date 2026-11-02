@@ -10,6 +10,11 @@ info:
     - `x-epic`: the backlog epic that ships it.
     - `x-status`: `live` when the Laravel API serves it, `mock` while only the
       mock server does. A contract test keeps this honest in both directions.
+    - `x-permission` (admin operations): the permission the admin needs, from
+      `AdminUser.permissions`. Without it the API answers 403 `forbidden`. The
+      admin portal hides actions the signed-in admin lacks.
+      `x-field-permissions` names an extra permission needed to send a
+      particular field, on top of `x-permission`.
 
     ## Conventions
 
@@ -27,7 +32,10 @@ info:
       `{"data": [...], "meta": {"next_cursor": ..., "per_page": ...}}`; pass
       `cursor` to get the next page. `/health` is unwrapped.
     - **Errors.** `{"message": "...", "code": "..."}`, plus `errors` (field to
-      messages) on 422. `message` is localized; branch on `code`.
+      messages) on 422. `message` is localized; branch on `code`. Every endpoint
+      may return `unauthenticated` (401), `forbidden` (403), `not_found` (404),
+      `validation_failed` (422) and `too_many_requests` (429, with `Retry-After`);
+      endpoint-specific codes are listed with each response.
     - **Tracing.** Every response has `X-Request-Id`. Send your own (8-64 of
       `A-Z a-z 0-9 . _ -`) to correlate client and server logs.
 
@@ -78,6 +86,8 @@ tags:
     description: Called by providers, never by clients.
   - name: Admin auth
     description: Admin sign-in with password plus SMS code.
+  - name: Admin users
+    description: Admin accounts and their roles.
   - name: Admin catalog
     description: Products, variants, photos and categories.
   - name: Admin suppliers
@@ -140,9 +150,11 @@ paths:
       summary: Send a sign-in code by SMS
       description: |
         Starts sign-in or sign-up. Sends a 6-digit code that expires after
-        5 minutes. Limited per phone number and per IP; a 429 says when to retry.
+        5 minutes. One code per number per minute, 5 per number per hour and
+        20 per IP per hour; a 429 says when to retry. An earlier code stays
+        valid until it expires, so a slow SMS still works after a resend.
       x-epic: E5
-      x-status: mock
+      x-status: live
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -166,6 +178,11 @@ paths:
                   data: {$ref: '#/components/schemas/OtpChallenge'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503':
+          description: '`sms_unavailable`: the code could not be sent. Try again in a few minutes.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
 
   /auth/otp/verify:
     post:
@@ -177,7 +194,7 @@ paths:
         `Authorization: Bearer <token>`. After 5 wrong codes the challenge is
         spent and a new code is needed.
       x-epic: E5
-      x-status: mock
+      x-status: live
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       requestBody:
@@ -208,7 +225,8 @@ paths:
         '422':
           description: |
             Wrong or expired code (`code`: `otp_invalid`, `otp_expired`,
-            `otp_attempts_exhausted`), or invalid input.
+            `otp_attempts_exhausted`), a suspended account (`account_blocked`),
+            or invalid input.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
@@ -219,8 +237,9 @@ paths:
       tags: [Auth]
       operationId: logout
       summary: Revoke the current token
+      description: Other devices stay signed in. Tokens otherwise last 90 days.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '204': {description: Signed out.}
@@ -233,7 +252,7 @@ paths:
       operationId: getMe
       summary: The signed-in customer
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '200':
@@ -251,7 +270,7 @@ paths:
       operationId: updateMe
       summary: Update name, email or language
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       requestBody:
         required: true
@@ -285,9 +304,10 @@ paths:
       description: |
         Required before the first join. Stores the policy version and the time.
         Call again when `User.privacy_consent.policy_version` is older than
-        `current_privacy_policy_version`.
+        `current_privacy_policy_version`. Accepting the same version twice is
+        harmless.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       requestBody:
         required: true
@@ -309,7 +329,11 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/User'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '422':
+          description: '`privacy_policy_outdated` when `policy_version` is not the current version, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /me/addresses:
     get:
@@ -317,7 +341,7 @@ paths:
       operationId: listAddresses
       summary: Saved delivery addresses
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '200':
@@ -336,8 +360,9 @@ paths:
       tags: [Account]
       operationId: createAddress
       summary: Add a delivery address
+      description: The first address becomes the default. Sending `is_default` true makes the new address the default instead of the old one. Up to 20 addresses.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       requestBody:
         required: true
@@ -355,7 +380,11 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/Address'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
-        '422': {$ref: '#/components/responses/ValidationFailed'}
+        '422':
+          description: '`address_limit_reached`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
 
   /me/addresses/{address_id}:
     parameters:
@@ -364,9 +393,14 @@ paths:
       tags: [Account]
       operationId: updateAddress
       summary: Change a delivery address
-      description: Orders keep a copy of the address they were shipped to, so editing never changes past orders.
+      description: |
+        Send the whole address: optional fields left out are cleared.
+        `is_default: true` makes this the default address. The default only
+        moves to another address, so `false` (or leaving it out) never unsets
+        it. Orders keep a copy of the address they were shipped to, so editing
+        never changes past orders.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       requestBody:
         required: true
@@ -390,8 +424,9 @@ paths:
       tags: [Account]
       operationId: deleteAddress
       summary: Remove a delivery address
+      description: If it was the default, the most recently added remaining address becomes the default.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{customerToken: []}]
       responses:
         '204': {description: Removed.}
@@ -844,9 +879,11 @@ paths:
       tags: [Admin auth]
       operationId: adminLogin
       summary: Admin sign-in, step 1 of 2
-      description: Checks email and password, then sends a code to the admin's phone.
+      description: |
+        Checks email and password, then sends a code to the admin's phone.
+        Limited to 5 attempts per email and IP, and 20 per IP, every 15 minutes.
       x-epic: E5
-      x-status: mock
+      x-status: live
       requestBody:
         required: true
         content:
@@ -868,19 +905,25 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/OtpChallenge'}
         '422':
-          description: '`invalid_credentials` or `account_blocked`.'
+          description: '`invalid_credentials` or `account_blocked`. `account_blocked` is only returned after a correct password.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
+        '503':
+          description: '`sms_unavailable`: the code could not be sent. Try again in a few minutes.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
 
   /admin/auth/verify:
     post:
       tags: [Admin auth]
       operationId: adminVerify
       summary: Admin sign-in, step 2 of 2
+      description: Returns a token that lasts 12 hours. After 5 wrong codes, start again from step 1.
       x-epic: E5
-      x-status: mock
+      x-status: live
       requestBody:
         required: true
         content:
@@ -902,7 +945,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/AdminSession'}
         '422':
-          description: '`otp_invalid`, `otp_expired` or `otp_attempts_exhausted`.'
+          description: '`otp_invalid`, `otp_expired`, `otp_attempts_exhausted`, or `account_blocked` if the admin was blocked after step 1.'
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ValidationError'}
@@ -914,7 +957,7 @@ paths:
       operationId: adminLogout
       summary: Revoke the admin token
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{adminToken: []}]
       responses:
         '204': {description: Signed out.}
@@ -927,7 +970,7 @@ paths:
       summary: The signed-in admin, with roles and permissions
       description: The portal hides actions the admin lacks permission for; the API enforces them anyway.
       x-epic: E5
-      x-status: mock
+      x-status: live
       security: [{adminToken: []}]
       responses:
         '200':
@@ -941,6 +984,188 @@ paths:
                   data: {$ref: '#/components/schemas/AdminUser'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
 
+  /admin/me/password:
+    post:
+      tags: [Admin auth]
+      operationId: changeAdminPassword
+      summary: Change your own password
+      description: |
+        Needs the current password. Signs out the admin's other sessions; the
+        token used for this call keeps working. Limited to 5 tries every 15 minutes.
+      x-epic: E5
+      x-status: live
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, password]
+              properties:
+                current_password: {type: string, format: password}
+                password: {type: string, format: password, minLength: 12, maxLength: 200}
+      responses:
+        '204': {description: Password changed.}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '422':
+          description: '`invalid_credentials` when the current password is wrong, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+
+  # ---------------------------------------------------------------- Admin users
+  /admin/roles:
+    get:
+      tags: [Admin users]
+      operationId: adminListRoles
+      summary: Roles, the permissions each grants, and whether you can grant it
+      description: |
+        For the admins screen. You can grant a role only when you hold every
+        one of its permissions (`grantable`); otherwise the API answers 403
+        `cannot_grant_role`.
+      x-epic: E5
+      x-status: live
+      x-permission: admins.manage
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: Every role.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminRole'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /admin/admins:
+    get:
+      tags: [Admin users]
+      operationId: adminListAdmins
+      summary: Admins
+      x-epic: E5
+      x-status: live
+      x-permission: admins.manage
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Only admins with this status. All admins when left out.
+          schema: {type: string, enum: [active, blocked]}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of admins, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/AdminUser'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+    post:
+      tags: [Admin users]
+      operationId: adminCreateAdmin
+      summary: Add an admin
+      description: |
+        The new admin signs in with this email and password, then a code
+        texted to `phone`. Each admin needs their own phone number.
+
+        You can only grant roles whose permissions you hold yourself
+        (403 `cannot_grant_role`). A super admin therefore cannot create a
+        finance admin here; that is done on the server with `admin:create`.
+      x-epic: E5
+      x-status: live
+      x-permission: admins.manage
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminCreateInput'}
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminUser'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403':
+          description: '`forbidden` without `admins.manage`, or `cannot_grant_role`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/admins/{admin_id}:
+    parameters:
+      - $ref: '#/components/parameters/AdminId'
+    patch:
+      tags: [Admin users]
+      operationId: adminUpdateAdmin
+      summary: Change an admin's details, roles or status, or reset their password
+      description: |
+        Send only the fields to change. Blocking an admin, setting a new
+        password or changing their phone signs them out everywhere and cancels
+        any sign-in in progress. Nobody can change their own roles, status or
+        password here (`cannot_change_own_access`); use
+        `POST /admin/me/password` for your own password.
+
+        You can only grant roles whose permissions you hold yourself
+        (403 `cannot_grant_role`). An admin who holds a permission you lack,
+        such as a finance admin for a super admin, can only be blocked here;
+        any other change answers 403 `cannot_manage_admin` and is done on the
+        server with `admin:update`.
+      x-epic: E5
+      x-status: live
+      x-permission: admins.manage
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminUpdateInput'}
+      responses:
+        '200':
+          description: The admin after the change.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminUser'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403':
+          description: '`forbidden` without `admins.manage`, `cannot_grant_role` or `cannot_manage_admin`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422':
+          description: '`cannot_change_own_access`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+
   # ---------------------------------------------------------------- Admin catalog
   /admin/categories:
     get:
@@ -949,6 +1174,7 @@ paths:
       summary: Categories
       x-epic: E6
       x-status: mock
+      x-permission: catalog.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -963,12 +1189,14 @@ paths:
                     type: array
                     items: {$ref: '#/components/schemas/AdminCategory'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
     post:
       tags: [Admin catalog]
       operationId: adminCreateCategory
       summary: Create a category
       x-epic: E6
       x-status: mock
+      x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -998,6 +1226,7 @@ paths:
       summary: Update a category
       x-epic: E6
       x-status: mock
+      x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1026,6 +1255,7 @@ paths:
       summary: Products
       x-epic: E6
       x-status: mock
+      x-permission: catalog.view
       security: [{adminToken: []}]
       parameters:
         - name: status
@@ -1051,6 +1281,7 @@ paths:
                     items: {$ref: '#/components/schemas/AdminProduct'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
     post:
       tags: [Admin catalog]
       operationId: adminCreateProduct
@@ -1058,6 +1289,7 @@ paths:
       description: Every product needs at least one variant; send them here or add them after.
       x-epic: E6
       x-status: mock
+      x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1094,6 +1326,7 @@ paths:
       summary: One product with variants and images
       x-epic: E6
       x-status: mock
+      x-permission: catalog.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -1106,6 +1339,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/AdminProduct'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
     patch:
       tags: [Admin catalog]
@@ -1113,6 +1347,7 @@ paths:
       summary: Update a product
       x-epic: E6
       x-status: mock
+      x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1143,6 +1378,7 @@ paths:
       summary: Add a variant
       x-epic: E6
       x-status: mock
+      x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1173,6 +1409,7 @@ paths:
       summary: Update a variant
       x-epic: E6
       x-status: mock
+      x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1203,6 +1440,7 @@ paths:
       summary: Upload a product photo
       x-epic: E6
       x-status: mock
+      x-permission: catalog.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1244,6 +1482,7 @@ paths:
       summary: Remove a product photo
       x-epic: E6
       x-status: mock
+      x-permission: catalog.edit
       security: [{adminToken: []}]
       responses:
         '204': {description: Removed.}
@@ -1259,6 +1498,7 @@ paths:
       summary: Suppliers
       x-epic: E6
       x-status: mock
+      x-permission: suppliers.view
       security: [{adminToken: []}]
       parameters:
         - name: status
@@ -1280,12 +1520,14 @@ paths:
                     items: {$ref: '#/components/schemas/Supplier'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
     post:
       tags: [Admin suppliers]
       operationId: adminCreateSupplier
       summary: Add a supplier
       x-epic: E6
       x-status: mock
+      x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1315,6 +1557,7 @@ paths:
       summary: One supplier
       x-epic: E6
       x-status: mock
+      x-permission: suppliers.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -1327,28 +1570,61 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/Supplier'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
     patch:
       tags: [Admin suppliers]
       operationId: adminUpdateSupplier
-      summary: Update or review a supplier
-      description: Setting `status` to `approved` records the reviewer and time. Only approved suppliers can back a campaign.
+      summary: Update a supplier's details
+      description: Approving or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
       x-epic: E6
       x-status: mock
+      x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              allOf:
-                - $ref: '#/components/schemas/SupplierInput'
-                - type: object
-                  properties:
-                    status: {type: string, enum: [prospect, approved, blocked]}
+            schema: {$ref: '#/components/schemas/SupplierInput'}
       responses:
         '200':
           description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/Supplier'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/suppliers/{supplier_id}/review:
+    parameters:
+      - $ref: '#/components/parameters/SupplierId'
+    post:
+      tags: [Admin suppliers]
+      operationId: adminReviewSupplier
+      summary: Approve, block or reopen a supplier
+      description: |
+        Records the decision, the reviewer and the time. Only approved
+        suppliers can back a campaign. Kept apart from editing so that the
+        people who add suppliers (`suppliers.edit`) and the people who approve
+        them (`suppliers.approve`) can be different.
+      x-epic: E6
+      x-status: mock
+      x-permission: suppliers.approve
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SupplierReviewInput'}
+      responses:
+        '200':
+          description: The supplier after the decision.
           content:
             application/json:
               schema:
@@ -1368,6 +1644,7 @@ paths:
       summary: Supplier quotations with landed cost
       x-epic: E6
       x-status: mock
+      x-permission: suppliers.view
       security: [{adminToken: []}]
       parameters:
         - name: supplier_id
@@ -1395,6 +1672,7 @@ paths:
                     items: {$ref: '#/components/schemas/Quotation'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
     post:
       tags: [Admin suppliers]
       operationId: adminCreateQuotation
@@ -1402,6 +1680,7 @@ paths:
       description: The landed cost per unit is the sum of the breakdown, computed by the server.
       x-epic: E6
       x-status: mock
+      x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1431,6 +1710,7 @@ paths:
       summary: One quotation
       x-epic: E6
       x-status: mock
+      x-permission: suppliers.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -1443,6 +1723,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/Quotation'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
     patch:
       tags: [Admin suppliers]
@@ -1451,6 +1732,7 @@ paths:
       description: Refused with 409 `quotation_frozen` once a campaign beyond `draft` uses it.
       x-epic: E6
       x-status: mock
+      x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1487,6 +1769,7 @@ paths:
       summary: Attach the quote PDF or screenshot
       x-epic: E6
       x-status: mock
+      x-permission: suppliers.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1521,6 +1804,7 @@ paths:
       summary: Campaigns in every status
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.view
       security: [{adminToken: []}]
       parameters:
         - name: status
@@ -1546,12 +1830,14 @@ paths:
                     items: {$ref: '#/components/schemas/AdminCampaign'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
     post:
       tags: [Admin campaigns]
       operationId: adminCreateCampaign
       summary: Create a draft campaign
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1581,6 +1867,7 @@ paths:
       summary: One campaign with tiers and closing progress
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -1593,6 +1880,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/AdminCampaign'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
     patch:
       tags: [Admin campaigns]
@@ -1601,6 +1889,7 @@ paths:
       description: Only in `draft`. Send the `lock_version` you read; a stale one returns 409 `stale_campaign`.
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1642,6 +1931,7 @@ paths:
         price must never rise with quantity. `reason` is required from version 2.
       x-epic: E8
       x-status: mock
+      x-permission: pricing.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1675,9 +1965,10 @@ paths:
       tags: [Admin campaigns]
       operationId: adminGetCampaignMargin
       summary: Margin per tier against the 15% floor
-      description: What the approval screen shows. Approval is blocked when any tier fails, unless a `super_admin` overrides.
+      description: What the approval screen shows. Approval is blocked when any tier fails, unless an admin with `campaigns.override_margin` approves with a reason.
       x-epic: E8
       x-status: mock
+      x-permission: campaigns.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -1690,6 +1981,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/MarginReport'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409':
           description: '`tiers_missing` or `landed_cost_missing`.'
@@ -1706,6 +1998,7 @@ paths:
       summary: Send a draft for approval
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.edit
       security: [{adminToken: []}]
       responses:
         '200': {$ref: '#/components/responses/AdminCampaignResult'}
@@ -1730,9 +2023,12 @@ paths:
         Needs `campaigns.approve`. Locks tiers, target and maximum, sets
         `deadline_at = starts_at + 7 days` (moving `starts_at` to now if it has
         passed), and schedules the campaign. A failing margin check returns 422
-        `margin_below_floor` unless `override_reason` is sent by a `super_admin`.
+        `margin_below_floor` unless `override_reason` is sent, which needs
+        `campaigns.override_margin`.
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.approve
+      x-field-permissions: {override_reason: campaigns.override_margin}
       security: [{adminToken: []}]
       requestBody:
         required: false
@@ -1745,7 +2041,7 @@ paths:
                   type: string
                   maxLength: 1000
                   nullable: true
-                  description: Only for a `super_admin` approving below the margin floor. Audited.
+                  description: Only for approving below the margin floor; needs `campaigns.override_margin`. Audited.
       responses:
         '200': {$ref: '#/components/responses/AdminCampaignResult'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
@@ -1767,6 +2063,7 @@ paths:
       summary: Send back to draft
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.approve
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1790,6 +2087,7 @@ paths:
       summary: Whether the deadline can be extended, and how far
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -1802,6 +2100,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/ExtensionWindow'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
 
   /admin/campaigns/{campaign_id}/extend:
@@ -1817,6 +2116,7 @@ paths:
         request returns 422 `extension_not_allowed` with the latest allowed date.
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.extend
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1852,6 +2152,7 @@ paths:
         request for a second admin with the finance role (202) instead.
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.cancel
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1888,6 +2189,7 @@ paths:
         every hold.
       x-epic: E10
       x-status: mock
+      x-permission: campaigns.close
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1912,6 +2214,7 @@ paths:
       description: Only while `closing_step` is `needs_admin` (captured units below target or supplier MOQ).
       x-epic: E10
       x-status: mock
+      x-permission: campaigns.close
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -1949,6 +2252,7 @@ paths:
       summary: Everyone who joined
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.view
       security: [{adminToken: []}]
       parameters:
         - name: status
@@ -1970,6 +2274,7 @@ paths:
                     items: {$ref: '#/components/schemas/AdminParticipation'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
 
   /admin/campaigns/{campaign_id}/events:
@@ -1981,6 +2286,7 @@ paths:
       summary: Campaign history, including every price change
       x-epic: E7
       x-status: mock
+      x-permission: campaigns.view
       security: [{adminToken: []}]
       parameters:
         - $ref: '#/components/parameters/Cursor'
@@ -1999,6 +2305,7 @@ paths:
                     items: {$ref: '#/components/schemas/CampaignEvent'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
 
   # ---------------------------------------------------------------- Admin payments, refunds, approvals
@@ -2010,6 +2317,7 @@ paths:
       description: '`expiring_within_days=3` gives the hold-expiry alert list.'
       x-epic: E9
       x-status: mock
+      x-permission: payments.view
       security: [{adminToken: []}]
       parameters:
         - name: status
@@ -2038,6 +2346,7 @@ paths:
                     items: {$ref: '#/components/schemas/AdminPayment'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
 
   /admin/payments/{payment_id}:
     parameters:
@@ -2048,6 +2357,7 @@ paths:
       summary: One payment with every provider call
       x-epic: E9
       x-status: mock
+      x-permission: payments.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -2060,6 +2370,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/AdminPayment'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
 
   /admin/refunds:
@@ -2069,6 +2380,7 @@ paths:
       summary: Refunds
       x-epic: E11
       x-status: mock
+      x-permission: payments.view
       security: [{adminToken: []}]
       parameters:
         - name: status
@@ -2090,6 +2402,7 @@ paths:
                     items: {$ref: '#/components/schemas/Refund'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
     post:
       tags: [Admin refunds and approvals]
       operationId: adminRequestRefund
@@ -2100,6 +2413,7 @@ paths:
         `pending_approval` until a second admin with the finance role approves.
       x-epic: E11
       x-status: mock
+      x-permission: refunds.request
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -2131,6 +2445,7 @@ paths:
       summary: Actions waiting for a second admin
       x-epic: E15
       x-status: mock
+      x-permission: approvals.view
       security: [{adminToken: []}]
       parameters:
         - name: status
@@ -2152,6 +2467,7 @@ paths:
                     items: {$ref: '#/components/schemas/ApprovalRequest'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
 
   /admin/approval-requests/{approval_request_id}/approve:
     parameters:
@@ -2163,6 +2479,7 @@ paths:
       description: The approver must hold the finance role and must not be the requester (403 `same_admin`).
       x-epic: E15
       x-status: mock
+      x-permission: approvals.decide
       security: [{adminToken: []}]
       responses:
         '200':
@@ -2188,6 +2505,7 @@ paths:
       summary: Reject with a reason
       x-epic: E15
       x-status: mock
+      x-permission: approvals.decide
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -2218,6 +2536,7 @@ paths:
       summary: Customer orders
       x-epic: E11
       x-status: mock
+      x-permission: orders.view
       security: [{adminToken: []}]
       parameters:
         - name: status
@@ -2246,6 +2565,7 @@ paths:
                     items: {$ref: '#/components/schemas/AdminOrder'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
 
   /admin/orders/{order_id}:
     parameters:
@@ -2256,6 +2576,7 @@ paths:
       summary: One order
       x-epic: E11
       x-status: mock
+      x-permission: orders.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -2268,6 +2589,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/AdminOrder'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
 
   /admin/orders/{order_id}/shipment:
@@ -2279,6 +2601,7 @@ paths:
       summary: Ship an order from the warehouse
       x-epic: E13
       x-status: mock
+      x-permission: fulfilment.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -2318,6 +2641,7 @@ paths:
       description: For couriers without a tracking API (open question Q11). `delivered` starts the 7-day return window.
       x-epic: E13
       x-status: mock
+      x-permission: fulfilment.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -2346,6 +2670,7 @@ paths:
       summary: Supplier purchase orders
       x-epic: E12
       x-status: mock
+      x-permission: purchasing.view
       security: [{adminToken: []}]
       parameters:
         - name: status
@@ -2367,6 +2692,7 @@ paths:
                     items: {$ref: '#/components/schemas/PurchaseOrder'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
 
   /admin/purchase-orders/{purchase_order_id}:
     parameters:
@@ -2377,6 +2703,7 @@ paths:
       summary: One purchase order with receipts
       x-epic: E12
       x-status: mock
+      x-permission: purchasing.view
       security: [{adminToken: []}]
       responses:
         '200':
@@ -2389,6 +2716,7 @@ paths:
                 properties:
                   data: {$ref: '#/components/schemas/PurchaseOrder'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
     patch:
       tags: [Admin purchasing]
@@ -2396,6 +2724,7 @@ paths:
       summary: Record Alibaba order details and freight
       x-epic: E12
       x-status: mock
+      x-permission: purchasing.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -2430,6 +2759,7 @@ paths:
         `received` is set by recording an inbound receipt.
       x-epic: E12
       x-status: mock
+      x-permission: purchasing.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -2468,6 +2798,7 @@ paths:
       description: Marks the purchase order `received`. Missing or damaged units are listed so the admin can pick the orders to refund.
       x-epic: E13
       x-status: mock
+      x-permission: fulfilment.edit
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -2498,6 +2829,7 @@ paths:
       summary: Daily reconciliation runs against Moyasar
       x-epic: E15
       x-status: mock
+      x-permission: reconciliation.view
       security: [{adminToken: []}]
       parameters:
         - $ref: '#/components/parameters/Cursor'
@@ -2516,6 +2848,7 @@ paths:
                     items: {$ref: '#/components/schemas/ReconciliationRun'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
 
   /admin/reconciliation-runs/{run_id}/items:
     parameters:
@@ -2529,6 +2862,7 @@ paths:
       summary: Mismatches found by one run
       x-epic: E15
       x-status: mock
+      x-permission: reconciliation.view
       security: [{adminToken: []}]
       parameters:
         - name: resolved
@@ -2550,6 +2884,7 @@ paths:
                     items: {$ref: '#/components/schemas/ReconciliationItem'}
                   meta: {$ref: '#/components/schemas/CursorMeta'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
 
   /admin/reconciliation-items/{item_id}/resolve:
@@ -2565,6 +2900,7 @@ paths:
       description: Any fix that moves money goes through an approval request; this only records the resolution.
       x-epic: E15
       x-status: mock
+      x-permission: reconciliation.resolve
       security: [{adminToken: []}]
       requestBody:
         required: true
@@ -2598,6 +2934,7 @@ paths:
       summary: Who did what
       x-epic: E2
       x-status: mock
+      x-permission: audit.view
       security: [{adminToken: []}]
       parameters:
         - name: subject_type
@@ -2670,6 +3007,11 @@ components:
       in: query
       required: false
       schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    AdminId:
+      name: admin_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     AddressId:
       name: address_id
       in: path
@@ -2907,7 +3249,9 @@ components:
         short_address: {type: string, pattern: '^[A-Z]{4}[0-9]{4}$', nullable: true, example: RRRD2929}
         lat: {type: number, format: double, minimum: -90, maximum: 90, nullable: true}
         lng: {type: number, format: double, minimum: -180, maximum: 180, nullable: true}
-        is_default: {type: boolean, default: false}
+        is_default:
+          type: boolean
+          description: True makes this the default address. The first address is always the default.
 
     Address:
       allOf:
@@ -3242,20 +3586,118 @@ components:
         token_type: {type: string, enum: [Bearer]}
         admin: {$ref: '#/components/schemas/AdminUser'}
 
+    AdminRoleName:
+      type: string
+      enum: [super_admin, sourcing, campaign_manager, finance, operations, support]
+
+    AdminRole:
+      type: object
+      required: [name, permissions, grantable]
+      properties:
+        name: {$ref: '#/components/schemas/AdminRoleName'}
+        permissions:
+          type: array
+          items: {$ref: '#/components/schemas/AdminPermission'}
+        grantable:
+          type: boolean
+          description: Whether the signed-in admin holds every permission of this role, and so can grant it.
+
+    AdminPermission:
+      type: string
+      description: |
+        What an admin may do. Each admin operation names the one it needs in
+        `x-permission`. `approvals.decide` belongs to finance only, not to
+        super_admin, so releasing money always takes finance; nobody can grant
+        a role with permissions they lack, so a super admin cannot make
+        themselves finance.
+      enum:
+        - catalog.view
+        - catalog.edit
+        - suppliers.view
+        - suppliers.edit
+        - suppliers.approve
+        - campaigns.view
+        - campaigns.edit
+        - pricing.edit
+        - campaigns.approve
+        - campaigns.override_margin
+        - campaigns.extend
+        - campaigns.cancel
+        - campaigns.close
+        - payments.view
+        - refunds.request
+        - approvals.view
+        - approvals.decide
+        - orders.view
+        - fulfilment.edit
+        - purchasing.view
+        - purchasing.edit
+        - reconciliation.view
+        - reconciliation.resolve
+        - audit.view
+        - admins.manage
+
     AdminUser:
       type: object
-      required: [id, email, name, roles, permissions]
+      required: [id, email, name, phone, status, roles, permissions, last_login_at, created_at]
       properties:
         id: {type: string, format: uuid}
         email: {type: string, format: email}
-        name: {type: string}
+        name: {type: string, example: Sara Alqahtani}
+        phone:
+          allOf:
+            - $ref: '#/components/schemas/SaudiMobile'
+          description: Receives the sign-in codes.
+        status: {type: string, enum: [active, blocked]}
         roles:
           type: array
-          items: {type: string, enum: [super_admin, sourcing, campaign_manager, finance, operations, support]}
+          items: {$ref: '#/components/schemas/AdminRoleName'}
+          example: [finance]
         permissions:
           type: array
-          items: {type: string}
-          example: [campaigns.approve, pricing.edit, refunds.approve]
+          description: Everything the admin's roles allow. Use this, not role names, to decide what to show.
+          items: {$ref: '#/components/schemas/AdminPermission'}
+          example: [approvals.decide, approvals.view, campaigns.approve, campaigns.view, payments.view]
+        last_login_at: {type: string, format: date-time, nullable: true}
+        created_at: {type: string, format: date-time}
+
+    AdminCreateInput:
+      type: object
+      required: [email, name, phone, roles, password]
+      properties:
+        email: {type: string, format: email, maxLength: 191}
+        name: {type: string, maxLength: 100, example: Sara Alqahtani}
+        phone: {$ref: '#/components/schemas/SaudiMobile'}
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/AdminRoleName'}
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 200
+          description: Share it with the new admin privately. They can change it with `POST /admin/me/password`.
+
+    AdminUpdateInput:
+      type: object
+      minProperties: 1
+      properties:
+        name: {type: string, maxLength: 100}
+        phone: {$ref: '#/components/schemas/SaudiMobile'}
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/AdminRoleName'}
+        status: {type: string, enum: [active, blocked]}
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 200
+          description: Sets a new password, for an admin who forgot theirs.
 
     AdminCategoryInput:
       type: object
@@ -3348,6 +3790,14 @@ components:
         country: {type: string, pattern: '^[A-Z]{2}$', example: CN}
         contact_name: {type: string, maxLength: 100, nullable: true}
         contact_channel: {type: string, maxLength: 200, nullable: true, example: 'Alibaba chat'}
+        quality_rating: {type: integer, minimum: 1, maximum: 5, nullable: true}
+        review_notes: {type: string, maxLength: 5000, nullable: true}
+
+    SupplierReviewInput:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [prospect, approved, blocked]}
         quality_rating: {type: integer, minimum: 1, maximum: 5, nullable: true}
         review_notes: {type: string, maxLength: 5000, nullable: true}
 

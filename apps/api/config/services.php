@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    // Sign-in codes. Only the "log" driver exists until a Saudi SMS provider
+    // is chosen; it writes messages to the log and refuses to run in production.
+    'sms' => [
+        'driver' => env('SMS_DRIVER', 'log'),
+        'log_channel' => env('SMS_LOG_CHANNEL'),
+    ],
+
 ];

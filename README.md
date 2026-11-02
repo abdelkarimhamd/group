@@ -10,7 +10,7 @@ The product rules live in the [MVP build spec](https://claude.ai/artifact/WZRndB
 | --- | --- | --- |
 | `apps/api` | Laravel 13 API used by every client (`/api/v1`) | Foundation in place |
 | `apps/web` | Next.js customer website (pilot channel), Arabic first | Built against the contract mock; payments behind a fake form until Moyasar ([README](apps/web/README.md)) |
-| `apps/admin` | React admin portal | Not started (E17) |
+| `apps/admin` | React admin portal ([how to run it](apps/admin/README.md)) | All screens built against the contract (E17) |
 | `apps/mobile` | Customer app for iOS and Android (Expo, React Native) | Built against the contract mock; payments and push behind fakes (E18) |
 | `docs/` | Architecture notes and conventions | |
 
@@ -24,9 +24,21 @@ cd apps/api
 composer install
 cp .env.example .env
 php artisan key:generate
-php artisan migrate
+php artisan migrate --seed       # --seed writes the admin roles and permissions
 php artisan serve               # http://localhost:8000/api/v1/health
 ```
+
+Sign-in codes are written to `storage/logs/laravel.log` instead of being texted (`SMS_DRIVER=log`) until an SMS provider is chosen. To use the admin portal, create an admin; the command asks for a password:
+
+```bash
+php artisan admin:create you@example.com --name="Your Name" --phone=05XXXXXXXX --role=super_admin
+```
+
+Finance admins are created and changed only here (`--role=finance`, or `php artisan admin:update`), because the portal never lets an admin grant permissions they lack, and only finance approves money movements.
+
+On every deploy, run `php artisan admin:sync-roles` after migrating so the roles match `AdminPermissions`.
+
+Until the first production deploy, migrations already on `main` may still be edited rather than followed by new ones. If `migrate` fails after you pull, rebuild your local database with `php artisan migrate:fresh --seed`.
 
 Without Docker, create the role and both databases yourself:
 
