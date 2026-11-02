@@ -10,7 +10,7 @@ The product rules live in the [MVP build spec](https://claude.ai/artifact/WZRndB
 | --- | --- | --- |
 | `apps/api` | Laravel 13 API used by every client (`/api/v1`) | Foundation in place |
 | `apps/web` | Next.js customer website (pilot channel) | Not started (E16) |
-| `apps/admin` | React admin portal | Not started (E17) |
+| `apps/admin` | React admin portal ([how to run it](apps/admin/README.md)) | All screens built against the contract (E17) |
 | `apps/mobile` | React Native app, after the website pilot | Not started (E18) |
 | `docs/` | Architecture notes and conventions | |
 
