@@ -685,6 +685,7 @@ const en = {
       reservation_expired: 'Reservation expired',
       campaign_closed: 'Campaign closed',
       participation_cancelled: 'Join cancelled',
+      duplicate_hold: 'Second hold for the same join',
     },
     authorizedAt: 'Held at',
     capturedAt: 'Captured at',

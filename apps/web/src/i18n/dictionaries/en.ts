@@ -280,6 +280,7 @@ export const en: Dictionary = {
         "Your reservation expired before the payment finished, so we cancelled it.",
       campaign_closed: "The campaign closed before the payment finished, so we cancelled it.",
       participation_cancelled: "This join was cancelled, so we cancelled the payment.",
+      duplicate_hold: "This card was charged a second time for the same join, so we cancelled the extra hold.",
     },
     tryAnotherCard: "Try another card",
     viewJoin: "View my join",

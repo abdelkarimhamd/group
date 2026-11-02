@@ -81,6 +81,15 @@ A module may call another module's public services, never its tables directly. S
 - **Payment statuses only move forward.** A hold reported after its payment row was settled (the join ended, so the row was marked failed) gets a payment row of its own, which goes `pending_authorization` → `authorized` → `voided`; the failed row is never revived.
 - **Customers poll progress** (`GET /campaigns/{id}/progress`, cached for 2 seconds as plain arrays, since a real cache store serializes what it keeps). Live updates over websockets come later.
 
+## Payment confirmation (E9)
+
+- **One path for every report.** The customer's return from the payment form (`POST /payments/{id}/sync`), Moyasar's webhook and the reservation expiry check all go through `Payments\Services\Confirmations`. It fetches the payment from the provider outside any transaction, never trusting the client or the webhook body, then applies it in one transaction in the lock order campaign, participation, payment.
+- **What is accepted.** A hold counts only if it is `authorized` (not captured at once), for exactly the hold amount, in SAR, by card or Apple Pay on mada, Visa or Mastercard. Anything else is recorded with a `rejection_reason` and voided after commit, so money is never held untracked. A declined card leaves the reservation open, and `POST /me/participations/{id}/payments` starts another attempt while it lasts.
+- **Statuses only move forward.** A payment row waiting for the customer follows the newest payment made through its form. Once a row is settled (declined, released with its join, or holding a hold), a hold that still arrives for it gets a row of its own, which is counted if the join can still use it and voided otherwise. A second hold for a join that already counts is `duplicate_hold`; such rows never become the participation's `payment`.
+- **Before a reservation expires**, `campaigns:tick` asks the provider about payments it has started but not settled, so a hold that went through is counted rather than voided. A reservation that runs out after a declined or refused card ends as `payment_failed`, otherwise `reservation_expired`.
+- **Webhooks** (`Payments\Services\MoyasarWebhooks`). Every event is stored in `payment_webhook_events` with its `secret_token` redacted. An event is verified by comparing that token with `MOYASAR_WEBHOOK_SECRET` (open question Q5 asks Moyasar whether a signature is offered). A verified event is processed once per event ID: a partial unique index covers verified rows only, so a forged event cannot take a real event's ID first. Processing is the queued `ProcessMoyasarWebhook` job, which retries provider outages with backoff and records any other outcome on the event.
+- **Admin views.** `GET /admin/payments` filters by status and campaign, and `expiring_within_days` lists authorized holds soonest-expiring first. `GET /admin/payments/{id}` shows every provider call with its idempotency key.
+
 ## Shared building blocks (`app/Support`)
 
 | Class | Use it for |

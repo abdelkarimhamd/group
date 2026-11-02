@@ -253,15 +253,23 @@ class ConfirmingHoldsTest extends TestCase
         $this->artisan('campaigns:tick')->assertSuccessful();
         $this->assertSame('reservation_expired', $this->participation->refresh()->status->value);
 
-        $this->sync($this->payment, 'fake_authorized_'.$this->payment->uuid)
+        $late = $this->sync($this->payment, 'fake_authorized_'.$this->payment->uuid)
             ->assertOk()
             ->assertJsonPath('data.status', 'reservation_expired')
             ->assertJsonPath('data.payment.status', 'voided')
-            ->assertJsonPath('data.payment.rejection_reason', 'reservation_expired');
+            ->assertJsonPath('data.payment.rejection_reason', 'reservation_expired')
+            ->json('data.payment.id');
 
         $this->campaign->refresh();
         $this->assertSame([0, 0], [$this->campaign->committed_qty, $this->campaign->reserved_qty]);
-        $this->assertSame(['pending_authorization', 'failed', 'authorized', 'voided'], $this->transitions($this->payment));
+
+        // Statuses only move forward: the released payment stays failed and
+        // the late hold is tracked, and voided, on a row of its own.
+        $this->assertNotSame($this->payment->uuid, $late);
+        $this->assertSame(['pending_authorization', 'failed'], $this->transitions($this->payment));
+        $row = PaymentAuthorization::query()->where('uuid', $late)->sole();
+        $this->assertSame('fake_authorized_'.$this->payment->uuid, $row->provider_payment_id);
+        $this->assertSame(['pending_authorization', 'authorized', 'voided'], $this->transitions($row));
     }
 
     #[Test]
@@ -320,20 +328,48 @@ class ConfirmingHoldsTest extends TestCase
     }
 
     #[Test]
-    public function a_form_submitted_again_after_a_decline_follows_the_new_payment(): void
+    public function a_hold_from_the_form_after_a_decline_counts_on_a_row_of_its_own(): void
     {
         $gateway = $this->scripted();
         $gateway->report('pay_1', $this->payment, status: 'failed');
         $this->sync($this->payment, 'pay_1')->assertOk()->assertJsonPath('data.payment.status', 'failed');
 
         $gateway->report('pay_2', $this->payment);
-        $this->sync($this->payment, 'pay_2')
+        $second = $this->sync($this->payment, 'pay_2')
             ->assertOk()
             ->assertJsonPath('data.status', 'authorized')
-            ->assertJsonPath('data.payment.rejection_reason', null);
+            ->assertJsonPath('data.payment.status', 'authorized')
+            ->assertJsonPath('data.payment.rejection_reason', null)
+            ->json('data.payment.id');
 
-        $this->assertSame('pay_2', $this->payment->refresh()->provider_payment_id);
+        // The declined payment stays declined; the new hold has its own row.
+        $this->assertNotSame($this->payment->uuid, $second);
+        $this->assertSame(['failed', 'pay_1'], [$this->payment->refresh()->status->value, $this->payment->provider_payment_id]);
+        $this->assertSame('pay_2', PaymentAuthorization::query()->where('uuid', $second)->value('provider_payment_id'));
+        $this->assertSame(1, $this->campaign->refresh()->committed_qty);
+    }
+
+    #[Test]
+    public function a_waiting_payment_follows_the_newest_payment_made_through_its_form(): void
+    {
+        $gateway = $this->scripted();
+        $gateway->report('pay_1', $this->payment, status: 'initiated');
+        $this->sync($this->payment, 'pay_1')->assertOk();
+
+        $gateway->report('pay_2', $this->payment);
+        $this->sync($this->payment, 'pay_2')->assertOk()->assertJsonPath('data.status', 'authorized');
+
+        $this->assertSame(['pay_2', 'authorized'], [$this->payment->refresh()->provider_payment_id, $this->payment->status->value]);
         $this->assertSame(1, PaymentAuthorization::count());
+
+        // The abandoned first attempt goes through after all: it is voided.
+        $gateway->report('pay_1', $this->payment);
+        $this->sync($this->payment, 'pay_1')->assertOk()->assertJsonPath('data.payment.id', $this->payment->uuid);
+        $this->assertSame(['voided', 'duplicate_hold'], [
+            PaymentAuthorization::query()->where('provider_payment_id', 'pay_1')->sole()->status->value,
+            PaymentAuthorization::query()->where('provider_payment_id', 'pay_1')->sole()->rejection_reason->value,
+        ]);
+        $this->assertSame(['pay_1'], $gateway->voids);
     }
 
     #[Test]

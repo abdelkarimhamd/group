@@ -676,6 +676,7 @@ const ar: Translation<typeof en> = {
       reservation_expired: 'انتهى الحجز',
       campaign_closed: 'أُغلقت الحملة',
       participation_cancelled: 'أُلغي الانضمام',
+      duplicate_hold: 'حجز ثانٍ لنفس الانضمام',
     },
     authorizedAt: 'تاريخ الحجز',
     capturedAt: 'تاريخ التحصيل',

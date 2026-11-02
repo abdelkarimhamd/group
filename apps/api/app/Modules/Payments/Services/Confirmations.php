@@ -38,8 +38,10 @@ use LogicException;
  *
  * The provider payment's metadata names our payment row. The payment form
  * can be submitted more than once, so a row may see several provider
- * payments: a row follows the newest one until one of them holds money, and
- * a second hold for the same row gets a row of its own and is voided.
+ * payments: a row follows the newest one while it waits, and a hold that
+ * arrives once the row is settled gets a row of its own, so payment
+ * statuses only move forward. A second hold for a join that already counts
+ * is voided as `duplicate_hold`.
  */
 class Confirmations
 {
@@ -157,7 +159,7 @@ class Confirmations
                 return $payment;
             }
 
-            if (! self::holdsMoney($remote) || ! in_array($payment->status, [PaymentStatus::PendingAuthorization, PaymentStatus::Failed], true)) {
+            if (! self::holdsMoney($remote) || $payment->status !== PaymentStatus::PendingAuthorization) {
                 // Still processing, or already settled here: nothing changes but what we saw.
                 $payment->save();
 
@@ -172,8 +174,13 @@ class Confirmations
 
     /**
      * The payment row this provider payment belongs to, locked. Null when
-     * the provider payment needs no row (a failed retry of a form whose row
-     * already follows another payment).
+     * the provider payment needs no row (one that holds no money, for a row
+     * that is already settled).
+     *
+     * Payment statuses only move forward, so a settled row (declined,
+     * released with its join, or holding a hold) never takes another
+     * provider payment: a hold that arrives for one gets a row of its own,
+     * which is then counted or voided like any other.
      */
     private function rowFor(PaymentAuthorization $payment, ProviderPayment $remote, Actor $actor): ?PaymentAuthorization
     {
@@ -191,18 +198,10 @@ class Confirmations
             return $other;
         }
 
-        // The row has not seen a provider payment yet, or the one it saw
-        // never held money: it follows this one.
-        $rowHeldMoney = $payment->provider_payment_id !== null
-            && ! in_array($payment->provider_status, ['initiated', 'failed'], true);
-
-        if (! $rowHeldMoney) {
+        // A row still waiting follows the newest payment made through its
+        // form: the one it saw before held no money, or it would be settled.
+        if ($payment->status === PaymentStatus::PendingAuthorization) {
             $payment->provider_payment_id = $remote->id;
-
-            // A decline was about the provider payment the row followed before.
-            if ($payment->rejection_reason === RejectionReason::Declined) {
-                $payment->rejection_reason = null;
-            }
 
             return $payment;
         }
@@ -211,38 +210,34 @@ class Confirmations
             return null;
         }
 
-        // A second hold for one form: track it on its own row so it is voided.
-        $duplicate = PaymentAuthorization::create([
+        $row = PaymentAuthorization::create([
             'participation_id' => $payment->participation_id,
             'provider_payment_id' => $remote->id,
-            'authorized_amount_halalas' => max(1, $remote->amountHalalas),
+            'authorized_amount_halalas' => $payment->authorized_amount_halalas,
             'currency' => 'SAR',
             'status' => PaymentStatus::PendingAuthorization,
-            'rejection_reason' => RejectionReason::DuplicateHold,
             'expires_at' => CarbonImmutable::now()->addDays((int) config('groupbuy.payments.hold_lifetime_days')),
         ]);
-        $this->history->record($duplicate, null, PaymentStatus::PendingAuthorization, $actor, RejectionReason::DuplicateHold->value);
+        $this->history->record($row, null, PaymentStatus::PendingAuthorization, $actor, 'another_provider_payment', ['form_payment_id' => $payment->uuid]);
 
-        return $duplicate;
+        return $row;
     }
 
     /**
      * Record a hold the provider reports, then count it or void it. A hold
-     * the row had already given up on (released with its join) keeps that
-     * reason and is voided.
+     * that breaks the rules, or whose join can no longer count it (ended,
+     * or already counted through another hold), is voided after commit.
      */
     private function acceptOrVoid(CampaignParticipation $participation, PaymentAuthorization $payment, ProviderPayment $remote, Actor $actor): void
     {
-        $from = $payment->status;
-        $problem = $payment->rejection_reason
-            ?? $this->problemWith($payment, $remote)
+        $problem = $this->problemWith($payment, $remote)
             ?? ($participation->status === ParticipationStatus::PendingPayment ? null : self::reasonFor($participation->status));
 
         $payment->status = PaymentStatus::Authorized;
         $payment->authorized_at = CarbonImmutable::now();
         $payment->rejection_reason = $problem;
         $payment->save();
-        $this->history->record($payment, $from, PaymentStatus::Authorized, $actor, $problem?->value);
+        $this->history->record($payment, PaymentStatus::PendingAuthorization, PaymentStatus::Authorized, $actor, $problem?->value);
 
         if ($problem !== null) {
             VoidPayment::dispatch($payment->id, $actor->type->value, $actor->id)->afterCommit();
