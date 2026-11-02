@@ -1,0 +1,53 @@
+name: Mobile
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - "apps/api/openapi/v1.yaml"
+      - ".github/workflows/mobile.yml"
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, test and bundle
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint and format
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Generated API types match the contract
+        run: npm run api:types:check
+
+      - name: Unit, component and flow tests
+        run: npm test -- --ci
+
+      - name: Every API call against the contract (Prism, request validation on)
+        run: npm run test:contract -- --ci
+
+      - name: iOS and Android bundles build
+        run: npm run bundle:check
+        env:
+          EXPO_OFFLINE: "1"
