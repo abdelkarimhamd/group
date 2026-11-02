@@ -7,7 +7,7 @@ One Laravel API (a modular monolith) serves the customer website, the admin port
 ```
 apps/web (Next.js) ──┐
 apps/admin (React) ──┼──> apps/api (Laravel, /api/v1) ──> PostgreSQL
-apps/mobile (later) ─┘                │                 ──> Redis (queues, cache)
+apps/mobile (Expo) ──┘                │                 ──> Redis (queues, cache)
                                       └──> Moyasar, SMS, courier APIs
 ```
 
