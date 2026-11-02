@@ -65,7 +65,7 @@ class Captures
         }
 
         $payment->refresh();
-        $attempt = PaymentTransaction::query()->where('idempotency_key', self::key($payment))->first();
+        $attempt = PaymentTransaction::query()->where('idempotency_key', self::attemptKey($payment))->first();
 
         if ($attempt !== null && $attempt->status !== TransactionStatus::Pending) {
             return;
@@ -82,8 +82,7 @@ class Captures
             }
 
             if ($remote->status === 'captured') {
-                // Captured for another amount: never guess, finance decides.
-                Log::critical('payments.capture.amount_mismatch', ['payment' => $payment->uuid, 'captured_halalas' => $remote->capturedHalalas, 'expected_halalas' => $attempt->amount_halalas]);
+                $this->capturedForAnotherAmount($payment, $attempt, $remote);
 
                 return;
             }
@@ -136,11 +135,28 @@ class Captures
 
                 return;
             }
+
+            if ($remote->status === 'captured') {
+                // Money was taken: never record it declined, never void it.
+                $this->capturedForAnotherAmount($payment, $attempt, $remote);
+
+                return;
+            }
         } catch (GatewayException) {
             // The refusal itself is a definite answer.
         }
 
         $this->record($payment, $attempt, false, $result->errorCode, $result->errorMessage, $result->payload, $actor);
+    }
+
+    /**
+     * Moyasar shows the payment captured, but not for the amount sent (taken
+     * by hand in the dashboard, say). Never guess: the attempt stays pending,
+     * the hold stays authorized and cannot expire, and finance decides.
+     */
+    private function capturedForAnotherAmount(PaymentAuthorization $payment, PaymentTransaction $attempt, ProviderPayment $remote): void
+    {
+        Log::critical('payments.capture.amount_mismatch', ['payment' => $payment->uuid, 'captured_halalas' => $remote->capturedHalalas, 'expected_halalas' => $attempt->amount_halalas]);
     }
 
     /**
@@ -177,7 +193,7 @@ class Captures
                 throw new LogicException("Capture of {$amount} is above the hold on payment {$payment->id}.");
             }
 
-            $attempt = PaymentTransaction::query()->where('idempotency_key', self::key($payment))->lockForUpdate()->first();
+            $attempt = PaymentTransaction::query()->where('idempotency_key', self::attemptKey($payment))->lockForUpdate()->first();
 
             if ($attempt !== null && $attempt->status !== TransactionStatus::Pending) {
                 return null;
@@ -198,7 +214,7 @@ class Captures
                 'payment_authorization_id' => $payment->id,
                 'type' => TransactionType::Capture,
                 'amount_halalas' => $amount,
-                'idempotency_key' => self::key($payment),
+                'idempotency_key' => self::attemptKey($payment),
                 'requested_by_type' => $actor->type->value,
                 'requested_by_id' => $actor->id,
             ]);
@@ -325,7 +341,7 @@ class Captures
         return $remote->status === 'captured' && $remote->capturedHalalas === $attempt->amount_halalas;
     }
 
-    private static function key(PaymentAuthorization $payment): string
+    public static function attemptKey(PaymentAuthorization $payment): string
     {
         return 'capture:'.$payment->uuid;
     }

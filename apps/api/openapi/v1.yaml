@@ -3506,7 +3506,7 @@ components:
               type: object
               allOf: [{$ref: '#/components/schemas/Money'}]
               nullable: true
-              description: Set when the campaign closes successfully; everyone pays this.
+              description: Set once the campaign has succeeded (purchasing, fulfilling or completed); everyone pays this. Null while closing and for a failed or cancelled campaign.
             cancellation_rule:
               type: string
               enum: [before_deal_confirmed]
@@ -3563,11 +3563,12 @@ components:
           type: object
           allOf: [{$ref: '#/components/schemas/Money'}]
           nullable: true
+          description: The price every participant paid. Null until this join's hold is captured.
         capture_amount:
           type: object
           allOf: [{$ref: '#/components/schemas/Money'}]
           nullable: true
-          description: Set at close. The rest of the hold is released, never charged.
+          description: What was charged. Null until this join's hold is captured, and for a join released or left out at close. The rest of the hold is released, never charged.
         reservation_expires_at: {type: string, format: date-time}
         can_cancel: {type: boolean}
         payment:

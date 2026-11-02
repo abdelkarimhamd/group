@@ -27,6 +27,7 @@ class ParticipationResource extends JsonResource
     public function toArray(Request $request): array
     {
         $campaign = $this->campaign;
+        $captured = $this->status === ParticipationStatus::Captured;
 
         return [
             'id' => $this->uuid,
@@ -36,8 +37,10 @@ class ParticipationResource extends JsonResource
             'status' => $this->status->value,
             'hold_unit_price' => Money::sar($this->hold_unit_price_halalas),
             'hold_amount' => Money::sar($this->hold_amount_halalas),
-            'final_unit_price' => $this->final_unit_price_halalas === null ? null : Money::sar($this->final_unit_price_halalas),
-            'capture_amount' => $this->capture_amount_halalas === null ? null : Money::sar($this->capture_amount_halalas),
+            // Worked out at settling, but only true once the money is taken:
+            // a join released or left out after that was never charged.
+            'final_unit_price' => $captured && $this->final_unit_price_halalas !== null ? Money::sar($this->final_unit_price_halalas) : null,
+            'capture_amount' => $captured && $this->capture_amount_halalas !== null ? Money::sar($this->capture_amount_halalas) : null,
             'reservation_expires_at' => $this->reservation_expires_at->toIso8601ZuluString(),
             // Proposed rule (Q16): only while active and before the deal is confirmed.
             'can_cancel' => in_array($this->status, [ParticipationStatus::PendingPayment, ParticipationStatus::Authorized], true)

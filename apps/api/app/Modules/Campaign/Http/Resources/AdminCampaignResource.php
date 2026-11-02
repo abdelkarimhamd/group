@@ -11,6 +11,7 @@ use App\Modules\Catalog\Http\Resources\AdminVariantResource;
 use App\Modules\Identity\Models\AdminUser;
 use App\Modules\Pricing\Tier;
 use App\Support\Money\Money;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -111,7 +112,9 @@ class AdminCampaignResource extends JsonResource
             'extend' => $status === CampaignStatus::Active && $this->extended_at === null
                 && $this->deal_confirmed_at === null && $admin->can('campaigns.extend'),
             'cancel' => $cancellable && $admin->can('campaigns.cancel'),
-            'record_supplier_decision' => $status === CampaignStatus::Closing && $step === ClosingStep::AwaitingSupplier && $admin->can('campaigns.close'),
+            // Past its deadline the sweep fails the campaign, and the server refuses it.
+            'record_supplier_decision' => $status === CampaignStatus::Closing && $step === ClosingStep::AwaitingSupplier
+                && CarbonImmutable::now()->lessThan(Closing::supplierDecisionDueAt($this->resource)) && $admin->can('campaigns.close'),
             'decide_below_target' => $status === CampaignStatus::Closing && $step === ClosingStep::NeedsAdmin && $admin->can('campaigns.close'),
         ];
 

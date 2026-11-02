@@ -142,6 +142,16 @@ class Holds
                     return 0;
                 }
 
+                // A capture was sent and its outcome is still unknown, so
+                // Moyasar may have taken the money. It stays authorized for
+                // finance while the capture job keeps asking (spec, Capture
+                // step 8); expiring it would drop a charged customer.
+                if ($locked->status === PaymentStatus::Authorized && $this->captureInFlight($locked)) {
+                    Log::critical('payments.hold.expiry_blocked_by_capture', ['payment' => $locked->uuid, 'participation' => $participation->uuid]);
+
+                    return 0;
+                }
+
                 $from = $locked->status;
                 $locked->status = PaymentStatus::Expired;
                 $locked->save();
@@ -203,6 +213,15 @@ class Holds
             // A refused void is left for daily reconciliation; retrying will not change the answer.
             Log::warning('payments.void.refused', ['payment' => $payment->uuid, 'error' => $result->errorCode]);
         }
+    }
+
+    private function captureInFlight(PaymentAuthorization $payment): bool
+    {
+        return PaymentTransaction::query()
+            ->where('idempotency_key', Captures::attemptKey($payment))
+            ->where('status', TransactionStatus::Pending)
+            ->where('attempts', '>', 0)
+            ->exists();
     }
 
     /**
