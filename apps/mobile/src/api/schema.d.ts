@@ -1962,7 +1962,7 @@ export interface components {
        * @description Set when the deadline was extended.
        */
       original_deadline_at: string | null;
-      /** @description Set when the campaign closes successfully; everyone pays this. */
+      /** @description Set once the campaign has succeeded (purchasing, fulfilling or completed); everyone pays this. Null while closing and for a failed or cancelled campaign. */
       final_unit_price: components['schemas']['Money'] | null;
       /**
        * @description When a customer may cancel a join (proposed rule, open question Q16). Show it before payment.
@@ -2020,8 +2020,9 @@ export interface components {
       hold_unit_price: components['schemas']['Money'];
       /** @description The most the customer can be charged. Show that the final charge may be lower. */
       hold_amount: components['schemas']['Money'];
+      /** @description The price every participant paid. Null until this join's hold is captured. */
       final_unit_price: components['schemas']['Money'] | null;
-      /** @description Set at close. The rest of the hold is released, never charged. */
+      /** @description What was charged. Null until this join's hold is captured, and for a join released or left out at close. The rest of the hold is released, never charged. */
       capture_amount: components['schemas']['Money'] | null;
       /** Format: date-time */
       reservation_expires_at: string;

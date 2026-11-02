@@ -7,6 +7,7 @@ use App\Modules\Campaign\Events\CampaignAwaitingSupplier;
 use App\Modules\Campaign\Events\CampaignFailed;
 use App\Modules\Campaign\Events\CampaignNeedsAdmin;
 use App\Modules\Campaign\Events\CampaignSucceeded;
+use App\Modules\Campaign\Http\Resources\ParticipationResource;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Services\Closing;
@@ -211,6 +212,10 @@ class ClosingCampaignsTest extends TestCase
         $this->assertSame([$this->providerId($join)], $this->gateway->voids);
         $this->assertSame([], $this->gateway->captures);
         $this->assertSame('Out of stock until March', $this->campaign->events()->where('event_type', 'supplier_rejected')->sole()->payload['note']);
+
+        // The price worked out at settling was never charged: customers are not told it was.
+        $this->assertSame([null, null], $this->customerView($join, ['final_unit_price', 'capture_amount']));
+        $this->getJson("/api/v1/campaigns/{$this->campaign->uuid}")->assertOk()->assertJsonPath('data.final_unit_price', null);
     }
 
     #[Test]
@@ -240,6 +245,7 @@ class ClosingCampaignsTest extends TestCase
 
         $this->travelTo(CarbonImmutable::parse('2026-11-14 09:00:00', 'UTC'));
         $this->confirm()->assertStatus(409)->assertJsonPath('code', 'supplier_decision_overdue');
+        $this->admin("/api/v1/admin/campaigns/{$this->campaign->uuid}")->assertOk()->assertJsonPath('data.available_actions', ['cancel']);
 
         $this->artisan('campaigns:sweep-closing')->assertSuccessful();
         $this->campaign->refresh();
@@ -285,6 +291,10 @@ class ClosingCampaignsTest extends TestCase
         $this->assertSame(['pending_authorization', 'authorized', 'capture_failed', 'voided'], $this->transitions($payment));
         $this->assertSame([$this->providerId($declined)], $this->gateway->voids);
         $this->assertSame('failed', PaymentTransaction::query()->where('idempotency_key', 'capture:'.$payment->uuid)->sole()->status->value);
+        $this->assertSame([null, null], $this->customerView($declined, ['final_unit_price', 'capture_amount']));
+        // Four units were settled at 105.00; the kept join's two were charged at that price.
+        $this->assertSame([10500, 21000], $this->customerView($kept, ['final_unit_price.amount_minor', 'capture_amount.amount_minor']));
+        $this->getJson("/api/v1/campaigns/{$this->campaign->uuid}")->assertOk()->assertJsonPath('data.final_unit_price', null);
 
         // Two captured units are below the target of three.
         $this->campaign->refresh();
@@ -301,6 +311,7 @@ class ClosingCampaignsTest extends TestCase
         $decision = $this->campaign->events()->where('event_type', 'below_target_decision')->sole();
         $this->assertSame(['proceed', 2, 3, 3], [$decision->payload['decision'], $decision->payload['captured_qty'], $decision->payload['min_target_qty'], $decision->payload['supplier_moq']]);
         $this->assertSame('captured', $kept->refresh()->status->value);
+        $this->getJson("/api/v1/campaigns/{$this->campaign->uuid}")->assertOk()->assertJsonPath('data.final_unit_price.amount_minor', 10500);
     }
 
     #[Test]
@@ -450,6 +461,72 @@ class ClosingCampaignsTest extends TestCase
     }
 
     #[Test]
+    public function a_hold_whose_capture_may_have_gone_through_never_expires(): void
+    {
+        Log::spy();
+        Queue::fake([CapturePayment::class]);
+        $join = $this->paidJoin(3);
+        $payment = $join->latestPayment;
+        $this->gateway->captureOutcomes[$this->providerId($join)] = ['timeout'];
+        $this->closeAtDeadline();
+        $this->confirm()->assertOk();
+
+        try {
+            app(Captures::class)->capture($payment, Actor::system());
+            $this->fail('An unknown outcome is retried.');
+        } catch (GatewayException) {
+        }
+
+        // Moyasar did take the money, then could not be reached past the hold's expiry.
+        $this->gateway->setStatus($this->providerId($join), 'captured', 36000);
+        $this->gateway->down = true;
+        $this->travelTo($payment->expires_at);
+        $this->artisan('payments:expire-holds')->assertSuccessful();
+
+        $this->assertSame('authorized', $payment->refresh()->status->value);
+        Log::shouldHaveReceived('critical')->withArgs(fn (string $message, array $context = []) => $message === 'payments.hold.expiry_blocked_by_capture' && $context['payment'] === $payment->uuid)->once();
+
+        // The closing job keeps waiting for it rather than leaving the customer out.
+        app(Closing::class)->run($this->campaign->id);
+        $this->assertSame(['closing', 'capturing', 'authorized'], [$this->campaign->refresh()->status->value, $this->campaign->closing_step->value, $join->refresh()->status->value]);
+
+        // Moyasar answers again: the capture is recorded, never sent twice.
+        $this->gateway->down = false;
+        app(Captures::class)->capture($payment, Actor::system());
+
+        $this->assertCount(1, $this->gateway->captures);
+        $this->assertSame(['captured', 36000], [$payment->refresh()->status->value, $payment->captured_amount_halalas]);
+        $this->assertSame(['captured', 'purchasing'], [$join->refresh()->status->value, $this->campaign->refresh()->status->value]);
+    }
+
+    #[Test]
+    public function a_refused_capture_of_a_payment_moyasar_shows_captured_for_another_amount_is_left_to_finance(): void
+    {
+        Log::spy();
+        Queue::fake([CapturePayment::class]);
+        $join = $this->paidJoin(3);
+        $payment = $join->latestPayment;
+        $this->closeAtDeadline();
+        $this->confirm()->assertOk();
+
+        // Someone captured part of it by hand; Moyasar refuses ours.
+        $this->gateway->setStatus($this->providerId($join), 'captured', 20000);
+        $this->gateway->captureOutcomes[$this->providerId($join)] = ['declined'];
+        app(Captures::class)->capture($payment, Actor::system());
+
+        $this->assertSame([], $this->gateway->voids);
+        $this->assertSame(['authorized', null], [$payment->refresh()->status->value, $payment->rejection_reason]);
+        $this->assertSame('authorized', $join->refresh()->status->value);
+        $this->assertSame('pending', PaymentTransaction::query()->where('idempotency_key', 'capture:'.$payment->uuid)->sole()->status->value);
+        Log::shouldHaveReceived('critical')->withArgs(fn (string $message, array $context = []) => $message === 'payments.capture.amount_mismatch' && $context['captured_halalas'] === 20000)->once();
+
+        // It never expires as an uncaptured hold either.
+        $this->travelTo($payment->expires_at);
+        $this->artisan('payments:expire-holds')->assertSuccessful();
+        $this->assertSame('authorized', $payment->refresh()->status->value);
+    }
+
+    #[Test]
     public function a_failed_capture_whose_void_goes_through_is_voided_not_expired(): void
     {
         $failing = $this->paidJoin(1)->latestPayment;
@@ -460,6 +537,19 @@ class ClosingCampaignsTest extends TestCase
 
         $this->assertSame('voided', $failing->refresh()->status->value);
         $this->assertSame([$this->providerId($failing->participation)], $this->gateway->voids);
+    }
+
+    /**
+     * Fields of the join as its customer sees it.
+     *
+     * @param  list<string>  $keys  dot paths
+     * @return list<mixed>
+     */
+    private function customerView(CampaignParticipation $join, array $keys): array
+    {
+        $view = json_decode(json_encode(ParticipationResource::make($join->refresh()->load(ParticipationResource::RELATIONS))->resolve(request())), true);
+
+        return array_map(fn (string $key) => data_get($view, $key), $keys);
     }
 
     /**
