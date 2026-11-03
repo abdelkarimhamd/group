@@ -164,8 +164,8 @@ class ReconciliationTest extends TestCase
         $this->artisan('payments:reconcile', ['--date' => $today])->assertSuccessful();
         $this->assertSame(0, ReconciliationItem::count());
 
-        // Hours later Moyasar still holds the money.
-        $this->travel(2)->hours();
+        // Hours later (past the void job's retries) Moyasar still holds the money.
+        $this->travel(3)->hours();
         $this->artisan('payments:reconcile', ['--date' => $today])->assertSuccessful();
         $item = ReconciliationItem::query()->sole();
         $this->assertSame([$payment->id, 'stuck_void'], [$item->payment_authorization_id, $item->mismatch_type->value]);
@@ -174,7 +174,9 @@ class ReconciliationTest extends TestCase
     #[Test]
     public function a_run_that_breaks_is_marked_failed_and_one_cut_off_is_closed_by_the_next(): void
     {
-        $cutOff = ReconciliationRun::create(['run_date' => '2026-11-01', 'started_at' => CarbonImmutable::now()->subHours(5)]);
+        $cutOff = ReconciliationRun::create(['run_date' => '2026-11-01', 'started_at' => CarbonImmutable::now()->subHours(5), 'updated_at' => CarbonImmutable::now()->subHours(4)]);
+        // A long run that is still moving is left alone.
+        $moving = ReconciliationRun::create(['run_date' => '2026-10-31', 'started_at' => CarbonImmutable::now()->subHours(5)]);
         $this->mock(PaymentGateway::class, fn ($mock) => $mock->shouldReceive('fetch')->andThrow(new RuntimeException('Unexpected response shape')));
 
         try {
@@ -188,6 +190,30 @@ class ReconciliationTest extends TestCase
         $this->assertSame(['failed', 'The run stopped on an unexpected error; see the logs.'], [$run->status->value, $run->error]);
         $this->assertNotNull($run->finished_at);
         $this->assertSame(['failed', 'The run stopped before it finished.'], [$cutOff->refresh()->status->value, $cutOff->error]);
+        $this->assertSame('running', $moving->refresh()->status->value);
+    }
+
+    #[Test]
+    public function a_run_closed_as_abandoned_while_it_was_still_going_keeps_that_verdict(): void
+    {
+        $real = app(PaymentGateway::class);
+        $nested = false;
+        $this->mock(PaymentGateway::class, fn ($mock) => $mock->shouldReceive('fetch')->andReturnUsing(function (string $id) use ($real, &$nested) {
+            // Moyasar is slow: four hours into the first check, someone runs it again by hand.
+            if (! $nested) {
+                $nested = true;
+                $this->travel(4)->hours();
+                $this->assertSame('matched', app(Reconciliation::class)->run(CarbonImmutable::parse($this->day, 'Asia/Riyadh'))->status->value);
+            }
+
+            return $real->fetch($id);
+        }));
+
+        $slow = app(Reconciliation::class)->run(CarbonImmutable::parse($this->day, 'Asia/Riyadh'));
+
+        // The slow run finished later, but the verdict stands.
+        $this->assertSame(['failed', 'The run stopped before it finished.'], [$slow->status->value, $slow->error]);
+        $this->assertSame(['failed', 'matched'], ReconciliationRun::query()->orderBy('id')->pluck('status')->map(fn ($status) => $status->value)->all());
     }
 
     #[Test]

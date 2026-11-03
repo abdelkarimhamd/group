@@ -48,4 +48,5 @@ Schedule::command(RequeueApprovedCommand::class)->everyFiveMinutes()->withoutOve
 
 // Yesterday's payments, and every one still open, checked against Moyasar
 // early in the morning in Riyadh; mismatches go to finance.
-Schedule::command(ReconcilePaymentsCommand::class)->dailyAt('03:00')->timezone('Asia/Riyadh')->withoutOverlapping()->onOneServer();
+Schedule::command(ReconcilePaymentsCommand::class)->dailyAt('03:00')->timezone('Asia/Riyadh')
+    ->withoutOverlapping((int) config('groupbuy.finance.reconciliation_timeout_minutes'))->onOneServer();

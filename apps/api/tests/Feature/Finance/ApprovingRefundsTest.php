@@ -27,6 +27,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Bus\UniqueLock;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache as CacheFacade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
@@ -282,6 +283,30 @@ class ApprovingRefundsTest extends TestCase
         // Nothing is left to queue.
         $this->travel(16)->minutes();
         $this->artisan('finance:requeue-approved')->expectsOutputToContain('Queued 0 refunds')->assertSuccessful();
+    }
+
+    #[Test]
+    public function a_second_copy_of_a_refund_stops_while_the_first_is_sending(): void
+    {
+        Queue::fake([ExecuteRefund::class]);
+        $this->travel(3)->hours();
+        $gateway = $this->scripted();
+        [$refund, $approval] = $this->requestRefund(10000);
+        $this->decide('post', "/api/v1/admin/approval-requests/{$approval->uuid}/approve")->assertOk();
+
+        // The first runner is mid-send (its job's own lock long gone): a copy sends nothing.
+        $first = CacheFacade::lock('payments:refund:'.$refund->id, 300);
+        $this->assertTrue($first->get());
+        app(Refunds::class)->execute($refund);
+        $this->assertSame([], $gateway->refunds);
+        $this->assertSame('approved', $refund->refresh()->status->value);
+
+        // Once it is done, the refund goes out once.
+        $first->release();
+        app(Refunds::class)->execute($refund);
+        app(Refunds::class)->execute($refund);
+        $this->assertCount(1, $gateway->refunds);
+        $this->assertSame('succeeded', $refund->refresh()->status->value);
     }
 
     #[Test]

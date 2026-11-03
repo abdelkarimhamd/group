@@ -211,8 +211,16 @@ class Captures
                 return null;
             }
 
-            // An approved cancellation waits only for captures already in flight.
-            if ($attempt === null && CampaignCancellations::waiting($campaign)) {
+            // Once a cancellation is approved no capture is sent: not a new
+            // one, and not a retry. capture() only gets here with an attempt
+            // that was never sent, or that Moyasar showed was not captured, so
+            // closing it leaves the hold for the cancellation to release.
+            if (CampaignCancellations::waiting($campaign)) {
+                if ($attempt !== null) {
+                    $this->complete($attempt, false, 'campaign_cancellation_approved', 'The campaign is being cancelled.', [], null);
+                    Log::warning('payments.capture.stopped_for_cancellation', ['payment' => $payment->uuid]);
+                }
+
                 return null;
             }
 

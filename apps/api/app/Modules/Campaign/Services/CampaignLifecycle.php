@@ -454,11 +454,15 @@ class CampaignLifecycle
      * Ask a finance admin to approve cancelling a campaign whose holds may
      * already be captured. Once approved, CampaignCancellations carries it
      * out (refunding captured joins, cancelling orders and the purchase
-     * order). Asking again returns the request already waiting. Call with
-     * the campaign locked.
+     * order). Asking again returns the request already waiting, or the one
+     * already approved and not yet carried out. Call with the campaign locked.
      */
     public function requestCancellation(Campaign $campaign, string $reason, AdminUser $by, string $source): ApprovalRequest
     {
+        if (($approved = CampaignCancellations::waitingRequest($campaign)) !== null) {
+            return $approved;
+        }
+
         $captured = $campaign->participations()->where('status', ParticipationStatus::Captured);
         $request = $this->approvals->request(ApprovalType::CampaignCancellation, $campaign, [
             'reason' => $reason,

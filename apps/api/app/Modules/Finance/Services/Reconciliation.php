@@ -83,18 +83,22 @@ final class Reconciliation
                     $checked++;
                     $mismatches += $this->check($run, $payment) ? 1 : 0;
                 }
+
+                // Progress, and a sign of life: only a run that stopped
+                // moving counts as abandoned.
+                $this->close($run, ['payments_checked' => $checked, 'mismatch_count' => $mismatches, 'updated_at' => CarbonImmutable::now()], final: false);
             });
         } catch (Throwable $e) {
             // Moyasar being unreachable is expected now and then; anything else is a bug.
             $expected = $e instanceof GatewayException;
             Log::critical('payments.reconciliation.failed', ['run' => $run->uuid, 'error' => $e->getMessage(), 'exception' => $e::class]);
-            $run->forceFill([
+            $this->close($run, [
                 'status' => ReconciliationStatus::Failed,
                 'payments_checked' => $checked,
                 'mismatch_count' => $mismatches,
                 'error' => $expected ? mb_substr($e->getMessage(), 0, 500) : 'The run stopped on an unexpected error; see the logs.',
                 'finished_at' => CarbonImmutable::now(),
-            ])->save();
+            ]);
 
             if (! $expected) {
                 throw $e;
@@ -103,12 +107,12 @@ final class Reconciliation
             return $run;
         }
 
-        $run->forceFill([
+        $this->close($run, [
             'status' => $mismatches === 0 ? ReconciliationStatus::Matched : ReconciliationStatus::Mismatches,
             'payments_checked' => $checked,
             'mismatch_count' => $mismatches,
             'finished_at' => CarbonImmutable::now(),
-        ])->save();
+        ]);
 
         if ($mismatches > 0) {
             Log::critical('payments.reconciliation.mismatches', ['run' => $run->uuid, 'run_date' => $run->run_date->toDateString(), 'count' => $mismatches]);
@@ -147,9 +151,30 @@ final class Reconciliation
     }
 
     /**
-     * Runs still marked running long after they started were cut off (a
-     * deploy, a crash): they are marked failed so they do not show as in
-     * progress for ever.
+     * Write the run's progress or outcome, only while it is still running:
+     * a run the next one already marked abandoned keeps that verdict.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private function close(ReconciliationRun $run, array $values, bool $final = true): void
+    {
+        $values['updated_at'] ??= CarbonImmutable::now();
+        $written = ReconciliationRun::query()
+            ->whereKey($run->id)
+            ->where('status', ReconciliationStatus::Running)
+            ->update(array_map(fn ($value) => $value instanceof \BackedEnum ? $value->value : $value, $values));
+
+        if ($written === 0 && $final) {
+            Log::warning('payments.reconciliation.closed_meanwhile', ['run' => $run->uuid]);
+        }
+
+        $run->refresh();
+    }
+
+    /**
+     * Runs still marked running that have not moved for a long time were cut
+     * off (a deploy, a crash): they are marked failed so they do not show as
+     * in progress for ever. A run updates itself after every batch.
      */
     private function failAbandoned(): void
     {
@@ -157,15 +182,22 @@ final class Reconciliation
 
         ReconciliationRun::query()
             ->where('status', ReconciliationStatus::Running)
-            ->where('started_at', '<', $cutoff)
+            ->where('updated_at', '<', $cutoff)
             ->get()
             ->each(function (ReconciliationRun $run): void {
-                Log::critical('payments.reconciliation.abandoned', ['run' => $run->uuid]);
-                $run->forceFill([
-                    'status' => ReconciliationStatus::Failed,
-                    'error' => 'The run stopped before it finished.',
-                    'finished_at' => CarbonImmutable::now(),
-                ])->save();
+                $failed = ReconciliationRun::query()
+                    ->whereKey($run->id)
+                    ->where('status', ReconciliationStatus::Running)
+                    ->update([
+                        'status' => ReconciliationStatus::Failed->value,
+                        'error' => 'The run stopped before it finished.',
+                        'finished_at' => CarbonImmutable::now(),
+                        'updated_at' => CarbonImmutable::now(),
+                    ]);
+
+                if ($failed > 0) {
+                    Log::critical('payments.reconciliation.abandoned', ['run' => $run->uuid]);
+                }
             });
     }
 
