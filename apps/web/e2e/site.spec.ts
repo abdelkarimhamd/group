@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ar, KETTLE, signIn } from "./helpers";
+import { actAsReverb, ar, KETTLE, signIn } from "./helpers";
 import { en } from "../src/i18n/dictionaries/en";
 
 test.describe("browsing", () => {
@@ -38,6 +38,62 @@ test.describe("browsing", () => {
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(ar.legal[`${path}Title`]);
       await expect(page.getByText(ar.common.draft)).toBeVisible();
     }
+  });
+});
+
+test.describe("live progress", () => {
+  const channel = `campaigns.${KETTLE}`;
+  const progressReads = (page: import("@playwright/test").Page) => {
+    const reads: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().endsWith(`/api/v1/campaigns/${KETTLE}/progress`)) reads.push(request.url());
+    });
+    return reads;
+  };
+  const shifted = (iso: string, seconds: number) => new Date(Date.parse(iso) + seconds * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+
+  test("pushes from Reverb update the page, and an older push changes nothing", async ({ page }) => {
+    const reverb = await actAsReverb(page);
+    const reads = progressReads(page);
+    await page.goto(`/ar/campaigns/${KETTLE}`);
+
+    await expect.poll(() => reverb.subscriptions()).toEqual([channel]);
+    // It reads once on subscribing, to catch up on what it missed.
+    await expect.poll(() => reads.length).toBe(1);
+
+    const current = (await (await page.request.get(`/api/v1/campaigns/${KETTLE}/progress`)).json()).data;
+    reverb.push(channel, { ...current, committed_qty: 77, updated_at: shifted(current.updated_at, 60) });
+    await expect(page.getByTestId("joined")).toContainText("77", { timeout: 3_000 });
+
+    reverb.push(channel, { ...current, committed_qty: 5, updated_at: shifted(current.updated_at, -60) });
+    reverb.push(`campaigns.${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}`, { ...current, committed_qty: 9 });
+    await page.waitForTimeout(500);
+    await expect(page.getByTestId("joined")).toContainText("77");
+  });
+
+  test("while pushes arrive the page stops polling, and catches up after a reconnect", async ({ page }) => {
+    const reverb = await actAsReverb(page);
+    const reads = progressReads(page);
+    await page.goto(`/ar/campaigns/${KETTLE}`);
+    await expect.poll(() => reverb.subscriptions()).toEqual([channel]);
+    await expect.poll(() => reads.length).toBe(1);
+
+    // Without pushes it would read every 5 seconds.
+    await page.waitForTimeout(7_000);
+    expect(reads).toHaveLength(1);
+
+    // The connection drops: pusher-js reconnects and subscribes again, and
+    // the page reads again.
+    reverb.dropAll();
+    await expect.poll(() => reverb.subscriptions().length, { timeout: 15_000 }).toBe(2);
+    await expect.poll(() => reads.length, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+  });
+
+  test("without Reverb the page keeps polling", async ({ page }) => {
+    await page.routeWebSocket(/\/app\//, (ws) => ws.close());
+    const reads = progressReads(page);
+    await page.goto(`/ar/campaigns/${KETTLE}`);
+    await expect.poll(() => reads.length, { timeout: 12_000 }).toBeGreaterThanOrEqual(2);
   });
 });
 

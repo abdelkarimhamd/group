@@ -32,6 +32,18 @@ final class Progress
     }
 
     /**
+     * The same, as plain arrays and scalars: what the cache keeps (a real
+     * cache store serializes what it keeps, and value objects such as Money
+     * would not come back whole) and what Reverb sends.
+     *
+     * @return array<string, mixed>
+     */
+    public static function payload(Campaign $campaign): array
+    {
+        return json_decode(json_encode(self::of($campaign), JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
      * The price of the next unit sold: the tier for committed quantity + 1.
      */
     public static function currentUnitPrice(Campaign $campaign): Money

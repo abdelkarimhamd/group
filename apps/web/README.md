@@ -45,7 +45,7 @@ The mobile app shows the same form: it opens `/{locale}/payments/app` in a WebVi
 | `src/actions/` | Server Actions: sign-in, joining, payments, profile, addresses. The browser never sees the API token. |
 | `src/lib/api/` | The generated contract types (`schema.d.ts`), the typed client and error handling. |
 | `src/i18n/` | Locales, dictionaries (Arabic is the source; English must match its shape) and formatting. |
-| `src/components/` | UI. `campaign-live.tsx` keeps the campaign page live by polling `GET /campaigns/{id}/progress` every 5 seconds; a Reverb subscription can replace the poll later. |
+| `src/components/` | UI. `campaign-live.tsx` keeps the campaign page live: Reverb pushes `progress.updated` (`src/lib/live-progress.ts`, pusher-js loaded only on live campaign pages), the page reads `GET /campaigns/{id}/progress` after every (re)connect, and polls every 30 seconds while pushes arrive or every 5 seconds without them (no `NEXT_PUBLIC_REVERB_*`, or the connection is down). |
 | `src/proxy.ts` | Adds the locale to URLs and sends signed-out visitors on account pages to sign-in. |
 | `mock/` | The fixture API used in development and browser tests. |
 
@@ -63,8 +63,10 @@ npm run api:types:check # CI: the generated types match the contract
 npm run lint
 npm run typecheck
 npm test                # unit tests (vitest)
-API_BASE_URL=http://127.0.0.1:4010 npm run build
+API_BASE_URL=http://127.0.0.1:4010 npm run build   # plus the NEXT_PUBLIC_* values in .github/workflows/web.yml
 npm run test:e2e        # Playwright: starts the mock stack and `next start` on :3100
 ```
+
+The live-progress browser tests play Reverb inside the browser (`page.routeWebSocket`), so the build points `NEXT_PUBLIC_REVERB_*` at a port nothing listens on; every other test runs on the 5-second poll fallback.
 
 The browser tests run on a desktop and a phone viewport. They fail if the site sends any request the contract does not allow (Prism's request violations are collected in `.mock/contract-violations.log`).

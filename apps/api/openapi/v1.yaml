@@ -43,8 +43,15 @@ info:
 
     Campaign progress is also pushed over Laravel Reverb (Pusher protocol) on the
     public channel `campaigns.{campaign_id}`, event `progress.updated`, with a
-    `CampaignProgress` payload. `GET /campaigns/{campaign_id}/progress` returns
-    the same shape for polling and for catching up after a reconnect.
+    `CampaignProgress` payload (as in any Pusher event, the event's `data` is
+    that object as a JSON string). Connect to `wss://{reverb host}/app/{app key}`
+    with any Pusher client; the channel needs no sign-in. Only campaigns
+    customers can see are pushed.
+
+    Pushes are best effort and may skip numbers in between. Read
+    `GET /campaigns/{campaign_id}/progress` (the same shape) after connecting
+    and after every reconnect, keep a slow poll while connected, and keep
+    the numbers with the latest `updated_at` when a push and a read cross.
 
     ## Joining and paying
 

@@ -15,6 +15,7 @@ use Carbon\CarbonImmutable;
 use Database\Factories\CampaignFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\UseFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -203,6 +204,19 @@ class Campaign extends Model
     public function approver(): BelongsTo
     {
         return $this->belongsTo(AdminUser::class, 'approved_by_admin_id');
+    }
+
+    /**
+     * Campaigns customers can see: approved, and not a draft or awaiting
+     * approval. A campaign cancelled before approval never was approved.
+     *
+     * @return Builder<self>
+     */
+    public static function visibleToCustomers(): Builder
+    {
+        return self::query()
+            ->whereIn('status', CampaignStatus::visibleToCustomers())
+            ->whereNotNull('approved_at');
     }
 
     /**

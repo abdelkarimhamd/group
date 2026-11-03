@@ -52,18 +52,17 @@ final class CampaignController extends Controller
     }
 
     /**
-     * Polled by the campaign page; cached for at most 2 seconds.
+     * Polled by the campaign page, and read again after a Reverb reconnect;
+     * cached for at most 2 seconds.
      */
     public function progress(string $campaign): JsonResponse
     {
         $data = Cache::remember(
             'campaign-progress:'.$campaign,
             (int) config('groupbuy.campaigns.progress_cache_seconds'),
-            // Plain arrays only: a real cache store serializes what it keeps,
-            // and value objects such as Money would not come back whole.
             fn (): ?array => ($model = self::visible()->with('currentTiers')->where('uuid', $campaign)->first()) === null
                 ? null
-                : json_decode(json_encode(Progress::of($model), JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR),
+                : Progress::payload($model),
         );
 
         abort_if($data === null, 404);
@@ -76,8 +75,6 @@ final class CampaignController extends Controller
      */
     private static function visible(): Builder
     {
-        return Campaign::query()
-            ->whereIn('status', CampaignStatus::visibleToCustomers())
-            ->whereNotNull('approved_at');
+        return Campaign::visibleToCustomers();
     }
 }

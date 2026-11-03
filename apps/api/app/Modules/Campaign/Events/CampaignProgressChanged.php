@@ -7,8 +7,8 @@ use Illuminate\Foundation\Events\Dispatchable;
 
 /**
  * A campaign's committed or reserved units, price or status changed. Fired
- * after commit. Reverb broadcasts this as `progress.updated` once Reverb is
- * set up; until then customers poll GET /campaigns/{id}/progress.
+ * after commit. Each one queues a Reverb push of the campaign's progress
+ * (App\Modules\Campaign\Jobs\BroadcastProgress).
  */
 final class CampaignProgressChanged implements ShouldDispatchAfterCommit
 {

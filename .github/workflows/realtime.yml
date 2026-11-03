@@ -1,0 +1,81 @@
+name: Realtime
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "apps/realtime/**"
+      - "apps/api/composer.lock"
+      - "apps/api/config/broadcasting.php"
+      - "apps/api/app/Modules/Campaign/Events/ProgressUpdated.php"
+      - ".github/workflows/realtime.yml"
+
+concurrency:
+  group: realtime-${{ github.ref }}
+  cancel-in-progress: true
+
+# Starts Reverb (apps/realtime), has the API broadcast a progress.updated
+# through it, and checks a WebSocket subscriber receives it.
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      REVERB_APP_ID: "1001"
+      REVERB_APP_KEY: ci-key
+      REVERB_APP_SECRET: ci-secret
+      REVERB_HOST: 127.0.0.1
+      REVERB_PORT: "8080"
+      REVERB_SCHEME: http
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_pgsql, pgsql, redis, pcntl, posix
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/realtime/vendor
+            apps/api/vendor
+          key: composer-realtime-${{ hashFiles('apps/realtime/composer.lock', 'apps/api/composer.lock') }}
+
+      - name: Install
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress --working-dir=apps/realtime
+          composer install --no-interaction --prefer-dist --no-progress --working-dir=apps/api
+
+      - name: Code style
+        working-directory: apps/realtime
+        run: vendor/bin/pint --test
+
+      - name: Start Reverb
+        working-directory: apps/realtime
+        run: |
+          cp .env.example .env
+          nohup php artisan reverb:start > reverb.log 2>&1 &
+          for i in $(seq 1 20); do nc -z 127.0.0.1 8080 && exit 0; sleep 0.5; done
+          cat reverb.log
+          exit 1
+
+      - name: The API's push reaches a subscriber
+        working-directory: apps/api
+        env:
+          BROADCAST_CONNECTION: reverb
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          node ../realtime/scripts/smoke.mjs php artisan tinker --execute='broadcast(new App\Modules\Campaign\Events\ProgressUpdated(getenv("SMOKE_CAMPAIGN_ID"), ["campaign_id" => getenv("SMOKE_CAMPAIGN_ID"), "committed_qty" => 7]));'
+
+      - name: Reverb log
+        if: always()
+        run: cat apps/realtime/reverb.log || true

@@ -12,6 +12,7 @@ import {
   maxJoinQuantity,
 } from "@/lib/pricing";
 import type { CampaignDetail, CampaignProgress } from "@/lib/api/types";
+import { newer, parseProgress, reverbConfig, subscribeToProgress } from "@/lib/live-progress";
 import { CountdownBoxes } from "./countdown";
 import {
   CampaignImage,
@@ -24,12 +25,14 @@ import {
 } from "./campaign-bits";
 import { Alert, ButtonLink, cx } from "./ui";
 
-// The campaign page renders once on the server, then keeps its numbers live
-// by polling GET /campaigns/{id}/progress (the same payload the API pushes
-// over Reverb as progress.updated; a Reverb subscription can replace the
-// poll later without touching the panels below).
+// The campaign page renders once on the server, then keeps its numbers live:
+// Reverb pushes `progress.updated` (src/lib/live-progress.ts), and the page
+// reads GET /campaigns/{id}/progress on every (re)connect to catch up. The
+// poll stays as the safety net: every 30 seconds while pushes arrive, every
+// 5 seconds without them (no Reverb configured, or the connection is down).
 
 const POLL_MS = 5000;
+const PUSHED_POLL_MS = 30_000;
 const LIVE_STATUSES = new Set(["scheduled", "active", "closing"]);
 
 const ProgressContext = createContext<CampaignProgress | null>(null);
@@ -49,38 +52,72 @@ export function LiveCampaignProvider({
   useEffect(() => {
     if (!live) return;
     let stopped = false;
+    let pushing = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
 
-    async function poll() {
-      if (document.visibilityState === "visible") {
-        controller = new AbortController();
-        try {
-          const response = await fetch(`/api/v1/campaigns/${campaignId}/progress`, {
-            headers: { Accept: "application/json" },
-            cache: "no-store",
-            signal: controller.signal,
-          });
-          if (response.ok) {
-            const body = (await response.json()) as { data: CampaignProgress };
-            if (!stopped) {
-              setProgress((current) =>
-                Date.parse(body.data.updated_at) >= Date.parse(current.updated_at) ? body.data : current,
-              );
-            }
-          }
-        } catch {
-          // Keep the last numbers on screen; the next poll tries again.
+    const accept = (incoming: CampaignProgress) => {
+      if (!stopped) setProgress((current) => newer(current, incoming));
+    };
+
+    async function read() {
+      controller?.abort();
+      const mine = (controller = new AbortController());
+      try {
+        const response = await fetch(`/api/v1/campaigns/${campaignId}/progress`, {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+          signal: mine.signal,
+        });
+        if (response.ok) {
+          const body = (await response.json()) as { data: unknown };
+          const fresh = parseProgress(body.data, campaignId);
+          if (fresh) accept(fresh);
         }
+      } catch {
+        // Keep the last numbers on screen; the next read tries again.
       }
-      if (!stopped) timer = setTimeout(poll, POLL_MS);
     }
 
-    timer = setTimeout(poll, POLL_MS);
+    function schedule(ms: number) {
+      clearTimeout(timer);
+      if (!stopped) timer = setTimeout(tick, ms);
+    }
+
+    async function tick() {
+      if (document.visibilityState === "visible") await read();
+      schedule(pushing ? PUSHED_POLL_MS : POLL_MS);
+    }
+
+    schedule(POLL_MS);
+
+    const reverb = reverbConfig();
+    const unsubscribe = reverb
+      ? subscribeToProgress(
+          campaignId,
+          {
+            onProgress: accept,
+            onLive: (now) => {
+              pushing = now;
+              if (stopped) return;
+              if (now) {
+                // Pushes only carry changes from here on: catch up first.
+                void read();
+                schedule(PUSHED_POLL_MS);
+              } else {
+                schedule(POLL_MS);
+              }
+            },
+          },
+          reverb,
+        )
+      : undefined;
+
     return () => {
       stopped = true;
       clearTimeout(timer);
       controller?.abort();
+      unsubscribe?.();
     };
   }, [campaignId, live]);
 
