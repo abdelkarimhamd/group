@@ -9,6 +9,7 @@ import { useNow } from "@/hooks/use-now";
 import { fakeProviderPaymentId, paymentsMode } from "@/lib/payments";
 import type { Participation, Payment } from "@/lib/api/types";
 import { TimeUntil } from "./countdown";
+import { MoyasarForm } from "./moyasar-form";
 import { Alert, Button, ButtonLink, Card, Spinner } from "./ui";
 
 type JoinRef = Pick<Participation, "id" | "hold_amount" | "reservation_expires_at"> & {
@@ -16,9 +17,8 @@ type JoinRef = Pick<Participation, "id" | "hold_amount" | "reservation_expires_a
 };
 
 /**
- * The card hold. Moyasar's hosted form goes here once that integration lands
- * (third-party work comes last); until then the fake mode sends the API's
- * fake provider IDs through the same return page Moyasar will use.
+ * The card hold: Moyasar's payment form, or in fake mode two buttons that
+ * send the API's fake provider IDs through the same return page Moyasar uses.
  */
 export function PaymentStep({ participation, payment }: { participation: JoinRef; payment: Payment }) {
   const { t, locale } = useI18n();
@@ -72,8 +72,15 @@ export function PaymentStep({ participation, payment }: { participation: JoinRef
             </ButtonLink>
           </div>
         </div>
+      ) : payment.checkout ? (
+        <MoyasarForm
+          checkout={payment.checkout}
+          paymentId={payment.id}
+          participationId={participation.id}
+          campaignId={participation.campaign.id}
+        />
       ) : (
-        <Alert tone="neutral">{t.payment.providerPending}</Alert>
+        <Alert tone="danger">{t.payment.formFailed}</Alert>
       )}
     </Card>
   );

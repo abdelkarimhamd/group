@@ -29,7 +29,11 @@ The plain contract mock (`npm run mock:prism`, or `docker compose --profile mock
 
 ## Payments
 
-Card holds go through Moyasar's hosted form, which is the last integration to land. Until then `NEXT_PUBLIC_PAYMENTS_MODE=fake` (the default) shows a test form after a join with two buttons. They send the customer to `/{locale}/payments/return?payment_id=<payment id>&id=fake_authorized_<payment id>` (or `fake_declined_…`), the same return page Moyasar will use. That page never trusts the redirect: it calls `POST /payments/{id}/sync` and shows what the API decided. The API accepts these fake IDs only in its fake payment mode.
+Card holds go through Moyasar's payment form (`moyasar-payment-form`, pinned) when `NEXT_PUBLIC_PAYMENTS_MODE=moyasar`. The form is built from the `checkout` the API returns with a pending payment (`src/lib/payments.ts`): card details go from the form straight to Moyasar, the hold is authorize-only (`credit_card.manual` and `apple_pay.manual`), and the API's `metadata.payment_id` travels with the payment so Moyasar's webhook can find it. As soon as Moyasar has created the payment, before any 3-D Secure step, the form records Moyasar's payment ID with the API (`recordPayment`), so the hold is found even if the customer never comes back. Moyasar then sends the customer to `/{locale}/payments/return?payment_id=<payment id>&id=<moyasar id>`. That page never trusts the redirect: it calls `POST /payments/{id}/sync` and shows what the API decided.
+
+Apple Pay shows in browsers that offer it once the domain is registered in Moyasar's dashboard (Settings, Apple Pay Domains): serve the file it gives at `/.well-known/apple-developer-merchantid-domain-association` (for example in `public/.well-known/`, which the locale redirect leaves alone) for each host, `www` included. `NEXT_PUBLIC_APPLE_PAY_LABEL` is the name on the Apple Pay sheet, in English letters (Moyasar refuses anything else).
+
+`NEXT_PUBLIC_PAYMENTS_MODE=fake` (the default, and what CI uses) shows a test form instead, with two buttons. They send the customer to the same return page with `id=fake_authorized_<payment id>` (or `fake_declined_…`), which the API accepts only in its fake payment mode.
 
 ## How the code is organised
 

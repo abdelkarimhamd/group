@@ -48,6 +48,9 @@ export function PaymentReturn() {
           setState({ kind: "mismatch" });
         } else if (result.status === 404) {
           setState({ kind: "missing" });
+        } else if ([0, 429, 503].includes(result.status) && checks < MAX_CHECKS) {
+          // We or Moyasar did not answer this time: ask again shortly.
+          timer = setTimeout(check, RECHECK_MS);
         } else {
           setState({ kind: "error", network: result.status === 0 });
         }

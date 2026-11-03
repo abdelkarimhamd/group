@@ -260,7 +260,8 @@ export const en: Dictionary = {
     fakeBody: "Card payments aren't connected yet. Choose how this test hold ends.",
     fakeApprove: "Approve the hold",
     fakeDecline: "Decline the card",
-    providerPending: "Card payments aren't available yet. Please try again later.",
+    formLoading: "Loading the payment form…",
+    formFailed: "The payment form didn't load. Check your connection and refresh the page.",
     checking: "Checking your payment…",
     successTitle: "You're in",
     successBody:

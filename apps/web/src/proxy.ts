@@ -66,7 +66,9 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except Next internals, the API path and files with an extension.
-    "/((?!_next/|api/|.*\\.[a-zA-Z0-9]+$).*)",
+    // Everything except Next internals, the API path, files with an extension
+    // and /.well-known/ (Apple Pay's domain check reads
+    // /.well-known/apple-developer-merchantid-domain-association as it is).
+    "/((?!_next/|api/|\\.well-known/|.*\\.[a-zA-Z0-9]+$).*)",
   ],
 };

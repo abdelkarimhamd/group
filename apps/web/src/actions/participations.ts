@@ -110,6 +110,30 @@ export async function syncPayment(input: {
   }
 }
 
+/**
+ * Called by Moyasar's form as soon as Moyasar has created the payment, before
+ * any 3-D Secure redirect: the API stores Moyasar's ID (or settles the hold
+ * at once), so the hold is found even if the customer never comes back. It
+ * also remembers the payment for the return page, in case the redirect back
+ * loses our payment_id.
+ */
+export async function recordPayment(input: {
+  locale: string;
+  paymentId: string;
+  participationId: string;
+  campaignId: string;
+  providerPaymentId: string;
+}): Promise<{ ok: true; participation: Participation } | ActionFailure> {
+  const { api } = await authed(input.locale);
+  if (!api) return signedOut;
+  await setPendingPayment({
+    paymentId: input.paymentId,
+    participationId: input.participationId,
+    campaignId: input.campaignId,
+  });
+  return syncPayment(input);
+}
+
 export async function cancelParticipation(input: {
   locale: string;
   participationId: string;

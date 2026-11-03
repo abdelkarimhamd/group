@@ -41,6 +41,12 @@ test.describe("browsing", () => {
   });
 });
 
+test("Apple Pay's domain file is served as it is, never moved under a locale", async ({ request }) => {
+  const response = await request.get("/.well-known/apple-developer-merchantid-domain-association", { maxRedirects: 0 });
+  // Not deployed in tests (it comes from Moyasar's dashboard), so 404, but never a redirect to /ar/.
+  expect(response.status()).toBe(404);
+});
+
 test.describe("joining", () => {
   test("sign in, join with a fake card hold, then cancel", async ({ page }) => {
     await page.goto(`/ar/campaigns/${KETTLE}`);
