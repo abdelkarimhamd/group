@@ -8,6 +8,8 @@ use App\Support\Money\Money;
 /**
  * The `CampaignProgress` schema: what the campaign page shows live. Only
  * authorized units count; pending payments only reduce what is left to sell.
+ * `version` (the row's, bumped by PostgreSQL on every update) lets clients
+ * tell the later of two payloads apart; read it from a freshly loaded model.
  */
 final class Progress
 {
@@ -28,6 +30,7 @@ final class Progress
             'current_unit_price' => self::currentUnitPrice($campaign),
             'deadline_at' => $campaign->deadline_at?->toIso8601ZuluString(),
             'updated_at' => $campaign->updated_at->toIso8601ZuluString(),
+            'version' => $campaign->version,
         ];
     }
 

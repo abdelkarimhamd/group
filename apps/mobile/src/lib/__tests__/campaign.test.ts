@@ -39,12 +39,29 @@ describe('progress', () => {
     expect(progressFractions(progress({ max_qty: 0, min_target_qty: 0 })).target).toBe(0);
   });
 
-  it('prefers the freshest progress', () => {
-    const older = progress({ committed_qty: 10, updated_at: '2026-11-02T10:00:00Z' });
-    const newer = progress({ committed_qty: 12, updated_at: '2026-11-02T10:00:05Z' });
+  it('prefers the progress with the higher version', () => {
+    const older = progress({ committed_qty: 10, version: 10 });
+    const newer = progress({ committed_qty: 12, version: 11 });
     expect(latestProgress(older, newer)).toBe(newer);
     expect(latestProgress(newer, older)).toBe(newer);
     expect(latestProgress(older, undefined)).toBe(older);
+  });
+
+  it('goes by version, not by the whole-second time', () => {
+    // Two changes in one second: the time cannot order them, the version can.
+    const later = progress({ committed_qty: 60, version: 12, updated_at: '2026-11-02T09:00:05Z' });
+    const earlier = progress({
+      committed_qty: 58,
+      version: 11,
+      updated_at: '2026-11-02T09:00:05Z',
+    });
+    expect(latestProgress(later, earlier)).toBe(later);
+  });
+
+  it('takes the live copy of the same version', () => {
+    const shown = progress();
+    const live = progress();
+    expect(latestProgress(shown, live)).toBe(live);
   });
 });
 

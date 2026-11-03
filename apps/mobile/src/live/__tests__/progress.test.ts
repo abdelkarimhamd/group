@@ -1,6 +1,5 @@
 import type { CampaignProgress } from '@/api/types';
 import {
-  newer,
   parseProgress,
   reverbConfig,
   subscribeToProgress,
@@ -22,6 +21,7 @@ const progress = (overrides: Partial<CampaignProgress> = {}): CampaignProgress =
   current_unit_price: { amount_minor: 7900, currency: 'SAR', formatted: '79.00 SAR' },
   deadline_at: '2026-11-08T07:00:00Z',
   updated_at: '2026-11-02T09:00:00Z',
+  version: 10,
   ...overrides,
 });
 
@@ -76,6 +76,7 @@ describe('a pushed payload', () => {
     expect(parseProgress({ ...progress(), current_unit_price: null }, ID)).toBeNull();
     expect(parseProgress({ ...progress(), updated_at: 'yesterday' }, ID)).toBeNull();
     expect(parseProgress({ ...progress(), deal_confirmed_at: 'soon' }, ID)).toBeNull();
+    expect(parseProgress({ ...progress(), version: '11' }, ID)).toBeNull();
     const { units_to_target: _dropped, ...partial } = progress();
     expect(parseProgress(partial, ID)).toBeNull();
   });
@@ -83,21 +84,6 @@ describe('a pushed payload', () => {
   it("keeps a confirmed deal's time", () => {
     const confirmed = progress({ deal_confirmed_at: '2026-11-03T10:00:00Z', units_to_target: 0 });
     expect(parseProgress(confirmed, ID)).toEqual(confirmed);
-  });
-});
-
-describe('when a push and a read cross', () => {
-  it('keeps the later numbers', () => {
-    const older = progress({ committed_qty: 53, updated_at: '2026-11-02T09:00:00Z' });
-    const later = progress({ committed_qty: 60, updated_at: '2026-11-02T09:00:05Z' });
-    expect(newer(older, later)).toBe(later);
-    expect(newer(later, older)).toBe(later);
-  });
-
-  it('takes the incoming numbers on a tie', () => {
-    const shown = progress({ committed_qty: 53 });
-    const incoming = progress({ committed_qty: 54 });
-    expect(newer(shown, incoming)).toBe(incoming);
   });
 });
 
@@ -135,7 +121,13 @@ function fakePusher() {
       channels.delete(name);
       subscribedChannels.delete(name);
     }),
-    disconnect: jest.fn(),
+    connect: jest.fn(() => {
+      client.connection.state = 'connecting';
+    }),
+    disconnect: jest.fn(() => {
+      client.connection.state = 'disconnected';
+      subscribedChannels.clear();
+    }),
   };
   return {
     client: client as unknown as PusherClient & typeof client,
@@ -159,13 +151,21 @@ function fakePusher() {
 
 const config: ReverbConfig = { key: 'app-key', host: 'ws.example.sa', port: 443, tls: true };
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const handlers = () => ({ onProgress: jest.fn(), onLive: jest.fn() });
 
 describe("listening for a campaign's pushes", () => {
   it('subscribes to its channel and hands over valid pushes only', async () => {
     const pusher = fakePusher();
     const onProgress = jest.fn();
     const onLive = jest.fn();
-    const stop = subscribeToProgress(ID, { onProgress, onLive }, config, async () => pusher.client);
+    const stop = subscribeToProgress(
+      ID,
+      { onProgress, onLive },
+      config,
+      async () => pusher.client,
+      0,
+    );
     await flush();
 
     expect(pusher.client.subscribe).toHaveBeenCalledWith(`campaigns.${ID}`);
@@ -197,6 +197,7 @@ describe("listening for a campaign's pushes", () => {
       { onProgress: jest.fn(), onLive },
       config,
       async () => pusher.client,
+      0,
     );
     await flush();
 
@@ -211,21 +212,11 @@ describe("listening for a campaign's pushes", () => {
     stop();
   });
 
-  it('shares one connection and closes it with the last listener', async () => {
+  it('shares one connection and closes it a while after the last listener leaves', async () => {
     const pusher = fakePusher();
     const factory = jest.fn(async () => pusher.client);
-    const stopFirst = subscribeToProgress(
-      ID,
-      { onProgress: jest.fn(), onLive: jest.fn() },
-      config,
-      factory,
-    );
-    const stopSecond = subscribeToProgress(
-      'another',
-      { onProgress: jest.fn(), onLive: jest.fn() },
-      config,
-      factory,
-    );
+    const stopFirst = subscribeToProgress(ID, handlers(), config, factory, 0);
+    const stopSecond = subscribeToProgress('another', handlers(), config, factory, 0);
     await flush();
 
     expect(factory).toHaveBeenCalledTimes(1);
@@ -237,22 +228,48 @@ describe("listening for a campaign's pushes", () => {
 
     stopSecond();
     await flush();
+    await flush();
     expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
     expect(pusher.listeners()).toBe(0);
+  });
+
+  it('keeps the connection when the next live screen opens soon, and reuses the client after an idle close', async () => {
+    const pusher = fakePusher();
+    const factory = jest.fn(async () => pusher.client);
+    const stopFirst = subscribeToProgress(ID, handlers(), config, factory, 50);
+    await flush();
+    stopFirst();
+
+    // Moving to another campaign: same connection, nothing closed.
+    const stopSecond = subscribeToProgress('another', handlers(), config, factory, 50);
+    await pause(80);
+    expect(pusher.client.disconnect).not.toHaveBeenCalled();
+
+    stopSecond();
+    await pause(80);
+    expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
+
+    // Later: the same client connects again; pusher-js never builds a second.
+    const stopThird = subscribeToProgress(ID, handlers(), config, factory, 50);
+    await flush();
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(pusher.client.connect).toHaveBeenCalledTimes(1);
+    expect(pusher.client.subscribe).toHaveBeenLastCalledWith(`campaigns.${ID}`);
+    stopThird();
   });
 
   it("lets two listeners share a campaign's channel, which stays until the last leaves", async () => {
     const pusher = fakePusher();
     const factory = async () => pusher.client;
-    const first = { onProgress: jest.fn(), onLive: jest.fn() };
-    const second = { onProgress: jest.fn(), onLive: jest.fn() };
-    const stopFirst = subscribeToProgress(ID, first, config, factory);
+    const first = handlers();
+    const second = handlers();
+    const stopFirst = subscribeToProgress(ID, first, config, factory, 0);
     await flush();
     pusher.state('connected');
     pusher.fire(`campaigns.${ID}`, 'pusher:subscription_succeeded');
 
     // Already subscribed: the second hears it at once.
-    const stopSecond = subscribeToProgress(ID, second, config, factory);
+    const stopSecond = subscribeToProgress(ID, second, config, factory, 0);
     await flush();
     expect(second.onLive).toHaveBeenLastCalledWith(true);
 
@@ -268,45 +285,39 @@ describe("listening for a campaign's pushes", () => {
 
     stopSecond();
     await flush();
+    await flush();
     expect(pusher.client.unsubscribe).toHaveBeenCalledWith(`campaigns.${ID}`);
     expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing when stopped before pusher-js has loaded', async () => {
     const pusher = fakePusher();
-    const stop = subscribeToProgress(
-      ID,
-      { onProgress: jest.fn(), onLive: jest.fn() },
-      config,
-      async () => pusher.client,
-    );
+    const stop = subscribeToProgress(ID, handlers(), config, async () => pusher.client, 0);
     stop();
+    await flush();
     await flush();
 
     expect(pusher.client.subscribe).not.toHaveBeenCalled();
     expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the page polling when pusher-js cannot load', async () => {
+  it('keeps the screen polling when pusher-js cannot load, and tries again on the next screen', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const pusher = fakePusher();
+    const factory = jest.fn<Promise<PusherClient>, [ReverbConfig]>();
+    factory.mockRejectedValueOnce(new Error('bundle')).mockResolvedValueOnce(pusher.client);
     const onLive = jest.fn();
-    const stop = subscribeToProgress(ID, { onProgress: jest.fn(), onLive }, config, () =>
-      Promise.reject(new Error('chunk')),
-    );
+    const stop = subscribeToProgress(ID, { onProgress: jest.fn(), onLive }, config, factory, 0);
     await flush();
 
     expect(onLive).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
     stop();
+    const again = subscribeToProgress(ID, handlers(), config, factory, 0);
     await flush();
-    // A later page gets a fresh try.
-    const pusher = fakePusher();
-    const again = subscribeToProgress(
-      ID,
-      { onProgress: jest.fn(), onLive: jest.fn() },
-      config,
-      async () => pusher.client,
-    );
-    await flush();
+    expect(factory).toHaveBeenCalledTimes(2);
     expect(pusher.client.subscribe).toHaveBeenCalled();
     again();
+    warn.mockRestore();
   });
 });

@@ -45,7 +45,7 @@ The mobile app shows the same form: it opens `/{locale}/payments/app` in a WebVi
 | `src/actions/` | Server Actions: sign-in, joining, payments, profile, addresses. The browser never sees the API token. |
 | `src/lib/api/` | The generated contract types (`schema.d.ts`), the typed client and error handling. |
 | `src/i18n/` | Locales, dictionaries (Arabic is the source; English must match its shape) and formatting. |
-| `src/components/` | UI. `campaign-live.tsx` keeps the campaign page live: Reverb pushes `progress.updated` (`src/lib/live-progress.ts`, pusher-js loaded only on live campaign pages), the page reads `GET /campaigns/{id}/progress` after every (re)connect, and polls every 30 seconds while pushes arrive or every 5 seconds without them (no `NEXT_PUBLIC_REVERB_*`, or the connection is down). |
+| `src/components/` | UI. `campaign-live.tsx` keeps the campaign page live: Reverb pushes `progress.updated` (`src/lib/live-progress.ts`, pusher-js loaded only on live campaign pages), the page reads `GET /campaigns/{id}/progress` after every (re)connect, and polls every 30 seconds while connected or every 5 seconds otherwise (no `NEXT_PUBLIC_REVERB_*`, or the connection is down); a push and a read that cross keep the higher `version`. |
 | `src/proxy.ts` | Adds the locale to URLs and sends signed-out visitors on account pages to sign-in. |
 | `mock/` | The fixture API used in development and browser tests. |
 

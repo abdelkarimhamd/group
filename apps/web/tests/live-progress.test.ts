@@ -23,6 +23,7 @@ const progress = (overrides: Partial<CampaignProgress> = {}): CampaignProgress =
   current_unit_price: { amount_minor: 7900, currency: "SAR", formatted: "79.00 SAR" },
   deadline_at: "2026-11-08T07:00:00Z",
   updated_at: "2026-11-02T09:00:00Z",
+  version: 10,
   ...overrides,
 });
 
@@ -77,8 +78,11 @@ describe("a pushed payload", () => {
     expect(parseProgress({ ...progress(), current_unit_price: null }, ID)).toBeNull();
     expect(parseProgress({ ...progress(), updated_at: "yesterday" }, ID)).toBeNull();
     expect(parseProgress({ ...progress(), deal_confirmed_at: "soon" }, ID)).toBeNull();
+    expect(parseProgress({ ...progress(), version: "11" }, ID)).toBeNull();
     const { units_to_target: _dropped, ...partial } = progress();
     expect(parseProgress(partial, ID)).toBeNull();
+    const { version: _unversioned, ...unversioned } = progress();
+    expect(parseProgress(unversioned, ID)).toBeNull();
   });
 
   it("keeps a confirmed deal's time", () => {
@@ -88,16 +92,23 @@ describe("a pushed payload", () => {
 });
 
 describe("when a push and a read cross", () => {
-  it("keeps the later numbers", () => {
-    const older = progress({ committed_qty: 53, updated_at: "2026-11-02T09:00:00Z" });
-    const later = progress({ committed_qty: 60, updated_at: "2026-11-02T09:00:05Z" });
+  it("keeps the higher version", () => {
+    const older = progress({ committed_qty: 53, version: 10 });
+    const later = progress({ committed_qty: 60, version: 11 });
     expect(newer(older, later)).toBe(later);
     expect(newer(later, older)).toBe(later);
   });
 
-  it("takes the incoming numbers on a tie", () => {
-    const shown = progress({ committed_qty: 53 });
-    const incoming = progress({ committed_qty: 54 });
+  it("goes by version, not by the whole-second time", () => {
+    // Two changes in one second: the time cannot order them, the version can.
+    const later = progress({ committed_qty: 60, version: 12, updated_at: "2026-11-02T09:00:05Z" });
+    const earlier = progress({ committed_qty: 58, version: 11, updated_at: "2026-11-02T09:00:05Z" });
+    expect(newer(later, earlier)).toBe(later);
+  });
+
+  it("takes the incoming copy of the same version", () => {
+    const shown = progress();
+    const incoming = progress();
     expect(newer(shown, incoming)).toBe(incoming);
   });
 });
@@ -136,7 +147,13 @@ function fakePusher() {
       channels.delete(name);
       subscribedChannels.delete(name);
     }),
-    disconnect: vi.fn(),
+    connect: vi.fn(() => {
+      client.connection.state = "connecting";
+    }),
+    disconnect: vi.fn(() => {
+      client.connection.state = "disconnected";
+      subscribedChannels.clear();
+    }),
   };
   return {
     client: client as unknown as PusherClient & typeof client,
@@ -195,11 +212,11 @@ describe("listening for a campaign's pushes", () => {
     stop();
   });
 
-  it("shares one connection and closes it with the last listener", async () => {
+  it("shares one connection and closes it a while after the last listener leaves", async () => {
     const pusher = fakePusher();
     const factory = vi.fn(async () => pusher.client);
-    const stopFirst = subscribeToProgress(ID, { onProgress: vi.fn(), onLive: vi.fn() }, config, factory);
-    const stopSecond = subscribeToProgress("another", { onProgress: vi.fn(), onLive: vi.fn() }, config, factory);
+    const stopFirst = subscribeToProgress(ID, { onProgress: vi.fn(), onLive: vi.fn() }, config, factory, 0);
+    const stopSecond = subscribeToProgress("another", { onProgress: vi.fn(), onLive: vi.fn() }, config, factory, 0);
     await flush();
 
     expect(factory).toHaveBeenCalledTimes(1);
@@ -211,8 +228,34 @@ describe("listening for a campaign's pushes", () => {
 
     stopSecond();
     await flush();
+    await flush();
     expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
     expect(pusher.listeners()).toBe(0);
+  });
+
+  it("keeps the connection when the next live page opens soon, and reuses the client after an idle close", async () => {
+    const pusher = fakePusher();
+    const factory = vi.fn(async () => pusher.client);
+    const stopFirst = subscribeToProgress(ID, { onProgress: vi.fn(), onLive: vi.fn() }, config, factory, 50);
+    await flush();
+    stopFirst();
+
+    // Moving to another campaign: same connection, nothing closed.
+    const stopSecond = subscribeToProgress("another", { onProgress: vi.fn(), onLive: vi.fn() }, config, factory, 50);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(pusher.client.disconnect).not.toHaveBeenCalled();
+
+    stopSecond();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
+
+    // Later: the same client connects again; pusher-js never builds a second.
+    const stopThird = subscribeToProgress(ID, { onProgress: vi.fn(), onLive: vi.fn() }, config, factory, 50);
+    await flush();
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(pusher.client.connect).toHaveBeenCalledTimes(1);
+    expect(pusher.client.subscribe).toHaveBeenLastCalledWith(`campaigns.${ID}`);
+    stopThird();
   });
 
   it("lets two listeners share a campaign's channel, which stays until the last leaves", async () => {
@@ -220,13 +263,13 @@ describe("listening for a campaign's pushes", () => {
     const factory = async () => pusher.client;
     const first = { onProgress: vi.fn(), onLive: vi.fn() };
     const second = { onProgress: vi.fn(), onLive: vi.fn() };
-    const stopFirst = subscribeToProgress(ID, first, config, factory);
+    const stopFirst = subscribeToProgress(ID, first, config, factory, 0);
     await flush();
     pusher.state("connected");
     pusher.fire(`campaigns.${ID}`, "pusher:subscription_succeeded");
 
     // Already subscribed: the second hears it at once.
-    const stopSecond = subscribeToProgress(ID, second, config, factory);
+    const stopSecond = subscribeToProgress(ID, second, config, factory, 0);
     await flush();
     expect(second.onLive).toHaveBeenLastCalledWith(true);
 
@@ -238,32 +281,35 @@ describe("listening for a campaign's pushes", () => {
 
     stopSecond();
     await flush();
+    await flush();
     expect(pusher.client.unsubscribe).toHaveBeenCalledWith(`campaigns.${ID}`);
     expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("does nothing when stopped before pusher-js has loaded", async () => {
     const pusher = fakePusher();
-    const stop = subscribeToProgress(ID, { onProgress: vi.fn(), onLive: vi.fn() }, config, async () => pusher.client);
+    const stop = subscribeToProgress(ID, { onProgress: vi.fn(), onLive: vi.fn() }, config, async () => pusher.client, 0);
     stop();
+    await flush();
     await flush();
 
     expect(pusher.client.subscribe).not.toHaveBeenCalled();
     expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the page polling when pusher-js cannot load", async () => {
+  it("keeps the page polling when pusher-js cannot load, and tries again on the next page", async () => {
+    const pusher = fakePusher();
+    const factory = vi.fn<(c: ReverbConfig) => Promise<PusherClient>>();
+    factory.mockRejectedValueOnce(new Error("chunk")).mockResolvedValueOnce(pusher.client);
     const onLive = vi.fn();
-    const stop = subscribeToProgress(ID, { onProgress: vi.fn(), onLive }, config, () => Promise.reject(new Error("chunk")));
+    const stop = subscribeToProgress(ID, { onProgress: vi.fn(), onLive }, config, factory);
     await flush();
 
     expect(onLive).not.toHaveBeenCalled();
     stop();
+    const again = subscribeToProgress(ID, { onProgress: vi.fn(), onLive: vi.fn() }, config, factory);
     await flush();
-    // A later page gets a fresh try.
-    const pusher = fakePusher();
-    const again = subscribeToProgress(ID, { onProgress: vi.fn(), onLive: vi.fn() }, config, async () => pusher.client);
-    await flush();
+    expect(factory).toHaveBeenCalledTimes(2);
     expect(pusher.client.subscribe).toHaveBeenCalled();
     again();
   });

@@ -41,6 +41,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $max_qty
  * @property int $committed_qty
  * @property int $reserved_qty
+ * @property int $version Grows with every UPDATE of the row; set by a trigger, never by code.
  * @property int|null $per_customer_max_qty
  * @property CarbonImmutable $starts_at
  * @property CarbonImmutable|null $deadline_at
@@ -105,6 +106,7 @@ class Campaign extends Model
             'max_qty' => 'integer',
             'committed_qty' => 'integer',
             'reserved_qty' => 'integer',
+            'version' => 'integer',
             'per_customer_max_qty' => 'integer',
             'starts_at' => 'immutable_datetime',
             'deadline_at' => 'immutable_datetime',

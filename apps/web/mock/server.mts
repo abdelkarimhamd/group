@@ -186,6 +186,7 @@ function progressOf(campaign: FixtureCampaign): S["CampaignProgress"] {
     current_unit_price: money(priceForQty(campaign, campaign.committed_qty + 1)),
     deadline_at: iso(campaign.deadline_at),
     updated_at: iso(campaign.updated_at),
+    version: campaign.version,
   };
 }
 
@@ -687,6 +688,7 @@ const routes: Array<[string, RegExp, Handler]> = [
     participations.set(participation.id, participation);
     newPayment(participation);
     campaign.updated_at = Date.now();
+    campaign.version += 1;
     return { status: 201, body: { data: participationOf(participation, ctx.locale) } };
   }],
 
@@ -715,6 +717,7 @@ const routes: Array<[string, RegExp, Handler]> = [
     p.status = "cancelled";
     campaign.committed_qty -= p.quantity;
     campaign.updated_at = Date.now();
+    campaign.version += 1;
     const payment = payments.get(p.paymentIds.at(-1)!)!;
     payment.status = "voided";
     payment.rejection = "participation_cancelled";
@@ -753,6 +756,7 @@ const routes: Array<[string, RegExp, Handler]> = [
         campaign.committed_qty += p.quantity;
         if (!campaign.deal_confirmed_at && campaign.committed_qty >= campaign.min_target_qty) campaign.deal_confirmed_at = Date.now();
         campaign.updated_at = Date.now();
+        campaign.version += 1;
       } else {
         payment.status = "failed";
         payment.rejection = "declined";
@@ -843,6 +847,7 @@ if (SIMULATE) {
     campaign.committed_qty += 1;
     if (!campaign.deal_confirmed_at && campaign.committed_qty >= campaign.min_target_qty) campaign.deal_confirmed_at = Date.now();
     campaign.updated_at = Date.now();
+    campaign.version += 1;
   }, 8000);
 }
 

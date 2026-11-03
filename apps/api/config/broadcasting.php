@@ -32,7 +32,8 @@ return [
     'connections' => [
 
         // The API sends events to Reverb (apps/realtime) through its HTTP API at
-        // REVERB_HOST:REVERB_PORT, the same address the website and app use.
+        // REVERB_HOST:REVERB_PORT: in production Reverb's private address, not
+        // the public host the website and app connect to.
         'reverb' => [
             'driver' => 'reverb',
             'key' => env('REVERB_APP_KEY'),

@@ -65,8 +65,8 @@ export function useCampaign(id: string) {
 /**
  * A campaign's progress while `live` is true. Reverb pushes changes (when configured); the
  * screen reads `/progress` on every (re)connect and when the app comes back to the
- * foreground, and polls every 30 seconds while pushes arrive, every 5 without them. Reads
- * and pushes keep the numbers with the latest `updated_at`.
+ * foreground, and polls every 30 seconds while connected to Reverb, every 5 otherwise. Reads
+ * and pushes keep the numbers with the higher `version`.
  */
 export function useCampaignProgress(id: string, live: boolean) {
   const queryClient = useQueryClient();

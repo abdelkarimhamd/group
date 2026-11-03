@@ -82,7 +82,8 @@ return [
                     'scheme' => env('REVERB_SCHEME', 'https'),
                     'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
                 ],
-                // Campaign progress goes out on public, read-only channels, so any
+                // Campaign progress goes out on public channels that clients can
+                // only listen to (accept_client_events_from below), so any
                 // origin may listen. To narrow it, list hosts (wildcards allowed)
                 // and include the Reverb host itself: the mobile app's WebSocket
                 // sends the server's own host as its Origin.
@@ -91,7 +92,10 @@ return [
                 'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
                 'max_connections' => env('REVERB_APP_MAX_CONNECTIONS'),
                 'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10_000),
-                'accept_client_events_from' => env('REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM', 'members'),
+                // Clients only listen. Reverb's default ('members') would let any
+                // anonymous socket on a public channel send `client-*` events to
+                // every other viewer of the campaign.
+                'accept_client_events_from' => env('REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM', 'none'),
                 'rate_limiting' => [
                     'enabled' => env('REVERB_APP_RATE_LIMITING_ENABLED', false),
                     'max_attempts' => env('REVERB_APP_RATE_LIMIT_MAX_ATTEMPTS', 60),

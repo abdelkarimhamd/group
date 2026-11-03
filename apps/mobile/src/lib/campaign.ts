@@ -71,13 +71,15 @@ export function isTierReached(tier: PriceTier, committedQty: number): boolean {
   return committedQty >= tier.min_qty;
 }
 
-/** The progress object to show: the freshest of the campaign payload and the live poll. */
+/**
+ * The progress object to show: the higher `version` of the two (PostgreSQL bumps it on every
+ * change to the campaign; `updated_at` has whole seconds only). The same version is the same
+ * state, so a tie takes `live`.
+ */
 export function latestProgress(
   campaignProgress: CampaignProgress,
   live: CampaignProgress | undefined,
 ): CampaignProgress {
   if (!live) return campaignProgress;
-  return Date.parse(live.updated_at) >= Date.parse(campaignProgress.updated_at)
-    ? live
-    : campaignProgress;
+  return live.version >= campaignProgress.version ? live : campaignProgress;
 }

@@ -74,17 +74,9 @@ export function parseProgress(data: unknown, campaignId: string): CampaignProgre
     count(price.amount_minor) &&
     typeof price.currency === 'string' &&
     time(p.deadline_at) &&
-    time(p.updated_at);
+    time(p.updated_at) &&
+    count(p.version);
   return valid ? (p as CampaignProgress) : null;
-}
-
-/**
- * The numbers to show when a push and a read cross: the later `updated_at`
- * wins, and a tie takes the incoming one (the API sends a campaign's pushes
- * in order).
- */
-export function newer(current: CampaignProgress, incoming: CampaignProgress): CampaignProgress {
-  return Date.parse(incoming.updated_at) >= Date.parse(current.updated_at) ? incoming : current;
 }
 
 export const CHANNEL_PREFIX = 'campaigns.';
@@ -119,9 +111,12 @@ export type PusherClient = {
   connection: Connection;
   subscribe(channel: string): Channel;
   unsubscribe(channel: string): void;
+  connect(): void;
   disconnect(): void;
 };
 export type PusherFactory = (config: ReverbConfig) => Promise<PusherClient>;
+
+type PusherConstructor = typeof import('pusher-js').default;
 
 /**
  * pusher-js (its React Native build, which watches the network through
@@ -129,8 +124,14 @@ export type PusherFactory = (config: ReverbConfig) => Promise<PusherClient>;
  */
 export const loadPusher: PusherFactory = async (config) => {
   // A plain require: Jest cannot run import() without experimental flags.
+  // The React Native build exports { Pusher }, with no default; Jest
+  // resolves the Node build, which exports the class itself.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Pusher = (require('pusher-js') as typeof import('pusher-js')).default;
+  const mod = require('pusher-js') as PusherConstructor & {
+    Pusher?: PusherConstructor;
+    default?: PusherConstructor;
+  };
+  const Pusher = mod.Pusher ?? mod.default ?? mod;
   return new Pusher(config.key, {
     cluster: '',
     wsHost: config.host,
@@ -142,11 +143,24 @@ export const loadPusher: PusherFactory = async (config) => {
   }) as unknown as PusherClient;
 };
 
-// One connection for the app, shared by every listener and closed with the
-// last. A channel is shared too (the campaign screen stays mounted under the
-// checkout, both listening): it is left with its last listener.
-let shared: { client: Promise<PusherClient>; users: number; channels: Map<string, number> } | null =
-  null;
+/** How long the connection stays open after the last live screen closes, so moving between campaigns keeps it. */
+export const IDLE_DISCONNECT_MS = 30_000;
+
+type Shared = {
+  factory: PusherFactory;
+  client: Promise<PusherClient>;
+  users: number;
+  channels: Map<string, number>;
+  idle?: ReturnType<typeof setTimeout>;
+};
+
+// One pusher-js client for the app, kept for its life: pusher-js holds on to
+// every client it creates, so a new one per screen would pile up. It
+// disconnects IDLE_DISCONNECT_MS after the last listener leaves and connects
+// again for the next. A channel is shared too (the campaign screen stays
+// mounted under the checkout, both listening): it is left with its last
+// listener.
+let shared: Shared | null = null;
 
 /**
  * Listens for one campaign's pushes. Returns the function that stops; it
@@ -157,18 +171,31 @@ export function subscribeToProgress(
   handlers: ProgressSubscription,
   config: ReverbConfig,
   factory: PusherFactory = loadPusher,
+  idleMs: number = IDLE_DISCONNECT_MS,
 ): () => void {
   const name = CHANNEL_PREFIX + campaignId;
   let stopped = false;
   let cleanup: (() => void) | undefined;
 
-  if (!shared) shared = { client: factory(config), users: 0, channels: new Map() };
+  if (!shared || shared.factory !== factory) {
+    const created: Shared = { factory, client: factory(config), users: 0, channels: new Map() };
+    // A client that failed to load is forgotten, so the next screen tries again.
+    created.client.catch((error: unknown) => {
+      if (shared === created) shared = null;
+      if (__DEV__) console.warn('Live progress is off: pusher-js did not load.', error);
+    });
+    shared = created;
+  }
   const mine = shared;
+  clearTimeout(mine.idle);
+  mine.idle = undefined;
   mine.users += 1;
 
   mine.client.then(
     (client) => {
       if (stopped) return;
+      // Closed after an idle spell: open it again.
+      if (client.connection.state === 'disconnected') client.connect();
       let live = false;
       const onSubscribed = () => {
         live = true;
@@ -216,12 +243,15 @@ export function subscribeToProgress(
     stopped = true;
     cleanup?.();
     mine.users -= 1;
-    if (mine.users === 0) {
-      if (shared === mine) shared = null;
-      mine.client.then(
-        (client) => client.disconnect(),
-        () => undefined,
-      );
-    }
+    if (mine.users > 0) return;
+    clearTimeout(mine.idle);
+    mine.idle = setTimeout(() => {
+      mine.idle = undefined;
+      if (mine.users === 0)
+        mine.client.then(
+          (client) => client.disconnect(),
+          () => undefined,
+        );
+    }, idleMs);
   };
 }

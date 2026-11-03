@@ -46,7 +46,7 @@ php artisan schedule:work       # or cron: * * * * * php artisan schedule:run
 php artisan queue:work
 ```
 
-Campaign pages update live through Laravel Reverb, the WebSocket server that ships with Laravel. It runs from its own small app, `apps/realtime` (see its README for why). The queue worker sends each change to Reverb, and Reverb pushes it to the website and the app. Without Reverb (`BROADCAST_CONNECTION=log`, the local default) the pages refresh every 5 seconds instead. To run it locally, pick any app ID, key and secret, put them in both `apps/api/.env` and `apps/realtime/.env` (`REVERB_APP_ID`, `REVERB_APP_KEY`, `REVERB_APP_SECRET`), set `BROADCAST_CONNECTION=reverb` in the API, then:
+Campaign pages update live through Laravel Reverb, the WebSocket server that ships with Laravel. It runs from its own small app, `apps/realtime` (see its README for why). The queue worker sends each change to Reverb, and Reverb pushes it to the website and the app. Clients without Reverb settings, or whose connection is down, refresh every 5 seconds instead; while connected they still read every 30 seconds, as a safety net. The API's default `BROADCAST_CONNECTION=log` sends nothing, so leave the clients' Reverb settings unset until the API pushes too. To run it locally, pick any app ID, key and secret, put them in both `apps/api/.env` and `apps/realtime/.env` (`REVERB_APP_ID`, `REVERB_APP_KEY`, `REVERB_APP_SECRET`), set `BROADCAST_CONNECTION=reverb` in the API, then:
 
 ```bash
 cd apps/realtime && composer install && php artisan reverb:start

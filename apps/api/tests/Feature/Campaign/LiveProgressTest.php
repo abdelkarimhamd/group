@@ -89,6 +89,22 @@ class LiveProgressTest extends TestCase
         // The reservation's push: nothing committed yet, three units off sale.
         $reserved = json_decode($this->pushed(0)['data'], true);
         $this->assertSame([0, $campaign->max_qty - 3], [$reserved['committed_qty'], $reserved['remaining_qty']]);
+        // Clients tell the later payload by its version, not its whole-second time.
+        $this->assertSame($reserved['updated_at'], json_decode($push['data'], true)['updated_at']);
+        $this->assertGreaterThan($reserved['version'], json_decode($push['data'], true)['version']);
+    }
+
+    #[Test]
+    public function postgresql_bumps_the_version_on_every_update_whatever_the_code_sends(): void
+    {
+        $campaign = Campaign::factory()->active()->withTiers()->create();
+        $start = Campaign::query()->whereKey($campaign->id)->value('version');
+
+        DB::table('campaigns')->where('id', $campaign->id)->update(['reserved_qty' => DB::raw('reserved_qty + 1')]);
+        $campaign->refresh()->forceFill(['title_en' => 'Renamed'])->save();
+        DB::table('campaigns')->where('id', $campaign->id)->update(['version' => 0]);
+
+        $this->assertSame($start + 3, Campaign::query()->whereKey($campaign->id)->value('version'));
     }
 
     #[Test]
@@ -111,16 +127,47 @@ class LiveProgressTest extends TestCase
         $this->reverb->append(
             new Response(500, [], '{"error":"down"}'),
             new ConnectException('Connection refused', new Request('POST', 'https://ws.example.test/apps/1001/events')),
+            // Something in front of Reverb answering with its own page.
+            new Response(200, ['Content-Type' => 'text/html'], '<html>maintenance</html>'),
         );
 
-        // Neither failure reaches whoever changed the campaign.
+        // No failure reaches whoever changed the campaign.
+        CampaignProgressChanged::dispatch($campaign->id);
         CampaignProgressChanged::dispatch($campaign->id);
         CampaignProgressChanged::dispatch($campaign->id);
 
-        $this->assertCount(2, $this->sent);
+        $this->assertCount(3, $this->sent);
         Log::shouldHaveReceived('warning')
             ->withArgs(fn (string $message, array $context = []) => $message === 'campaigns.progress_push_failed' && $context['campaign_id'] === $campaign->uuid)
-            ->twice();
+            ->times(3);
+    }
+
+    #[Test]
+    public function a_push_that_gave_up_waiting_lets_the_next_change_queue_one(): void
+    {
+        Queue::fake([BroadcastProgress::class]);
+        $campaign = Campaign::factory()->active()->withTiers()->create();
+
+        CampaignProgressChanged::dispatch($campaign->id);
+        CampaignProgressChanged::dispatch($campaign->id);
+        Queue::assertPushedTimes(BroadcastProgress::class, 1);
+
+        // Its waits ran out before its run started (a lost run held the
+        // overlap lock): it still held the unique lock.
+        Queue::pushed(BroadcastProgress::class)->first()->failed(null);
+        CampaignProgressChanged::dispatch($campaign->id);
+
+        Queue::assertPushedTimes(BroadcastProgress::class, 2);
+    }
+
+    #[Test]
+    public function waiting_for_another_run_is_bounded_by_time_not_tries(): void
+    {
+        $job = new BroadcastProgress(1);
+
+        $this->assertFalse(isset($job->tries));
+        $this->assertSame(now()->addSeconds(60)->getTimestamp(), $job->retryUntil()->getTimestamp());
+        $this->assertSame(3, $job->maxExceptions);
     }
 
     #[Test]

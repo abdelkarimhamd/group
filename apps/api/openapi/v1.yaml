@@ -51,7 +51,8 @@ info:
     Pushes are best effort and may skip numbers in between. Read
     `GET /campaigns/{campaign_id}/progress` (the same shape) after connecting
     and after every reconnect, keep a slow poll while connected, and keep
-    the numbers with the latest `updated_at` when a push and a read cross.
+    the payload with the higher `version` when a push and a read cross.
+    Clients cannot send events on these channels.
 
     ## Joining and paying
 
@@ -3530,7 +3531,7 @@ components:
 
     CampaignProgress:
       type: object
-      required: [campaign_id, status, committed_qty, min_target_qty, max_qty, remaining_qty, units_to_target, deal_confirmed_at, current_unit_price, deadline_at, updated_at]
+      required: [campaign_id, status, committed_qty, min_target_qty, max_qty, remaining_qty, units_to_target, deal_confirmed_at, current_unit_price, deadline_at, updated_at, version]
       properties:
         campaign_id: {type: string, format: uuid}
         status: {$ref: '#/components/schemas/CustomerCampaignStatus'}
@@ -3543,6 +3544,12 @@ components:
         current_unit_price: {$ref: '#/components/schemas/Money'}
         deadline_at: {type: string, format: date-time, example: '2026-11-08T07:00:00Z'}
         updated_at: {type: string, format: date-time, example: '2026-11-02T09:00:00Z'}
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Grows with every change to the campaign. Of two payloads for one campaign (a push and a read, say), show the one with the higher version; the same version is the same state. Compare this, not `updated_at`, which has whole seconds only.
+          example: 1287
 
     CampaignSummary:
       type: object

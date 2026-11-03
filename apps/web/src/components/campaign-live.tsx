@@ -28,8 +28,9 @@ import { Alert, ButtonLink, cx } from "./ui";
 // The campaign page renders once on the server, then keeps its numbers live:
 // Reverb pushes `progress.updated` (src/lib/live-progress.ts), and the page
 // reads GET /campaigns/{id}/progress on every (re)connect to catch up. The
-// poll stays as the safety net: every 30 seconds while pushes arrive, every
-// 5 seconds without them (no Reverb configured, or the connection is down).
+// poll stays as the safety net: every 30 seconds while connected to Reverb,
+// every 5 seconds otherwise (no Reverb configured, or the connection is
+// down). A push and a read that cross keep the higher `version`.
 
 const POLL_MS = 5000;
 const PUSHED_POLL_MS = 30_000;

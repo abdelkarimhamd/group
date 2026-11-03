@@ -1982,6 +1982,12 @@ export interface components {
        * @example 2026-11-02T09:00:00Z
        */
       updated_at: string;
+      /**
+       * Format: int64
+       * @description Grows with every change to the campaign. Of two payloads for one campaign (a push and a read, say), show the one with the higher version; the same version is the same state. Compare this, not `updated_at`, which has whole seconds only.
+       * @example 1287
+       */
+      version: number;
     };
     CampaignSummary: {
       /** Format: uuid */

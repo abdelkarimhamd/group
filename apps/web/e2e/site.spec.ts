@@ -50,7 +50,6 @@ test.describe("live progress", () => {
     });
     return reads;
   };
-  const shifted = (iso: string, seconds: number) => new Date(Date.parse(iso) + seconds * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 
   test("pushes from Reverb update the page, and an older push changes nothing", async ({ page }) => {
     const reverb = await actAsReverb(page);
@@ -62,16 +61,17 @@ test.describe("live progress", () => {
     await expect.poll(() => reads.length).toBe(1);
 
     const current = (await (await page.request.get(`/api/v1/campaigns/${KETTLE}/progress`)).json()).data;
-    reverb.push(channel, { ...current, committed_qty: 77, updated_at: shifted(current.updated_at, 60) });
+    // Same second, as two quick joins would be: the version orders them.
+    reverb.push(channel, { ...current, committed_qty: 77, version: current.version + 2 });
     await expect(page.getByTestId("joined")).toContainText("77", { timeout: 3_000 });
 
-    reverb.push(channel, { ...current, committed_qty: 5, updated_at: shifted(current.updated_at, -60) });
+    reverb.push(channel, { ...current, committed_qty: 5, version: current.version + 1 });
     reverb.push(`campaigns.${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}`, { ...current, committed_qty: 9 });
     await page.waitForTimeout(500);
     await expect(page.getByTestId("joined")).toContainText("77");
   });
 
-  test("while pushes arrive the page stops polling, and catches up after a reconnect", async ({ page }) => {
+  test("while connected to Reverb the page stops the fast poll, and catches up after a reconnect", async ({ page }) => {
     const reverb = await actAsReverb(page);
     const reads = progressReads(page);
     await page.goto(`/ar/campaigns/${KETTLE}`);

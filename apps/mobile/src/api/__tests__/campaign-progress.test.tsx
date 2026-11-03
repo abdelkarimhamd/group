@@ -1,6 +1,7 @@
 /**
  * useCampaignProgress with Reverb configured: pusher-js is replaced by a stand-in the test
- * drives (subscribe, push, drop), and the API by mockApi.
+ * drives (subscribe, push, drop), shaped like its React Native build ({ Pusher }), and the
+ * API by mockApi.
  */
 import { QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
@@ -39,9 +40,18 @@ const mockPusher = {
   disconnected: 0,
 };
 
+// The connection closes as soon as the last screen leaves, not 30 seconds later.
+jest.mock('@/live/progress', () => {
+  const actual = jest.requireActual<typeof import('@/live/progress')>('@/live/progress');
+  return {
+    ...actual,
+    subscribeToProgress: (...args: Parameters<typeof actual.subscribeToProgress>) =>
+      actual.subscribeToProgress(args[0], args[1], args[2], args[3], 0),
+  };
+});
+
 jest.mock('pusher-js', () => ({
-  __esModule: true,
-  default: jest.fn().mockImplementation((key: string, options: unknown) => {
+  Pusher: jest.fn().mockImplementation((key: string, options: unknown) => {
     mockPusher.key = key;
     mockPusher.options = options;
     return {
@@ -66,8 +76,12 @@ jest.mock('pusher-js', () => ({
           mockPusher.handlers.get(`${name} ${event}`)?.delete(cb),
       }),
       unsubscribe: () => undefined,
+      connect: () => {
+        mockPusher.state = 'connecting';
+      },
       disconnect: () => {
         mockPusher.disconnected += 1;
+        mockPusher.state = 'disconnected';
       },
     };
   }),
@@ -97,6 +111,7 @@ const progress = (overrides: Partial<CampaignProgress> = {}): CampaignProgress =
   current_unit_price: { amount_minor: 7900, currency: 'SAR', formatted: '79.00 SAR' },
   deadline_at: '2026-11-08T07:00:00Z',
   updated_at: '2026-11-02T09:00:00Z',
+  version: 10,
   ...overrides,
 });
 
@@ -150,27 +165,21 @@ it('shows pushed numbers, and never older ones from a push or a read', async () 
   await act(async () => {
     setState('connected');
     fire('pusher:subscription_succeeded');
-    fire(
-      'progress.updated',
-      JSON.stringify(progress({ committed_qty: 60, updated_at: '2026-11-02T09:00:10Z' })),
-    );
+    fire('progress.updated', JSON.stringify(progress({ committed_qty: 60, version: 12 })));
   });
   await waitFor(() => expect(hook.result.current.data?.committed_qty).toBe(60));
 
   // An older push, a push for another campaign and a broken one change nothing.
   await act(async () => {
-    fire(
-      'progress.updated',
-      JSON.stringify(progress({ committed_qty: 1, updated_at: '2026-11-02T08:00:00Z' })),
-    );
+    fire('progress.updated', JSON.stringify(progress({ committed_qty: 1, version: 11 })));
     fire(
       'progress.updated',
       JSON.stringify(progress({ campaign_id: 'another', committed_qty: 2 })),
     );
     fire('progress.updated', '{broken');
   });
-  // The catch-up read answers with the API's cached, older numbers: still 60.
-  server.on('GET', PATH, { body: { data: progress({ committed_qty: 58 }) } });
+  // A read that left before the push arrives after it, with older numbers: still 60.
+  server.on('GET', PATH, { body: { data: progress({ committed_qty: 58, version: 11 }) } });
   await act(async () => {
     await hook.result.current.refetch();
   });
@@ -178,7 +187,7 @@ it('shows pushed numbers, and never older ones from a push or a read', async () 
   await hook.unmount();
 });
 
-it('reads on every subscribe, polls slowly while pushes arrive, and fast when they stop', async () => {
+it('reads on every subscribe, polls slowly while connected, and fast when the connection drops', async () => {
   const { reads, hook } = await setup();
   // Not connected yet: the 100 ms poll runs.
   await waitFor(() => expect(reads()).toBeGreaterThanOrEqual(3));

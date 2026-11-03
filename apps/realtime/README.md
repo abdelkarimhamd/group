@@ -18,7 +18,12 @@ php artisan reverb:start
 
 ## Production
 
-Run `php artisan reverb:start` under a process manager, behind the load balancer, which ends TLS on the public `wss://` host and forwards WebSocket upgrades to `REVERB_SERVER_PORT`. Each open page holds one connection, so raise the process's open-file limit (`ulimit -n`). To run more than one process, set `REVERB_SCALING_ENABLED=true` so they share events through Redis.
+Run `php artisan reverb:start` under a process manager. Two things reach it:
+
+- **The website and the app** connect to `wss://{public host}/app/{key}`. The load balancer ends TLS on the public host and forwards those WebSocket upgrades to `REVERB_SERVER_PORT`.
+- **The API** posts each event to Reverb's HTTP API (`POST /apps/{app id}/events`, signed with the secret). Point the API's `REVERB_HOST`, `REVERB_PORT` and `REVERB_SCHEME` at Reverb's private address (for example `http://10.0.1.5:8080`), so these posts never cross the public load balancer. If the API uses the public host instead, the load balancer must forward `/apps/*` to Reverb too, or every push fails (logged as `campaigns.progress_push_failed`) and the pages quietly fall back to polling.
+
+Clients can only listen: client events are off (`REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM=none`), so no viewer can send anything to the others. Each open page holds one connection, so raise the process's open-file limit (`ulimit -n`). To run more than one process, set `REVERB_SCALING_ENABLED=true` so they share events through Redis.
 
 ## Check
 

@@ -93,6 +93,7 @@ class ContractValidatorTest extends TestCase
                 'current_unit_price' => $price,
                 'deadline_at' => '2026-11-08T07:00:00Z',
                 'updated_at' => '2026-11-02T09:00:00Z',
+                'version' => 12,
             ],
             'description' => 'وصف',
             'category' => null,

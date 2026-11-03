@@ -30,6 +30,8 @@ export type FixtureCampaign = {
   final_unit_price_halalas: number | null;
   deal_confirmed_at: number | null;
   updated_at: number;
+  /** CampaignProgress.version: bumped with every change, as the API's trigger does. */
+  version: number;
 };
 
 const HOUR = 3600_000;
@@ -78,6 +80,7 @@ export function seedCampaigns(now: number): FixtureCampaign[] {
       final_unit_price_halalas: null,
       deal_confirmed_at: null,
       updated_at: now,
+      version: 1,
     },
     {
       id: "0b6f8f2e-6a43-4f7e-9d0e-1a2b3c4d5e02",
@@ -107,6 +110,7 @@ export function seedCampaigns(now: number): FixtureCampaign[] {
       final_unit_price_halalas: null,
       deal_confirmed_at: now - 6 * HOUR,
       updated_at: now,
+      version: 1,
     },
     {
       id: "0b6f8f2e-6a43-4f7e-9d0e-1a2b3c4d5e03",
@@ -139,6 +143,7 @@ export function seedCampaigns(now: number): FixtureCampaign[] {
       final_unit_price_halalas: null,
       deal_confirmed_at: null,
       updated_at: now,
+      version: 1,
     },
     {
       id: "0b6f8f2e-6a43-4f7e-9d0e-1a2b3c4d5e04",
@@ -168,6 +173,7 @@ export function seedCampaigns(now: number): FixtureCampaign[] {
       final_unit_price_halalas: null,
       deal_confirmed_at: now - 2 * DAY,
       updated_at: now,
+      version: 1,
     },
     {
       id: "0b6f8f2e-6a43-4f7e-9d0e-1a2b3c4d5e05",
@@ -197,6 +203,7 @@ export function seedCampaigns(now: number): FixtureCampaign[] {
       final_unit_price_halalas: null,
       deal_confirmed_at: null,
       updated_at: now,
+      version: 1,
     },
     {
       id: "0b6f8f2e-6a43-4f7e-9d0e-1a2b3c4d5e06",
@@ -226,6 +233,7 @@ export function seedCampaigns(now: number): FixtureCampaign[] {
       final_unit_price_halalas: 5900,
       deal_confirmed_at: now - 25 * DAY,
       updated_at: now - 23 * DAY,
+      version: 1,
     },
     {
       id: "0b6f8f2e-6a43-4f7e-9d0e-1a2b3c4d5e07",
@@ -254,6 +262,7 @@ export function seedCampaigns(now: number): FixtureCampaign[] {
       final_unit_price_halalas: null,
       deal_confirmed_at: null,
       updated_at: now - 8 * DAY,
+      version: 1,
     },
   ];
 }

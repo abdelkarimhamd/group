@@ -78,17 +78,19 @@ export function parseProgress(data: unknown, campaignId: string): CampaignProgre
     count(price.amount_minor) &&
     typeof price.currency === "string" &&
     time(p.deadline_at) &&
-    time(p.updated_at);
+    time(p.updated_at) &&
+    count(p.version);
   return valid ? (p as CampaignProgress) : null;
 }
 
 /**
- * The numbers to show when a push and a read cross: the later `updated_at`
- * wins, and a tie takes the incoming one (the API sends a campaign's pushes
- * in order).
+ * The numbers to show when a push and a read cross: the higher `version`
+ * (PostgreSQL bumps it on every change to the campaign; `updated_at` has
+ * whole seconds only). The same version is the same state, so a tie takes
+ * the incoming one.
  */
 export function newer(current: CampaignProgress, incoming: CampaignProgress): CampaignProgress {
-  return Date.parse(incoming.updated_at) >= Date.parse(current.updated_at) ? incoming : current;
+  return incoming.version >= current.version ? incoming : current;
 }
 
 export const CHANNEL_PREFIX = "campaigns.";
@@ -119,6 +121,7 @@ export type PusherClient = {
   connection: Connection;
   subscribe(channel: string): Channel;
   unsubscribe(channel: string): void;
+  connect(): void;
   disconnect(): void;
 };
 export type PusherFactory = (config: ReverbConfig) => Promise<PusherClient>;
@@ -137,10 +140,24 @@ export const loadPusher: PusherFactory = async (config) => {
   }) as unknown as PusherClient;
 };
 
-// One connection per tab, shared by every listener and closed with the last.
-// A channel is shared too (Next keeps the previous page mounted, hidden, so
-// two listeners for one campaign happen): it is left with its last listener.
-let shared: { client: Promise<PusherClient>; users: number; channels: Map<string, number> } | null = null;
+/** How long the connection stays open after the last live page closes, so moving between campaigns keeps it. */
+export const IDLE_DISCONNECT_MS = 30_000;
+
+type Shared = {
+  factory: PusherFactory;
+  client: Promise<PusherClient>;
+  users: number;
+  channels: Map<string, number>;
+  idle?: ReturnType<typeof setTimeout>;
+};
+
+// One pusher-js client per tab, kept for the life of the tab: pusher-js holds
+// on to every client it creates, so a new one per page would pile up. It
+// disconnects IDLE_DISCONNECT_MS after the last listener leaves and connects
+// again for the next. A channel is shared too (Next keeps the previous page
+// mounted, hidden, so two listeners for one campaign happen): it is left with
+// its last listener.
+let shared: Shared | null = null;
 
 /**
  * Listens for one campaign's pushes. Returns the function that stops; it
@@ -151,18 +168,30 @@ export function subscribeToProgress(
   handlers: ProgressSubscription,
   config: ReverbConfig,
   factory: PusherFactory = loadPusher,
+  idleMs: number = IDLE_DISCONNECT_MS,
 ): () => void {
   const name = CHANNEL_PREFIX + campaignId;
   let stopped = false;
   let cleanup: (() => void) | undefined;
 
-  if (!shared) shared = { client: factory(config), users: 0, channels: new Map() };
+  if (!shared || shared.factory !== factory) {
+    const created: Shared = { factory, client: factory(config), users: 0, channels: new Map() };
+    // A client that failed to load is forgotten, so the next page tries again.
+    created.client.catch(() => {
+      if (shared === created) shared = null;
+    });
+    shared = created;
+  }
   const mine = shared;
+  clearTimeout(mine.idle);
+  mine.idle = undefined;
   mine.users += 1;
 
   mine.client.then(
     (client) => {
       if (stopped) return;
+      // Closed after an idle spell: open it again.
+      if (client.connection.state === "disconnected") client.connect();
       let live = false;
       const onSubscribed = () => {
         live = true;
@@ -210,9 +239,11 @@ export function subscribeToProgress(
     stopped = true;
     cleanup?.();
     mine.users -= 1;
-    if (mine.users === 0) {
-      if (shared === mine) shared = null;
-      mine.client.then((client) => client.disconnect(), () => undefined);
-    }
+    if (mine.users > 0) return;
+    clearTimeout(mine.idle);
+    mine.idle = setTimeout(() => {
+      mine.idle = undefined;
+      if (mine.users === 0) mine.client.then((client) => client.disconnect(), () => undefined);
+    }, idleMs);
   };
 }

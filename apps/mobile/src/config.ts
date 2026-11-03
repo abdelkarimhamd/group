@@ -52,8 +52,8 @@ export const config = {
     port: process.env.EXPO_PUBLIC_REVERB_PORT,
     scheme: process.env.EXPO_PUBLIC_REVERB_SCHEME,
   }),
-  /** How often a live campaign screen reads `/progress` without pushes. */
+  /** How often a live campaign screen reads `/progress` while not connected to Reverb. */
   progressPollMs: 5_000,
-  /** The safety-net read while Reverb pushes arrive. */
+  /** The safety-net read while connected to Reverb. */
   progressPushedPollMs: 30_000,
 } as const;
