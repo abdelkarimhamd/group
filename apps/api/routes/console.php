@@ -2,6 +2,8 @@
 
 use App\Modules\Campaign\Console\CampaignTickCommand;
 use App\Modules\Campaign\Console\SweepClosingCommand;
+use App\Modules\Finance\Console\ReconcilePaymentsCommand;
+use App\Modules\Finance\Console\RequeueApprovedCommand;
 use App\Modules\Fulfillment\Console\CompleteDeliveredOrdersCommand;
 use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Notifications\Console\DispatchDueNotificationsCommand;
@@ -39,3 +41,12 @@ Schedule::command(CompleteDeliveredOrdersCommand::class)->hourly()->withoutOverl
 
 // Customer messages due for a retry, or whose job was lost, are sent again.
 Schedule::command(DispatchDueNotificationsCommand::class)->everyMinute()->withoutOverlapping()->onOneServer();
+
+// Approved refunds and campaign cancellations whose job ran out of tries or
+// was lost are queued again; PostgreSQL remembers what is still owed.
+Schedule::command(RequeueApprovedCommand::class)->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+
+// Yesterday's payments, and every one still open, checked against Moyasar
+// early in the morning in Riyadh; mismatches go to finance.
+Schedule::command(ReconcilePaymentsCommand::class)->dailyAt('03:00')->timezone('Asia/Riyadh')
+    ->withoutOverlapping((int) config('groupbuy.finance.reconciliation_timeout_minutes'))->onOneServer();

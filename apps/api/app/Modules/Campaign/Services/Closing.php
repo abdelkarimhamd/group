@@ -185,7 +185,7 @@ final class Closing
         return DB::transaction(function () use ($uuid, $decision, $reason, $by): Campaign|ApprovalRequest {
             $campaign = Campaign::query()->where('uuid', $uuid)->lockForUpdate()->firstOrFail();
 
-            if ($campaign->status !== CampaignStatus::Closing || $campaign->closing_step !== ClosingStep::NeedsAdmin) {
+            if ($campaign->status !== CampaignStatus::Closing || $campaign->closing_step !== ClosingStep::NeedsAdmin || CampaignCancellations::waiting($campaign)) {
                 throw new ApiException(409, 'invalid_transition');
             }
 
@@ -262,6 +262,8 @@ final class Closing
 
             return match (true) {
                 $campaign->status === CampaignStatus::Active => $this->enterClosingIfDue($campaign, $now),
+                // An approved cancellation still to be carried out holds everything.
+                ($campaign->status === CampaignStatus::Closing || $campaign->status === CampaignStatus::Purchasing) && CampaignCancellations::waiting($campaign) => $this->holdForCancellation($campaign),
                 $campaign->status === CampaignStatus::Purchasing && $campaign->closing_step === ClosingStep::Notifying => $this->notify($campaign),
                 $campaign->status !== CampaignStatus::Closing => false,
                 $campaign->closing_step === ClosingStep::SettlingJoins => $this->settle($campaign, $now),
@@ -450,6 +452,26 @@ final class Closing
         $this->purchaseOrders->createForCampaign($campaign, $actor);
 
         return $campaign;
+    }
+
+    /**
+     * Waiting for an approved cancellation: nothing moves on, but captures
+     * already in flight are still settled (the cancellation waits for them;
+     * Captures starts no new one).
+     */
+    private function holdForCancellation(Campaign $campaign): bool
+    {
+        if ($campaign->status === CampaignStatus::Closing && $campaign->closing_step === ClosingStep::Capturing) {
+            foreach ($campaign->participations()->where('status', ParticipationStatus::Authorized)->orderBy('id')->lockForUpdate()->get() as $participation) {
+                $hold = $this->liveHold($participation);
+
+                if ($hold !== null) {
+                    CapturePayment::dispatch($hold->id)->afterCommit();
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

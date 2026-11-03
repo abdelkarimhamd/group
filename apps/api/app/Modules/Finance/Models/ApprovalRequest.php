@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * @property ApprovalStatus $status
  * @property string|null $reason
  * @property CarbonImmutable|null $decided_at
+ * @property CarbonImmutable|null $executed_at when an approved campaign cancellation was carried out
  * @property CarbonImmutable $created_at
  * @property CarbonImmutable $updated_at
  * @property-read Model $subject
@@ -50,6 +51,7 @@ class ApprovalRequest extends Model
             'status' => ApprovalStatus::class,
             'payload' => 'array',
             'decided_at' => 'immutable_datetime',
+            'executed_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
             'updated_at' => 'immutable_datetime',
         ];

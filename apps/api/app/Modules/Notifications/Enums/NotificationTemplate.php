@@ -34,4 +34,6 @@ enum NotificationTemplate: string
     case Shipped = 'shipped';
     /** The order was delivered; the return window starts. */
     case Delivered = 'delivered';
+    /** Money went back to the card (a refund, or a cancelled campaign). */
+    case Refunded = 'refunded';
 }

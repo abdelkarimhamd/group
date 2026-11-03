@@ -8,8 +8,10 @@ use App\Modules\Campaign\Events\CampaignFailed;
 use App\Modules\Campaign\Events\CampaignNeedsAdmin;
 use App\Modules\Campaign\Events\CampaignSucceeded;
 use App\Modules\Campaign\Http\Resources\ParticipationResource;
+use App\Modules\Campaign\Jobs\ExecuteCampaignCancellation;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
+use App\Modules\Campaign\Services\CampaignCancellations;
 use App\Modules\Campaign\Services\Closing;
 use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Identity\Enums\AdminRole;
@@ -19,6 +21,7 @@ use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Jobs\CapturePayment;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\PaymentTransaction;
+use App\Modules\Payments\Models\Refund;
 use App\Modules\Payments\Services\Captures;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierQuotation;
@@ -414,6 +417,63 @@ class ClosingCampaignsTest extends TestCase
 
         // The last result woke the job, which moved the campaign on.
         $this->assertSame(['purchasing', 'done'], [$this->campaign->refresh()->status->value, $this->campaign->closing_step->value]);
+    }
+
+    #[Test]
+    public function an_approved_cancellation_sends_no_capture_and_settles_the_ones_in_flight_by_asking(): void
+    {
+        Queue::fake([CapturePayment::class, ExecuteCampaignCancellation::class]);
+        $landed = $this->paidJoin(2);
+        $lost = $this->paidJoin(2);
+        $notYet = $this->paidJoin(2);
+        $this->gateway->captureOutcomes[$this->providerId($landed)] = ['timeout'];
+        $this->gateway->captureOutcomes[$this->providerId($lost)] = ['timeout'];
+        $this->closeAtDeadline();
+        $this->confirm(['available_qty' => 6])->assertOk();
+
+        // Two captures are sent and Moyasar does not answer either.
+        foreach ([$landed, $lost] as $join) {
+            try {
+                app(Captures::class)->capture($join->latestPayment, Actor::system());
+                $this->fail('An unknown outcome is retried.');
+            } catch (GatewayException) {
+            }
+        }
+
+        // Meanwhile finance approves cancelling the campaign; it waits for those two.
+        $approval = $this->postAsAdmin("/api/v1/admin/campaigns/{$this->campaign->uuid}/cancel", ['reason' => 'Supplier stopped making it'])
+            ->assertStatus(202)
+            ->json('data.id');
+        [, $finance] = $this->adminWithToken(AdminRole::Finance);
+        $this->postAsAdmin("/api/v1/admin/approval-requests/{$approval}/approve", [], $finance)->assertOk();
+        $id = (int) ApprovalRequest::query()->where('uuid', $approval)->value('id');
+        $this->assertFalse(app(CampaignCancellations::class)->execute($id));
+
+        // No new capture starts, and closing does not move on.
+        app(Captures::class)->capture($notYet->latestPayment, Actor::system());
+        app(Closing::class)->run($this->campaign->id);
+        $this->assertCount(2, $this->gateway->captures);
+        $this->assertSame('authorized', $notYet->latestPayment->refresh()->status->value);
+
+        // The retries ask Moyasar and send nothing: one capture had landed and
+        // is recorded, the other had not and is never sent again.
+        $this->gateway->setStatus($this->providerId($landed), 'captured', $landed->refresh()->capture_amount_halalas);
+        app(Captures::class)->capture($landed->latestPayment, Actor::system());
+        app(Captures::class)->capture($lost->latestPayment, Actor::system());
+        $this->assertCount(2, $this->gateway->captures);
+        $this->assertSame('captured', $landed->latestPayment->refresh()->status->value);
+        $this->assertSame('authorized', $lost->latestPayment->refresh()->status->value);
+        $this->assertSame(['closing', 'capturing'], [$this->campaign->refresh()->status->value, $this->campaign->closing_step->value]);
+        $this->assertSame(0, SupplierPurchaseOrder::count());
+
+        // Then the cancellation goes through: the money taken goes back and the other holds are released.
+        $this->assertTrue(app(CampaignCancellations::class)->execute($id));
+        $this->assertSame('cancelled', $this->campaign->refresh()->status->value);
+        $this->assertSame([['succeeded', 'void', $landed->capture_amount_halalas]], Refund::query()->get()->map(fn (Refund $r) => [$r->status->value, $r->method->value, $r->amount_halalas])->all());
+        $this->assertSame('refunded', $landed->latestPayment->refresh()->status->value);
+        $this->assertContains($this->providerId($lost), $this->gateway->voids);
+        $this->assertContains($this->providerId($notYet), $this->gateway->voids);
+        $this->assertCount(2, $this->gateway->captures);
     }
 
     #[Test]

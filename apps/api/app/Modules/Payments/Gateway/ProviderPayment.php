@@ -22,5 +22,6 @@ final class ProviderPayment
         public readonly int $capturedHalalas,
         public readonly ?string $paymentId,
         public readonly array $raw,
+        public readonly int $refundedHalalas = 0,
     ) {}
 }

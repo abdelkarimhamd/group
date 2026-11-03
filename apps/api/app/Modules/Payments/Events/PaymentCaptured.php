@@ -6,8 +6,9 @@ use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
- * A hold was captured at the final price. Fired after commit. Customer
- * orders (E11) create the order and the ledger (E15) posts the capture.
+ * A hold was captured at the final price. Fired after commit. The order,
+ * its tax invoice and the ledger posting are made in the transaction that
+ * records the capture (App\Modules\Orders\Services\Orders).
  */
 final class PaymentCaptured implements ShouldDispatchAfterCommit
 {

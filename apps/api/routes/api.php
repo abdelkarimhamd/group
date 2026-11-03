@@ -9,6 +9,9 @@ use App\Modules\Catalog\Http\Controllers\AdminProductController;
 use App\Modules\Catalog\Http\Controllers\AdminProductImageController;
 use App\Modules\Catalog\Http\Controllers\AdminVariantController;
 use App\Modules\Catalog\Http\Controllers\CategoryController;
+use App\Modules\Finance\Http\Controllers\AdminApprovalController;
+use App\Modules\Finance\Http\Controllers\AdminAuditLogController;
+use App\Modules\Finance\Http\Controllers\AdminReconciliationController;
 use App\Modules\Fulfillment\Http\Controllers\AdminFulfilmentController;
 use App\Modules\Identity\Http\Controllers\AccountController;
 use App\Modules\Identity\Http\Controllers\AddressController;
@@ -185,6 +188,15 @@ Route::prefix('v1')->name('v1.')->group(function () {
             Route::post('purchase-orders/{purchaseOrder}/receipts', [AdminFulfilmentController::class, 'receive'])->whereUuid('purchaseOrder')->can('fulfilment.edit')->name('purchase-orders.receipts.store');
             Route::post('orders/{order}/shipment', [AdminFulfilmentController::class, 'ship'])->whereUuid('order')->can('fulfilment.edit')->name('orders.shipment.store');
             Route::post('shipments/{shipment}/events', [AdminFulfilmentController::class, 'track'])->whereUuid('shipment')->can('fulfilment.edit')->name('shipments.events.store');
+
+            // Finance (E15): second-admin approvals, reconciliation, audit log
+            Route::get('approval-requests', [AdminApprovalController::class, 'index'])->can('approvals.view')->name('approval-requests.index');
+            Route::post('approval-requests/{approvalRequest}/approve', [AdminApprovalController::class, 'approve'])->whereUuid('approvalRequest')->can('approvals.decide')->name('approval-requests.approve');
+            Route::post('approval-requests/{approvalRequest}/reject', [AdminApprovalController::class, 'reject'])->whereUuid('approvalRequest')->can('approvals.decide')->name('approval-requests.reject');
+            Route::get('reconciliation-runs', [AdminReconciliationController::class, 'runs'])->can('reconciliation.view')->name('reconciliation-runs.index');
+            Route::get('reconciliation-runs/{run}/items', [AdminReconciliationController::class, 'items'])->whereUuid('run')->can('reconciliation.view')->name('reconciliation-runs.items');
+            Route::post('reconciliation-items/{item}/resolve', [AdminReconciliationController::class, 'resolve'])->whereUuid('item')->can('reconciliation.resolve')->name('reconciliation-items.resolve');
+            Route::get('audit-logs', [AdminAuditLogController::class, 'index'])->can('audit.view')->name('audit-logs.index');
         });
     });
 });

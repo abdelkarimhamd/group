@@ -13,7 +13,7 @@ use LogicException;
  * A provider payment ID names its outcome and our payment:
  * `fake_authorized_<payment uuid>` is a hold for exactly the payment's
  * amount (mada, card ending 0000), and `fake_declined_<payment uuid>` is a
- * declined card. Captures and voids always succeed. Refuses to run in
+ * declined card. Captures, voids and refunds always succeed. Refuses to run in
  * production.
  */
 final class FakeMoyasarGateway implements PaymentGateway
@@ -40,6 +40,7 @@ final class FakeMoyasarGateway implements PaymentGateway
         $status = match (true) {
             ! $authorized => 'failed',
             $payment->voided_at !== null => 'voided',
+            $payment->refunded_amount_halalas > 0 => 'refunded',
             $payment->captured_amount_halalas > 0 => 'captured',
             default => 'authorized',
         };
@@ -55,6 +56,7 @@ final class FakeMoyasarGateway implements PaymentGateway
             capturedHalalas: $payment->captured_amount_halalas,
             paymentId: $payment->uuid,
             raw: ['id' => $providerPaymentId, 'status' => $status, 'fake' => true],
+            refundedHalalas: $payment->refunded_amount_halalas,
         );
     }
 
@@ -67,6 +69,13 @@ final class FakeMoyasarGateway implements PaymentGateway
     {
         return GatewayResult::succeeded($providerPaymentId, [
             'id' => $providerPaymentId, 'status' => 'captured', 'captured' => $amountHalalas, 'fake' => true,
+        ]);
+    }
+
+    public function refund(string $providerPaymentId, int $amountHalalas, string $idempotencyKey): GatewayResult
+    {
+        return GatewayResult::succeeded($providerPaymentId, [
+            'id' => $providerPaymentId, 'status' => 'refunded', 'refunded' => $amountHalalas, 'fake' => true,
         ]);
     }
 }

@@ -3,8 +3,11 @@
 namespace App\Models;
 
 use App\Models\Concerns\AppendOnlyModel;
+use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Identity\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * One admin, customer or system action, kept forever.
@@ -21,6 +24,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $user_agent
  * @property string|null $request_id
  * @property CarbonImmutable $occurred_at
+ * @property-read AdminUser|null $adminActor
+ * @property-read User|null $userActor
  */
 class AuditLog extends Model
 {
@@ -38,5 +43,25 @@ class AuditLog extends Model
             'occurred_at' => 'immutable_datetime',
             'created_at' => 'immutable_datetime',
         ];
+    }
+
+    /**
+     * The admin who acted, when `actor_type` is admin.
+     *
+     * @return BelongsTo<AdminUser, $this>
+     */
+    public function adminActor(): BelongsTo
+    {
+        return $this->belongsTo(AdminUser::class, 'actor_id');
+    }
+
+    /**
+     * The customer who acted, when `actor_type` is user.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function userActor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'actor_id');
     }
 }

@@ -36,6 +36,18 @@ final class ScriptedMoyasarGateway implements PaymentGateway
      */
     public array $captureOutcomes = [];
 
+    /** @var list<array{string, int, string}> Refunds asked for: provider ID, amount, idempotency key. */
+    public array $refunds = [];
+
+    /**
+     * How Moyasar answers the next refunds (and voids) of a payment, in
+     * order (then `ok`): `ok`, `declined`, `timeout` (unknown outcome,
+     * nothing refunded) or `timeout_after_refund` (unknown outcome, refunded).
+     *
+     * @var array<string, list<string>>
+     */
+    public array $refundOutcomes = [];
+
     /** While true, every call fails as if Moyasar could not be reached. */
     public bool $down = false;
 
@@ -77,11 +89,64 @@ final class ScriptedMoyasarGateway implements PaymentGateway
             throw new GatewayException('Moyasar is unreachable.');
         }
 
+        $captured = isset($this->payments[$providerPaymentId]) && $this->payments[$providerPaymentId]->status === 'captured';
+        $outcome = 'ok';
+
+        if ($captured) {
+            // Voiding a capture is a full refund before settlement.
+            $outcome = $this->nextRefundOutcome($providerPaymentId);
+
+            if ($outcome === 'declined') {
+                return GatewayResult::refused('void_not_allowed', 'The payment can no longer be voided.', ['id' => $providerPaymentId, 'status' => 'captured']);
+            }
+
+            if ($outcome === 'timeout') {
+                throw new GatewayException('Moyasar timed out.');
+            }
+        }
+
         if (isset($this->payments[$providerPaymentId])) {
-            $this->setStatus($providerPaymentId, 'voided');
+            $this->setStatus($providerPaymentId, 'voided', refundedHalalas: $captured ? $this->payments[$providerPaymentId]->capturedHalalas : null);
+        }
+
+        if ($captured && $outcome === 'timeout_after_refund') {
+            throw new GatewayException('Moyasar timed out.');
         }
 
         return GatewayResult::succeeded($providerPaymentId, ['id' => $providerPaymentId, 'status' => 'voided']);
+    }
+
+    public function refund(string $providerPaymentId, int $amountHalalas, string $idempotencyKey): GatewayResult
+    {
+        $this->refunds[] = [$providerPaymentId, $amountHalalas, $idempotencyKey];
+
+        if ($this->down) {
+            throw new GatewayException('Moyasar is unreachable.');
+        }
+
+        $outcome = $this->nextRefundOutcome($providerPaymentId);
+
+        if ($outcome === 'declined') {
+            return GatewayResult::refused('refund_declined', 'Moyasar refused the refund.', ['id' => $providerPaymentId]);
+        }
+
+        if ($outcome === 'timeout') {
+            throw new GatewayException('Moyasar timed out.');
+        }
+
+        $old = $this->payments[$providerPaymentId];
+        $this->setStatus($providerPaymentId, 'refunded', refundedHalalas: $old->refundedHalalas + $amountHalalas);
+
+        if ($outcome === 'timeout_after_refund') {
+            throw new GatewayException('Moyasar timed out.');
+        }
+
+        return GatewayResult::succeeded('rf_'.count($this->refunds), ['id' => $providerPaymentId, 'status' => 'refunded', 'refunded' => $amountHalalas]);
+    }
+
+    private function nextRefundOutcome(string $providerPaymentId): string
+    {
+        return ($this->refundOutcomes[$providerPaymentId] ?? []) === [] ? 'ok' : array_shift($this->refundOutcomes[$providerPaymentId]);
     }
 
     public function capture(string $providerPaymentId, int $amountHalalas, string $idempotencyKey): GatewayResult
@@ -114,7 +179,7 @@ final class ScriptedMoyasarGateway implements PaymentGateway
     /**
      * Moyasar's view of a payment changes (captured, voided...).
      */
-    public function setStatus(string $id, string $status, ?int $capturedHalalas = null): void
+    public function setStatus(string $id, string $status, ?int $capturedHalalas = null, ?int $refundedHalalas = null): void
     {
         $old = $this->payments[$id];
         $this->payments[$id] = new ProviderPayment(
@@ -128,6 +193,7 @@ final class ScriptedMoyasarGateway implements PaymentGateway
             capturedHalalas: $capturedHalalas ?? $old->capturedHalalas,
             paymentId: $old->paymentId,
             raw: ['id' => $old->id, 'status' => $status],
+            refundedHalalas: $refundedHalalas ?? $old->refundedHalalas,
         );
     }
 }

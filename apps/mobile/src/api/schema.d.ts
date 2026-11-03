@@ -1229,9 +1229,10 @@ export interface paths {
      *     `purchasing`), money may have to go back, so it opens a
      *     `campaign_cancellation` approval request for a second admin with the
      *     finance role instead (202) and changes nothing else; asking again
-     *     returns the request already waiting. Approving it (refunds, order
-     *     cancellation) comes with the approvals flow. `fulfilling` and ended
-     *     campaigns answer 409 `invalid_transition`.
+     *     returns the request already waiting, or the approved one not yet
+     *     carried out. Approving it refunds captured joins and cancels the
+     *     orders (`POST /admin/approval-requests/{id}/approve`). `fulfilling`
+     *     and ended campaigns answer 409 `invalid_transition`.
      */
     post: operations['adminCancelCampaign'];
     delete?: never;
@@ -1433,7 +1434,7 @@ export interface paths {
     put?: never;
     /**
      * Approve, then carry out the action
-     * @description The approver must hold the finance role and must not be the requester (403 `same_admin`).
+     * @description The approver must hold the finance role and must not be the requester (403 `same_admin`). A `manual_refund` is then carried out after commit: Moyasar voids the hold while the payment can still be voided, otherwise refunds it; a credit note and ledger entries follow when it lands, and the refund shows `failed` if Moyasar refuses. An approved `campaign_cancellation` holds the campaign (no new capture, no closing step, no purchase order change) until it is carried out: it withdraws refund requests of its captured joins still pending (the refund becomes `rejected` and its approval request `cancelled`, both with the reason `campaign_cancelled`), sends no capture that has not already reached Moyasar, refunds everything left on every captured join, voids the remaining holds and cancels the orders and the purchase order. Other request types cannot be decided yet (409 `invalid_transition`), nor can a request that is no longer pending, or a campaign cancellation whose campaign can no longer be cancelled.
      */
     post: operations['adminApproveRequest'];
     delete?: never;
@@ -1708,7 +1709,7 @@ export interface paths {
     put?: never;
     /**
      * Close a mismatch with a note
-     * @description Any fix that moves money goes through an approval request; this only records the resolution.
+     * @description Any fix that moves money goes through an approval request; this only records the resolution. A mismatch already resolved gives 409 `already_resolved`.
      */
     post: operations['adminResolveReconciliationItem'];
     delete?: never;
@@ -1724,7 +1725,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Who did what */
+    /**
+     * Who did what
+     * @description Newest first. `subject_id` is the subject's public ID and needs `subject_type` (one whose records have public IDs). Entries name their subject by its public ID, or by its row ID when it has none.
+     */
     get: operations['adminListAuditLogs'];
     put?: never;
     post?: never;
@@ -5772,6 +5776,7 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
     };
   };
   adminApproveRequest: {
@@ -6160,6 +6165,7 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
     };
   };
   adminListReconciliationItems: {
@@ -6193,6 +6199,7 @@ export interface operations {
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
+      422: components['responses']['ValidationFailed'];
     };
   };
   adminResolveReconciliationItem: {
@@ -6261,6 +6268,7 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
     };
   };
 }

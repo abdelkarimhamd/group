@@ -11,6 +11,7 @@ use App\Support\Audit\StatusHistory;
 use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
+use LogicException;
 
 /**
  * VAT invoices (spec, Orders and invoices: invoices). The company is the
@@ -86,6 +87,86 @@ final class Invoices
         $this->history->record($invoice, null, 'issued', $actor);
 
         return $invoice;
+    }
+
+    /**
+     * A credit note against the order's tax invoice, for money returned.
+     * A first refund of the whole invoice repeats its lines; any other
+     * refund is one VAT-inclusive line. Never more than the invoice minus
+     * the credit notes already issued, and never more VAT or net than is
+     * left on it: the notes of an order never credit more VAT than the
+     * invoice charged, and the last one takes exactly what is left. Call in
+     * the transaction that records the refund.
+     */
+    public function issueCreditNote(CustomerOrder $order, int $amountHalalas, Actor $actor): Invoice
+    {
+        $original = Invoice::query()
+            ->where('customer_order_id', $order->id)
+            ->where('type', InvoiceType::SimplifiedTaxInvoice)
+            ->firstOrFail();
+        $notes = Invoice::query()
+            ->where('customer_order_id', $order->id)
+            ->where('type', InvoiceType::CreditNote);
+        $credited = (int) (clone $notes)->sum('total_halalas');
+        $creditedVat = (int) (clone $notes)->sum('vat_halalas');
+        $amount = Money::sar($amountHalalas);
+
+        if (! $amount->greaterThan(Money::zero()) || $amount->greaterThan(Money::sar($original->total_halalas - $credited))) {
+            throw new LogicException("A credit note of {$amountHalalas} does not fit invoice {$original->invoice_number}.");
+        }
+
+        $rate = $original->vat_rate_bp;
+
+        if ($credited === 0 && $amountHalalas === $original->total_halalas) {
+            $lines = $original->lines;
+            $net = Money::sar($original->net_halalas);
+            $vat = Money::sar($original->vat_halalas);
+        } else {
+            // Split at the invoice's rate, then keep both parts within what is
+            // left on the invoice. Rounding each note on its own could otherwise
+            // credit a halala more VAT than was charged, and leave the last
+            // note negative. For the last note both bounds meet: it takes
+            // exactly the VAT and net left, so the notes add up to the invoice.
+            $vatLeft = $original->vat_halalas - $creditedVat;
+            $netLeft = ($original->total_halalas - $credited) - $vatLeft;
+            $vatHalalas = max(0, $amountHalalas - $netLeft, min($amount->splitVatInclusive($rate)['vat']->minor, $vatLeft, $amountHalalas));
+            $vat = Money::sar($vatHalalas);
+            $net = $amount->minus($vat);
+
+            $lines = [[
+                'description_ar' => 'استرداد مبلغ من الطلب '.$order->order_number,
+                'description_en' => 'Refund on order '.$order->order_number,
+                'qty' => 1,
+                'unit_price_halalas' => $amount->minor,
+                'net_halalas' => $net->minor,
+                'vat_halalas' => $vat->minor,
+                'total_halalas' => $amount->minor,
+                'vat_rate_bp' => $rate,
+            ]];
+        }
+
+        $seller = self::seller();
+        $issuedAt = CarbonImmutable::now();
+        $total = $net->plus($vat);
+
+        $note = Invoice::create([
+            'customer_order_id' => $order->id,
+            'type' => InvoiceType::CreditNote,
+            'invoice_number' => $this->numbers->invoice(creditNote: true),
+            'original_invoice_id' => $original->id,
+            'issued_at' => $issuedAt,
+            'seller_snapshot' => $seller,
+            'lines' => $lines,
+            'net_halalas' => $net->minor,
+            'vat_halalas' => $vat->minor,
+            'total_halalas' => $total->minor,
+            'vat_rate_bp' => $rate,
+            'zatca_uuid' => (string) Str::uuid(),
+            'qr_payload' => ZatcaQr::encode($seller['legal_name_ar'], $seller['vat_number'], $issuedAt, $total, $vat),
+        ]);
+        $this->history->record($note, null, 'issued', $actor);
+
+        return $note;
     }
 
     /**

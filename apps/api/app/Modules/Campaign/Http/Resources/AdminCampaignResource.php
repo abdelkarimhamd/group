@@ -6,6 +6,7 @@ use App\Http\Resources\ActorJson;
 use App\Modules\Campaign\Enums\CampaignStatus;
 use App\Modules\Campaign\Enums\ClosingStep;
 use App\Modules\Campaign\Models\Campaign;
+use App\Modules\Campaign\Services\CampaignCancellations;
 use App\Modules\Campaign\Services\Closing;
 use App\Modules\Catalog\Http\Resources\AdminVariantResource;
 use App\Modules\Identity\Models\AdminUser;
@@ -103,6 +104,9 @@ class AdminCampaignResource extends JsonResource
         // Before captures a cancel takes effect at once; after, it asks finance to approve (202).
         $cancellable = in_array($status, [CampaignStatus::Draft, CampaignStatus::PendingApproval, CampaignStatus::Scheduled, CampaignStatus::Active, CampaignStatus::Purchasing], true)
             || ($status === CampaignStatus::Closing && $step !== ClosingStep::Done);
+        // Once a cancellation is approved, nothing else moves until it is carried out.
+        $cancelling = in_array($status, [CampaignStatus::Closing, CampaignStatus::Purchasing], true)
+            && CampaignCancellations::waiting($this->resource);
         $actions = [
             'edit' => $status === CampaignStatus::Draft && $admin->can('campaigns.edit'),
             'edit_tiers' => $status === CampaignStatus::Draft && $admin->can('pricing.edit'),
@@ -111,11 +115,11 @@ class AdminCampaignResource extends JsonResource
             'reject' => $status === CampaignStatus::PendingApproval && $admin->can('campaigns.approve'),
             'extend' => $status === CampaignStatus::Active && $this->extended_at === null
                 && $this->deal_confirmed_at === null && $admin->can('campaigns.extend'),
-            'cancel' => $cancellable && $admin->can('campaigns.cancel'),
+            'cancel' => $cancellable && ! $cancelling && $admin->can('campaigns.cancel'),
             // Past its deadline the sweep fails the campaign, and the server refuses it.
             'record_supplier_decision' => $status === CampaignStatus::Closing && $step === ClosingStep::AwaitingSupplier
                 && CarbonImmutable::now()->lessThan(Closing::supplierDecisionDueAt($this->resource)) && $admin->can('campaigns.close'),
-            'decide_below_target' => $status === CampaignStatus::Closing && $step === ClosingStep::NeedsAdmin && $admin->can('campaigns.close'),
+            'decide_below_target' => $status === CampaignStatus::Closing && $step === ClosingStep::NeedsAdmin && ! $cancelling && $admin->can('campaigns.close'),
         ];
 
         return array_keys(array_filter($actions));

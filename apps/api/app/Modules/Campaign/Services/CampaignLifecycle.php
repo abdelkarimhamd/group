@@ -452,13 +452,17 @@ class CampaignLifecycle
 
     /**
      * Ask a finance admin to approve cancelling a campaign whose holds may
-     * already be captured. Carrying it out (voiding fresh captures,
-     * refunding the rest, cancelling orders) comes with the approvals flow
-     * (E15). Asking again returns the request already waiting. Call with
-     * the campaign locked.
+     * already be captured. Once approved, CampaignCancellations carries it
+     * out (refunding captured joins, cancelling orders and the purchase
+     * order). Asking again returns the request already waiting, or the one
+     * already approved and not yet carried out. Call with the campaign locked.
      */
     public function requestCancellation(Campaign $campaign, string $reason, AdminUser $by, string $source): ApprovalRequest
     {
+        if (($approved = CampaignCancellations::waitingRequest($campaign)) !== null) {
+            return $approved;
+        }
+
         $captured = $campaign->participations()->where('status', ParticipationStatus::Captured);
         $request = $this->approvals->request(ApprovalType::CampaignCancellation, $campaign, [
             'reason' => $reason,
@@ -476,6 +480,31 @@ class CampaignLifecycle
         }
 
         return $request;
+    }
+
+    /**
+     * Carry out a cancellation a finance admin approved, in the caller's
+     * transaction with the campaign locked: joins still holding a card are
+     * released (holds voided after commit) and the campaign is cancelled.
+     * Refunding captured joins and closing their orders is the caller's
+     * (App\Modules\Campaign\Services\CampaignCancellations).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function cancelApproved(Campaign $campaign, ApprovalRequest $request, Actor $actor, array $payload = []): Campaign
+    {
+        $released = $this->releaseParticipations($campaign, $actor, 'campaign_cancelled');
+        $reason = (string) ($request->payload['reason'] ?? 'cancelled');
+        $campaign->end_reason = $reason;
+
+        $campaign = $this->transition($campaign, CampaignStatus::Cancelled, CampaignEvents::CANCELLED, $actor, 'campaign.cancel', [
+            'reason' => $reason,
+            'approval_request_id' => $request->uuid,
+            'released_participations' => $released,
+        ] + $payload);
+        CampaignProgressChanged::dispatch($campaign->id);
+
+        return $campaign;
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Modules\Orders\Services;
 use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Services\CampaignNotices;
+use App\Modules\Finance\Services\Ledger;
 use App\Modules\Notifications\Enums\NotificationTemplate;
 use App\Modules\Notifications\Services\Notifier;
 use App\Modules\Orders\Enums\OrderStatus;
@@ -19,7 +20,8 @@ use LogicException;
 /**
  * Customer orders (spec, Orders and invoices: customer_orders). An order
  * is made only after a capture succeeds, one per participation, in the
- * transaction that records the capture, with its tax invoice.
+ * transaction that records the capture, with its tax invoice and its
+ * ledger posting.
  */
 final class Orders
 {
@@ -28,6 +30,7 @@ final class Orders
         private readonly Invoices $invoices,
         private readonly StatusHistory $history,
         private readonly Notifier $notifier,
+        private readonly Ledger $ledger,
     ) {}
 
     /**
@@ -98,6 +101,7 @@ final class Orders
         $invoice = $this->invoices->issueTaxInvoice($order, $items, $actor);
         $order->vat_halalas = $invoice->vat_halalas;
         $order->save();
+        $this->ledger->postCapture($order, $invoice, $payment, $actor);
 
         $participation->loadMissing(['user', 'campaign']);
         $this->notifier->send($participation->user, NotificationTemplate::Charged, $order, [

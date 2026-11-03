@@ -106,6 +106,26 @@ return [
         'void_after_capture_minutes' => 120,
     ],
 
+    'finance' => [
+        // An approved refund or campaign cancellation not finished this long
+        // after it last changed is queued again by finance:requeue-approved
+        // (its job ran out of tries or was lost). A copy is dropped while the
+        // job's unique lock is held (ExecuteRefund 4 h, the cancellation 3 h
+        // from dispatch), so a job that died mid-way resumes when that lock
+        // expires; one that ran out of tries, at the next sweep.
+        'requeue_after_minutes' => 15,
+
+        // A hold we released (or whose capture failed) is voided right away;
+        // reconciliation reports it as stuck only once this long has passed.
+        // Longer than VoidPayment's retries (about 81 minutes) plus queue time.
+        'void_grace_minutes' => 120,
+
+        // A reconciliation run that has not moved for this long was cut off
+        // (a deploy, a crash); the next run marks it failed. Also the
+        // scheduler's overlap lock, so a killed run never blocks the next day.
+        'reconciliation_timeout_minutes' => 180,
+    ],
+
     'orders' => [
         // Spec, Orders: a customer may return within 7 days of delivery.
         'return_window_days' => 7,

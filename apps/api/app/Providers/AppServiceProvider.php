@@ -14,6 +14,9 @@ use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductImage;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Finance\Models\ApprovalRequest;
+use App\Modules\Finance\Models\LedgerTransaction;
+use App\Modules\Finance\Models\ReconciliationItem;
+use App\Modules\Finance\Models\ReconciliationRun;
 use App\Modules\Fulfillment\Models\InboundReceipt;
 use App\Modules\Fulfillment\Models\Shipment;
 use App\Modules\Identity\Admins\AdminAccounts;
@@ -120,6 +123,9 @@ class AppServiceProvider extends ServiceProvider
             'supplier_purchase_order' => SupplierPurchaseOrder::class,
             'inbound_receipt' => InboundReceipt::class,
             'shipment' => Shipment::class,
+            'ledger_transaction' => LedgerTransaction::class,
+            'reconciliation_run' => ReconciliationRun::class,
+            'reconciliation_item' => ReconciliationItem::class,
         ]);
 
         // A campaign that starts closing gets its closing job.
