@@ -15,6 +15,7 @@ use Carbon\CarbonImmutable;
 use Database\Factories\CampaignFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\UseFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -40,6 +41,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $max_qty
  * @property int $committed_qty
  * @property int $reserved_qty
+ * @property int $version Grows with every UPDATE of the row; set by a trigger, never by code.
  * @property int|null $per_customer_max_qty
  * @property CarbonImmutable $starts_at
  * @property CarbonImmutable|null $deadline_at
@@ -104,6 +106,7 @@ class Campaign extends Model
             'max_qty' => 'integer',
             'committed_qty' => 'integer',
             'reserved_qty' => 'integer',
+            'version' => 'integer',
             'per_customer_max_qty' => 'integer',
             'starts_at' => 'immutable_datetime',
             'deadline_at' => 'immutable_datetime',
@@ -203,6 +206,19 @@ class Campaign extends Model
     public function approver(): BelongsTo
     {
         return $this->belongsTo(AdminUser::class, 'approved_by_admin_id');
+    }
+
+    /**
+     * Campaigns customers can see: approved, and not a draft or awaiting
+     * approval. A campaign cancelled before approval never was approved.
+     *
+     * @return Builder<self>
+     */
+    public static function visibleToCustomers(): Builder
+    {
+        return self::query()
+            ->whereIn('status', CampaignStatus::visibleToCustomers())
+            ->whereNotNull('approved_at');
     }
 
     /**

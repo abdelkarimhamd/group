@@ -5,6 +5,8 @@ namespace App\Providers;
 use App\Models\AuditLog;
 use App\Models\StatusTransition;
 use App\Modules\Campaign\Events\CampaignClosingStarted;
+use App\Modules\Campaign\Events\CampaignProgressChanged;
+use App\Modules\Campaign\Listeners\QueueProgressBroadcast;
 use App\Modules\Campaign\Listeners\StartClosingJob;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
@@ -159,6 +161,8 @@ class AppServiceProvider extends ServiceProvider
 
         // A campaign that starts closing gets its closing job.
         Event::listen(CampaignClosingStarted::class, StartClosingJob::class);
+        // Customers see progress change live (Reverb).
+        Event::listen(CampaignProgressChanged::class, QueueProgressBroadcast::class);
 
         $this->configureTokens();
         $this->configureRateLimits();

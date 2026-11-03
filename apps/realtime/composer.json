@@ -1,0 +1,22 @@
+{
+    "$schema": "https://getcomposer.org/schema.json",
+    "name": "groupbuy/realtime",
+    "type": "project",
+    "description": "Laravel Reverb, the WebSocket server that pushes live campaign progress.",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^13.17",
+        "laravel/reverb": "^1.12"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.27"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

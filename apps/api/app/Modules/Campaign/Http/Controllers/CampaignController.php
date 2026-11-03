@@ -52,21 +52,26 @@ final class CampaignController extends Controller
     }
 
     /**
-     * Polled by the campaign page; cached for at most 2 seconds.
+     * Polled by the campaign page, and read after every Reverb (re)connect to
+     * catch up on missed pushes; cached for at most 2 seconds. A push stores
+     * what it sends in the same entry first, so the catch-up read is not older
+     * than a push sent before it (short of a read here stalling for longer
+     * than the cache lasts; the next push or the slow poll corrects that).
      */
     public function progress(string $campaign): JsonResponse
     {
-        $data = Cache::remember(
-            'campaign-progress:'.$campaign,
-            (int) config('groupbuy.campaigns.progress_cache_seconds'),
-            // Plain arrays only: a real cache store serializes what it keeps,
-            // and value objects such as Money would not come back whole.
-            fn (): ?array => ($model = self::visible()->with('currentTiers')->where('uuid', $campaign)->first()) === null
-                ? null
-                : json_decode(json_encode(Progress::of($model), JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR),
-        );
+        $key = Progress::cacheKey($campaign);
+        $data = Cache::get($key);
 
-        abort_if($data === null, 404);
+        if ($data === null) {
+            $model = self::visible()->with('currentTiers')->where('uuid', $campaign)->first();
+            abort_if($model === null, 404);
+
+            $data = Progress::payload($model);
+            // add, not put: never replace what a push stored meanwhile, which
+            // clients may already show.
+            Cache::add($key, $data, (int) config('groupbuy.campaigns.progress_cache_seconds'));
+        }
 
         return response()->json(['data' => $data]);
     }
@@ -76,8 +81,6 @@ final class CampaignController extends Controller
      */
     private static function visible(): Builder
     {
-        return Campaign::query()
-            ->whereIn('status', CampaignStatus::visibleToCustomers())
-            ->whereNotNull('approved_at');
+        return Campaign::visibleToCustomers();
     }
 }

@@ -25,6 +25,12 @@ jobs:
       NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3100
       NEXT_PUBLIC_PAYMENTS_MODE: fake
       NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY: pk_test_e2e
+      # Nothing listens on 6001: the live-progress tests play Reverb in the
+      # browser (page.routeWebSocket); the rest run on the poll fallback.
+      NEXT_PUBLIC_REVERB_APP_KEY: e2e-reverb-key
+      NEXT_PUBLIC_REVERB_HOST: 127.0.0.1
+      NEXT_PUBLIC_REVERB_PORT: "6001"
+      NEXT_PUBLIC_REVERB_SCHEME: http
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4

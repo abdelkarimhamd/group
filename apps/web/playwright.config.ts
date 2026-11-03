@@ -3,8 +3,11 @@ import path from "node:path";
 
 // Browser tests run the production build against the mock stack: the
 // fixture API behind Prism, which checks every request against the
-// contract. Build first with API_BASE_URL=http://127.0.0.1:4010 and
-// NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY=pk_test_e2e (the app payment page's tests).
+// contract. Build first with API_BASE_URL=http://127.0.0.1:4010,
+// NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY=pk_test_e2e (the app payment page's tests)
+// and NEXT_PUBLIC_REVERB_APP_KEY=e2e-reverb-key, NEXT_PUBLIC_REVERB_HOST=127.0.0.1,
+// NEXT_PUBLIC_REVERB_PORT=6001, NEXT_PUBLIC_REVERB_SCHEME=http (the live-progress
+// tests play Reverb in the browser; see .github/workflows/web.yml).
 const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 3100);
 const baseURL = `http://127.0.0.1:${WEB_PORT}`;
 export const VIOLATIONS_FILE = path.resolve(__dirname, ".mock/contract-violations.log");

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type WebSocketRoute } from "@playwright/test";
 import { ar } from "../src/i18n/dictionaries/ar";
 
 export { ar };
@@ -29,4 +29,37 @@ export async function signIn(page: Page, phone = newPhone(), name: string | null
   }
   await expect(page).not.toHaveURL(/\/account\/welcome/);
   return phone;
+}
+
+/**
+ * Plays Reverb for the page (the build points NEXT_PUBLIC_REVERB_* at a port
+ * nothing listens on): answers the Pusher handshake, subscribes and pings,
+ * and lets the test push events and drop connections.
+ */
+export async function actAsReverb(page: Page) {
+  const sockets: WebSocketRoute[] = [];
+  const subscriptions: string[] = [];
+  await page.routeWebSocket(/\/app\//, (ws) => {
+    sockets.push(ws);
+    ws.onMessage((message) => {
+      const frame = JSON.parse(String(message)) as { event: string; data?: { channel?: string } };
+      if (frame.event === "pusher:subscribe" && frame.data?.channel) {
+        subscriptions.push(frame.data.channel);
+        ws.send(JSON.stringify({ event: "pusher_internal:subscription_succeeded", channel: frame.data.channel, data: "{}" }));
+      } else if (frame.event === "pusher:ping") {
+        ws.send(JSON.stringify({ event: "pusher:pong", data: "{}" }));
+      }
+    });
+    ws.send(JSON.stringify({ event: "pusher:connection_established", data: JSON.stringify({ socket_id: `${sockets.length}.1`, activity_timeout: 30 }) }));
+  });
+  return {
+    subscriptions: () => [...subscriptions],
+    push(channel: string, payload: unknown) {
+      // As Reverb sends it: the payload is a JSON string.
+      sockets.at(-1)?.send(JSON.stringify({ event: "progress.updated", channel, data: JSON.stringify(payload) }));
+    },
+    dropAll() {
+      for (const ws of sockets) void ws.close();
+    },
+  };
 }

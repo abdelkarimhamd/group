@@ -47,3 +47,8 @@ jest.mock('react-native-webview', () => {
     WebView: ({ testID }: { testID?: string }) => createElement(View, { testID }),
   };
 });
+
+// pusher-js's React Native build watches the network through NetInfo.
+jest.mock('@react-native-community/netinfo', () =>
+  jest.requireActual('@react-native-community/netinfo/jest/netinfo-mock.js'),
+);

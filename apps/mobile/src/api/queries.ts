@@ -1,14 +1,19 @@
 import {
   useInfiniteQuery,
   useQuery,
+  useQueryClient,
   type InfiniteData,
   type QueryClient,
 } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { config } from '@/config';
+import { latestProgress } from '@/lib/campaign';
+import { subscribeToProgress } from '@/live/progress';
 
 import { api } from './endpoints';
-import type { CampaignFilter, Page } from './types';
+import type { CampaignFilter, CampaignProgress, Page } from './types';
 
 export const queryKeys = {
   categories: ['categories'] as const,
@@ -57,13 +62,57 @@ export function useCampaign(id: string) {
   return useQuery({ queryKey: queryKeys.campaign(id), queryFn: () => api.getCampaign(id) });
 }
 
-/** Polls progress while `live` is true; Reverb push replaces this with the E14 integration. */
+/**
+ * A campaign's progress while `live` is true. Reverb pushes changes (when configured); the
+ * screen reads `/progress` on every (re)connect and when the app comes back to the
+ * foreground, and polls every 30 seconds while connected to Reverb, every 5 otherwise. Reads
+ * and pushes keep the numbers with the higher `version`.
+ */
 export function useCampaignProgress(id: string, live: boolean) {
+  const queryClient = useQueryClient();
+  const [pushing, setPushing] = useState(false);
+
+  useEffect(() => {
+    if (!live) return;
+    const key = queryKeys.progress(id);
+    const readNow = () => void queryClient.invalidateQueries({ queryKey: key, exact: true });
+    const foreground = AppState.addEventListener('change', (state) => {
+      if (state === 'active') readNow();
+    });
+    const stop = config.reverb
+      ? subscribeToProgress(
+          id,
+          {
+            onProgress: (pushed) =>
+              queryClient.setQueryData<CampaignProgress>(key, (current) =>
+                current ? latestProgress(current, pushed) : pushed,
+              ),
+            onLive: (now) => {
+              setPushing(now);
+              // Pushes only carry changes from here on: catch up first.
+              if (now) readNow();
+            },
+          },
+          config.reverb,
+        )
+      : undefined;
+    return () => {
+      foreground.remove();
+      stop?.();
+      setPushing(false);
+    };
+  }, [id, live, queryClient]);
+
   return useQuery({
     queryKey: queryKeys.progress(id),
-    queryFn: () => api.getCampaignProgress(id),
+    queryFn: async () => {
+      const read = await api.getCampaignProgress(id);
+      const shown = queryClient.getQueryData<CampaignProgress>(queryKeys.progress(id));
+      // A push may have brought later numbers while this read was on its way.
+      return shown ? latestProgress(shown, read) : read;
+    },
     enabled: live,
-    refetchInterval: live ? config.progressPollMs : false,
+    refetchInterval: live ? (pushing ? config.progressPushedPollMs : config.progressPollMs) : false,
   });
 }
 

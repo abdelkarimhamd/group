@@ -2,13 +2,14 @@
 
 ## Shape of the system
 
-One Laravel API (a modular monolith) serves the customer website, the admin portal and later the mobile app. PostgreSQL holds every record; Redis runs queues, caches and rate limits; Laravel Reverb pushes live campaign progress.
+One Laravel API (a modular monolith) serves the customer website, the admin portal and the mobile app. PostgreSQL holds every record; Redis runs queues, caches and rate limits; Laravel Reverb (`apps/realtime`) pushes live campaign progress.
 
 ```
 apps/web (Next.js) ──┐
 apps/admin (React) ──┼──> apps/api (Laravel, /api/v1) ──> PostgreSQL
 apps/mobile (Expo) ──┘                │                 ──> Redis (queues, cache)
-                                      └──> Moyasar, SMS, courier APIs
+       ▲                              ├──> Moyasar, SMS, courier APIs
+       └──── apps/realtime (Reverb) <─┘ campaign progress
 ```
 
 ## API contract
@@ -79,7 +80,8 @@ A module may call another module's public services, never its tables directly. S
 - **Holds.** `Payments\Services\Holds::release()` runs inside the transaction that ends a join: a payment still waiting is marked failed, and an authorized one is voided after commit by the `VoidPayment` job. A void writes and commits its attempt row (key `void:{payment uuid}`), logs it, calls the provider outside any transaction, and records the result under the payment row lock. When the outcome is unknown the job retries, and asks the provider what happened before calling again.
 - **Fake Moyasar.** Until the merchant account is approved (then `MOYASAR_DRIVER=moyasar`, see Integrations), `MOYASAR_DRIVER=fake` uses `FakeMoyasarGateway`, which reads the outcome from the provider payment ID (`fake_authorized_<payment uuid>` or `fake_declined_<payment uuid>`) and refuses to run in production. The join response carries the Moyasar form settings (`checkout`), with the callback at `{WEB_URL}/payments/return?payment_id=<uuid>`.
 - **Payment statuses only move forward.** A failed payment row is never revived. When the provider payment it already tracks turns out to hold money after all (3-D Secure finished after the join ended), that hold is voided on the same row, `failed` → `voided`, and logged as `payments.orphan_hold`.
-- **Customers poll progress** (`GET /campaigns/{id}/progress`, cached for 2 seconds as plain arrays, since a real cache store serializes what it keeps). Live updates over websockets come later.
+- **Live progress.** Every committed change to a campaign's units, price or status (`CampaignProgressChanged`, fired after commit) queues `BroadcastProgress`, which reads the numbers when it runs and sends them through Reverb (`apps/realtime`, a separate small app; see its README) as `progress.updated` on the public channel `campaigns.{uuid}`. One push waits per campaign at a time, so a burst of joins becomes one push, and runs for one campaign never overlap, so pushes leave in order. A push that waited behind other jobs still goes out, with the numbers of when it runs. Drafts are never sent, and clients cannot send anything on these channels (Reverb's client events are off). Pushes are best effort: a push Reverb does not take is logged (`campaigns.progress_push_failed`) and dropped. The website and app read `GET /campaigns/{id}/progress` (cached for 2 seconds as plain arrays, since a real cache store serializes what it keeps; a push stores what it sends there first, so a read made after a push is not older, short of a read that stalls for longer than the cache lasts) when they connect, poll it every 30 seconds while connected and every 5 seconds otherwise, and keep the payload with the higher `version`.
+- **Campaign version.** `campaigns.version` grows by one with every UPDATE of the row, set by a PostgreSQL trigger (`campaigns_bump_version`), so no write path can forget it and row locks keep it in commit order. It is in every `CampaignProgress`; clients compare it rather than `updated_at`, which has whole seconds only.
 
 ## Payment confirmation (E9)
 

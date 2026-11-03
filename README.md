@@ -12,6 +12,7 @@ The product rules live in the [MVP build spec](https://claude.ai/artifact/WZRndB
 | `apps/web` | Next.js customer website (pilot channel), Arabic first | Built against the contract mock; payments behind a fake form until Moyasar ([README](apps/web/README.md)) |
 | `apps/admin` | React admin portal ([how to run it](apps/admin/README.md)) | All screens built against the contract (E17) |
 | `apps/mobile` | Customer app for iOS and Android (Expo, React Native) | Built against the contract mock; payments and push behind fakes (E18) |
+| `apps/realtime` | Laravel Reverb, the WebSocket server for live campaign progress ([README](apps/realtime/README.md)) | Ready; needs a host and keys |
 | `docs/` | Architecture notes and conventions | |
 
 ## Run the API locally
@@ -44,6 +45,14 @@ Campaigns need the scheduler and a queue worker. The scheduler runs `campaigns:t
 php artisan schedule:work       # or cron: * * * * * php artisan schedule:run
 php artisan queue:work
 ```
+
+Campaign pages update live through Laravel Reverb, the WebSocket server that ships with Laravel. It runs from its own small app, `apps/realtime` (see its README for why). The queue worker sends each change to Reverb, and Reverb pushes it to the website and the app. Clients without Reverb settings, or whose connection is down, refresh every 5 seconds instead; while connected they still read every 30 seconds, as a safety net. The API's default `BROADCAST_CONNECTION=log` sends nothing, so leave the clients' Reverb settings unset until the API pushes too. To run it locally, pick any app ID, key and secret, put them in both `apps/api/.env` and `apps/realtime/.env` (`REVERB_APP_ID`, `REVERB_APP_KEY`, `REVERB_APP_SECRET`), set `BROADCAST_CONNECTION=reverb` in the API, then:
+
+```bash
+cd apps/realtime && composer install && php artisan reverb:start
+```
+
+Give the website the key and address (`NEXT_PUBLIC_REVERB_APP_KEY`, `NEXT_PUBLIC_REVERB_HOST`, `NEXT_PUBLIC_REVERB_PORT`, `NEXT_PUBLIC_REVERB_SCHEME`) and the mobile app the `EXPO_PUBLIC_REVERB_*` equivalents. Production setup is in [apps/realtime/README.md](apps/realtime/README.md).
 
 Card payments go through a fake Moyasar (`MOYASAR_DRIVER=fake`) until the merchant account is ready. A payment whose Moyasar ID is `fake_authorized_<payment id>` counts as held; `fake_declined_<payment id>` is a declined card. Set `WEB_URL` to the website's address so the payment form returns there. The website calls `POST /api/v1/payments/{id}/sync` with Moyasar's payment ID as soon as the form reports it, and again on the return page. With `MOYASAR_DRIVER=moyasar` the website needs `NEXT_PUBLIC_PAYMENTS_MODE=moyasar` and `NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY` set to the same publishable key (see `apps/web/README.md`), and the mobile app `EXPO_PUBLIC_PAYMENT_PROVIDER=moyasar` with `EXPO_PUBLIC_WEB_URL` set to the same site (the app shows the website's form; see `apps/mobile/README.md`). Moyasar's webhooks go to `POST /api/v1/webhooks/moyasar`; set `MOYASAR_WEBHOOK_SECRET` to the secret token on the webhook in the Moyasar dashboard, or every webhook is refused.
 

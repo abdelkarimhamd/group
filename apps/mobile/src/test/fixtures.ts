@@ -61,6 +61,7 @@ export function progress(overrides: Partial<CampaignProgress> = {}): CampaignPro
     current_unit_price: sar(6900),
     deadline_at: iso(Date.now() + 2 * 24 * HOUR + 5 * HOUR),
     updated_at: iso(Date.now() - 60_000),
+    version: 10,
   };
   return { ...base, ...overrides };
 }
