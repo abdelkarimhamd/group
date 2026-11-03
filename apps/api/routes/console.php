@@ -2,6 +2,7 @@
 
 use App\Modules\Campaign\Console\CampaignTickCommand;
 use App\Modules\Campaign\Console\SweepClosingCommand;
+use App\Modules\Fulfillment\Console\CompleteDeliveredOrdersCommand;
 use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Payments\Console\ExpireHoldsCommand;
 use App\Modules\Payments\Console\RequeueWebhooksCommand;
@@ -30,3 +31,7 @@ Schedule::command(ExpireHoldsCommand::class)->hourly()->withoutOverlapping()->on
 
 // Verified Moyasar webhooks that were stored but never processed are queued again.
 Schedule::command(RequeueWebhooksCommand::class)->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+
+// Delivered orders past their 7-day return window are completed, and with
+// them any campaign that has nothing left on its way.
+Schedule::command(CompleteDeliveredOrdersCommand::class)->hourly()->withoutOverlapping()->onOneServer();

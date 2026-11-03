@@ -67,6 +67,12 @@ final class CampaignEvents
     /** The supplier purchase order was shipped: purchasing -> fulfilling. */
     public const SUPPLIER_SHIPPED = 'supplier_shipped';
 
+    /** The supplier's goods were counted at the warehouse. */
+    public const GOODS_RECEIVED = 'goods_received';
+
+    /** fulfilling -> completed: every customer order delivered or cancelled. */
+    public const COMPLETED = 'completed';
+
     /** closing -> failed. */
     public const FAILED = 'failed';
 

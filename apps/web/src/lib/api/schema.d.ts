@@ -1503,7 +1503,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Ship an order from the warehouse */
+        /**
+         * Ship an order from the warehouse
+         * @description Hands a `ready_to_ship` order to the courier: the shipment starts
+         *     `picked_up` with its first tracking event, and the order becomes
+         *     `shipped`. One shipment per order in the pilot.
+         */
         post: operations["adminCreateShipment"];
         delete?: never;
         options?: never;
@@ -1524,7 +1529,14 @@ export interface paths {
         put?: never;
         /**
          * Record a tracking update by hand
-         * @description For couriers without a tracking API (open question Q11). `delivered` starts the 7-day return window.
+         * @description For couriers without a tracking API (open question Q11). Updates may
+         *     arrive out of order: the newest sets the shipment's status, and
+         *     `delivered` always does. `delivered` marks the order delivered and
+         *     starts its 7-day return window (`groupbuy.orders.return_window_days`);
+         *     once every order of the campaign is delivered or cancelled, the
+         *     campaign is `completed`. No update is dated before the pickup
+         *     (`event_before_shipment`, 422). A delivered shipment takes no more
+         *     updates (409).
          */
         post: operations["adminAddShipmentEvent"];
         delete?: never;
@@ -1628,7 +1640,12 @@ export interface paths {
         put?: never;
         /**
          * Record goods counted at the warehouse
-         * @description Marks the purchase order `received`. Missing or damaged units are listed so the admin can pick the orders to refund.
+         * @description Only for a `shipped` purchase order (409 otherwise); marks it
+         *     `received`. Count every variant on the order once
+         *     (`receipt_lines_mismatch` otherwise); damaged units are counted among
+         *     those received. Customer orders the good units cover become
+         *     `ready_to_ship`, oldest first; any left uncovered by missing or
+         *     damaged units stay `processing` for the admin to refund.
          */
         post: operations["adminRecordInboundReceipt"];
         delete?: never;
@@ -2613,7 +2630,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /**
-             * @description For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, supplier_shipped, failed, cancelled.
+             * @description For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, supplier_shipped, goods_received, completed, failed, cancelled.
              * @example price_changed
              */
             event_type: string;
@@ -2793,7 +2810,11 @@ export interface components {
             shipping_cost_halalas?: number | null;
         };
         ShipmentEventInput: {
-            status: components["schemas"]["ShipmentStatus"];
+            /**
+             * @description Returns and cancelled shipments come with returns handling.
+             * @enum {string}
+             */
+            status: "picked_up" | "in_transit" | "out_for_delivery" | "failed_attempt" | "delivered";
             description?: string | null;
             location?: string | null;
             /** Format: date-time */
@@ -2889,8 +2910,10 @@ export interface components {
                 qty_expected: number;
                 qty_received: number;
                 qty_damaged: number;
+                /** @description Expected but not received. */
                 qty_missing: number;
             }[];
+            /** @description Empty until file storage is connected. */
             photo_urls: string[];
         };
         ReconciliationRun: {
@@ -5809,6 +5832,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
             422: components["responses"]["ValidationFailed"];
         };
     };

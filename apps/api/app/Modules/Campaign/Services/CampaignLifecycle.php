@@ -543,6 +543,22 @@ class CampaignLifecycle
     }
 
     /**
+     * Every customer order is delivered or cancelled: fulfilling moves to
+     * completed. Call with the campaign locked.
+     */
+    public function complete(Campaign $campaign, Actor $actor): Campaign
+    {
+        if ($campaign->status !== CampaignStatus::Fulfilling) {
+            throw new LogicException("Campaign {$campaign->id} cannot complete from {$campaign->status->value}.");
+        }
+
+        $campaign = $this->transition($campaign, CampaignStatus::Completed, CampaignEvents::COMPLETED, $actor);
+        CampaignProgressChanged::dispatch($campaign->id);
+
+        return $campaign;
+    }
+
+    /**
      * Ends every join that still holds units: participations waiting for
      * payment or authorized become `released`, their holds are released
      * (voided after commit) and their reserved units freed. Committed units
