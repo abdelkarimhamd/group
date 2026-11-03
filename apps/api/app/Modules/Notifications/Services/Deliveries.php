@@ -10,6 +10,7 @@ use App\Modules\Notifications\Models\Notification;
 use App\Modules\Notifications\Push\PushDeliveryFailed;
 use App\Modules\Notifications\Push\PushSender;
 use App\Modules\Notifications\Sms\SmsDeliveryFailed;
+use App\Modules\Notifications\Sms\SmsOutcomeUnknown;
 use App\Modules\Notifications\Sms\SmsSender;
 use App\Support\Phone\SaudiMobile;
 use Carbon\CarbonImmutable;
@@ -82,6 +83,14 @@ final class Deliveries
 
         try {
             $messageId = $this->send($notification);
+        } catch (SmsOutcomeUnknown $e) {
+            // It may have arrived, and the provider cannot tell us: sending
+            // it again could deliver it twice, so it is closed, not retried.
+            $error = mb_substr('outcome_unknown: '.$e->getMessage(), 0, 500);
+            $this->finish($notification, NotificationStatus::Failed, null, $error);
+            Log::warning('notifications.outcome_unknown', $context + ['error' => $error]);
+
+            return;
         } catch (SmsDeliveryFailed|PushDeliveryFailed $e) {
             $this->failed($notification, mb_substr($e->getMessage(), 0, 500), $context);
 

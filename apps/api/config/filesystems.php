@@ -69,8 +69,10 @@ return [
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_MEDIA_BUCKET'),
-            'url' => env('AWS_MEDIA_URL'),
-            'endpoint' => env('AWS_ENDPOINT'),
+            // An empty setting in .env means "not set": the bucket's own URL
+            // and AWS's endpoint.
+            'url' => env('AWS_MEDIA_URL') ?: null,
+            'endpoint' => env('AWS_ENDPOINT') ?: null,
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => true,
             'report' => false,
@@ -84,7 +86,7 @@ return [
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_DOCUMENTS_BUCKET'),
-            'endpoint' => env('AWS_ENDPOINT'),
+            'endpoint' => env('AWS_ENDPOINT') ?: null,
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => true,
             'report' => false,

@@ -228,6 +228,22 @@ final class NotificationsTest extends TestCase
     }
 
     #[Test]
+    public function a_message_that_may_have_arrived_is_never_sent_again(): void
+    {
+        // The provider times out after taking it, and keeps nothing we could check.
+        $this->sms->answerLost = true;
+        [$join] = $this->paidJoin($this->closableCampaign(['min_target_qty' => 5]), 1);
+        $message = Notification::query()->sole();
+        $this->assertSame(['failed', 1, 'outcome_unknown: Provider did not answer (fake).', null], [$message->status->value, $message->attempts, $message->last_error, $message->next_attempt_at]);
+
+        $this->sms->answerLost = false;
+        $this->travel(2)->hours();
+        $this->artisan('notifications:dispatch-due')->assertSuccessful();
+        $this->assertSame(1, $message->refresh()->attempts);
+        $this->assertCount(1, $this->sms->to($join->user()->sole()->phone_e164));
+    }
+
+    #[Test]
     public function a_message_whose_job_was_lost_is_sent_again(): void
     {
         Bus::fake([SendNotification::class]);

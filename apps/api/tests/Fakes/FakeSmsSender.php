@@ -3,11 +3,13 @@
 namespace Tests\Fakes;
 
 use App\Modules\Notifications\Sms\SmsDeliveryFailed;
+use App\Modules\Notifications\Sms\SmsOutcomeUnknown;
 use App\Modules\Notifications\Sms\SmsSender;
 use PHPUnit\Framework\Assert;
 
 /**
- * Records texts instead of sending them. Set $failing to simulate a provider outage.
+ * Records texts instead of sending them. Set $failing to simulate a provider
+ * outage, $answerLost for a text that arrived but whose answer never came back.
  */
 final class FakeSmsSender implements SmsSender
 {
@@ -16,6 +18,8 @@ final class FakeSmsSender implements SmsSender
 
     public bool $failing = false;
 
+    public bool $answerLost = false;
+
     public function send(string $to, string $message, ?string $reference = null): ?string
     {
         if ($this->failing) {
@@ -23,6 +27,10 @@ final class FakeSmsSender implements SmsSender
         }
 
         $this->sent[] = ['to' => $to, 'message' => $message, 'reference' => $reference];
+
+        if ($this->answerLost) {
+            throw new SmsOutcomeUnknown('Provider did not answer (fake).');
+        }
 
         return 'fake-sms-'.count($this->sent);
     }

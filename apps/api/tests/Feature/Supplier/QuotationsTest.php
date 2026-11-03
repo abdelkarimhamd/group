@@ -16,6 +16,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\InteractsWithIdentity;
+use Tests\Fakes\UndeletableDisk;
 use Tests\TestCase;
 
 class QuotationsTest extends TestCase
@@ -191,6 +192,44 @@ class QuotationsTest extends TestCase
             'file' => UploadedFile::fake()->create('quote.pdf', 100, 'application/pdf'),
         ], ['Accept' => 'application/json'])->assertStatus(409);
         $this->assertSame([], Storage::disk('local')->allFiles());
+    }
+
+    #[Test]
+    public function a_quote_file_that_cannot_be_removed_never_changes_the_answer(): void
+    {
+        $disk = UndeletableDisk::fake('local');
+        $quote = SupplierQuotation::factory()->create(['supplier_id' => $this->supplier->id, 'product_id' => $this->product->id]);
+        $upload = fn () => $this->withToken($this->token)->post("/api/v1/admin/quotations/{$quote->uuid}/attachment", [
+            'file' => UploadedFile::fake()->create('quote.pdf', 100, 'application/pdf'),
+        ], ['Accept' => 'application/json', 'Accept-Language' => 'en']);
+
+        $upload()->assertOk();
+        $first = $quote->fresh()->attachment_path;
+
+        // Replacing it succeeds even though the old file stays behind.
+        $upload()->assertOk();
+        $this->assertNotSame($first, $quote->fresh()->attachment_path);
+        $disk->assertExists($first);
+    }
+
+    #[Test]
+    public function a_refused_quote_file_keeps_its_answer_when_the_cleanup_fails(): void
+    {
+        UndeletableDisk::fake('local');
+        $quote = SupplierQuotation::factory()->create(['supplier_id' => $this->supplier->id, 'product_id' => $this->product->id]);
+        $this->app->instance(QuotationUsage::class, new class extends QuotationUsage
+        {
+            public function isFrozen(SupplierQuotation $quotation): bool
+            {
+                return true;
+            }
+        });
+
+        $this->withToken($this->token)->post("/api/v1/admin/quotations/{$quote->uuid}/attachment", [
+            'file' => UploadedFile::fake()->create('quote.pdf', 100, 'application/pdf'),
+        ], ['Accept' => 'application/json', 'Accept-Language' => 'en'])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'quotation_frozen');
     }
 
     #[Test]

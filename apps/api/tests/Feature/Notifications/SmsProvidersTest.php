@@ -3,6 +3,7 @@
 namespace Tests\Feature\Notifications;
 
 use App\Modules\Notifications\Sms\SmsDeliveryFailed;
+use App\Modules\Notifications\Sms\SmsOutcomeUnknown;
 use App\Modules\Notifications\Sms\SmsSender;
 use App\Modules\Notifications\Sms\TaqnyatSmsSender;
 use App\Modules\Notifications\Sms\UnifonicSmsSender;
@@ -85,15 +86,37 @@ class SmsProvidersTest extends TestCase
         Http::fake(['api.taqnyat.sa/v1/messages' => Http::sequence()
             ->push(['statusCode' => 201, 'messageId' => 5452899970, 'cost' => 0.026, 'currency' => 'SAR', 'accepted' => '[966512345678,]', 'rejected' => '[]'], 201)
             ->push(['statusCode' => 400, 'message' => 'Sender Name not active'], 400)
-            ->whenEmpty(fn () => throw new ConnectionException('timed out'))]);
+            ->push(['message' => 'Internal error'], 502)
+            ->pushResponse(fn () => throw new ConnectionException('cURL error 7: Failed to connect to api.taqnyat.sa port 443 after 30 ms: Could not connect to server'))
+            ->whenEmpty(fn () => throw new ConnectionException('cURL error 28: Operation timed out after 10001 milliseconds with 0 bytes received'))]);
 
         $sender = $this->sender('taqnyat');
         $this->assertSame('5452899970', $sender->send('+966512345678', 'Your order shipped'));
         Http::assertSent(fn (Request $request) => $request->hasHeader('Authorization', 'Bearer taqnyat-token')
             && $request->data() === ['recipients' => [966512345678], 'body' => 'Your order shipped', 'sender' => 'GroupBuy']);
 
-        $this->assertThrows(fn () => $sender->send('+966512345678', 'Hi'), SmsDeliveryFailed::class, 'Sender Name not active');
-        $this->assertThrows(fn () => $sender->send('+966512345678', 'Hi'), SmsDeliveryFailed::class, 'could not be reached');
+        // A definite refusal, and a call that never left, can be tried again.
+        $this->assertSame(SmsDeliveryFailed::class, $this->failure(fn () => $sender->send('+966512345678', 'Hi'), 'Sender Name not active'));
+        // Taqnyat failing on its side, or not answering once the request went out, may have sent it.
+        $this->assertSame(SmsOutcomeUnknown::class, $this->failure(fn () => $sender->send('+966512345678', 'Hi'), 'may have arrived'));
+        $this->assertSame(SmsDeliveryFailed::class, $this->failure(fn () => $sender->send('+966512345678', 'Hi'), 'could not be reached'));
+        $this->assertSame(SmsOutcomeUnknown::class, $this->failure(fn () => $sender->send('+966512345678', 'Hi'), 'may have arrived'));
+    }
+
+    /**
+     * @return class-string the exception thrown, whose message mentions $expected
+     */
+    private function failure(callable $send, string $expected): string
+    {
+        try {
+            $send();
+        } catch (SmsDeliveryFailed $e) {
+            $this->assertStringContainsString($expected, $e->getMessage());
+
+            return $e::class;
+        }
+
+        $this->fail('The send did not fail.');
     }
 
     #[Test]

@@ -2,15 +2,18 @@
 
 namespace Tests\Feature\Payments;
 
+use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Payments\Gateway\GatewayException;
 use App\Modules\Payments\Gateway\MoyasarGateway;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Gateway\ProviderPaymentNotFound;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\InteractsWithCampaigns;
 use Tests\TestCase;
 
 /**
@@ -20,6 +23,8 @@ use Tests\TestCase;
  */
 class MoyasarGatewayTest extends TestCase
 {
+    use InteractsWithCampaigns, RefreshDatabase;
+
     private const BASE = 'https://api.moyasar.com/v1';
 
     private const ID = '760878ec-d1d3-5f72-9056-191683f55872';
@@ -34,6 +39,7 @@ class MoyasarGatewayTest extends TestCase
         config([
             'services.moyasar.driver' => 'moyasar',
             'services.moyasar.secret_key' => 'sk_test_secret',
+            'services.moyasar.publishable_key' => 'pk_test_public',
             'services.moyasar.base_url' => self::BASE,
         ]);
         $this->app->forgetInstance(PaymentGateway::class);
@@ -141,13 +147,47 @@ class MoyasarGatewayTest extends TestCase
     }
 
     #[Test]
-    public function the_driver_needs_a_secret_key_and_a_live_one_in_production(): void
+    public function the_keys_must_be_a_live_pair_in_production_and_a_test_pair_anywhere_else(): void
     {
         config(['services.moyasar.secret_key' => '']);
         $this->assertThrows(fn () => app(PaymentGateway::class), LogicException::class, 'MOYASAR_SECRET_KEY');
 
-        $this->assertThrows(fn () => new MoyasarGateway('sk_test_secret', self::BASE, 20, 5, production: true), LogicException::class, 'sk_live_');
-        $this->assertInstanceOf(MoyasarGateway::class, new MoyasarGateway('sk_live_secret', self::BASE, 20, 5, production: true));
+        $refused = [
+            [true, 'sk_test_secret', 'pk_test_public'],
+            // The form would make payments the live secret key cannot see.
+            [true, 'sk_live_secret', 'pk_test_fake'],
+            [true, 'sk_test_secret', 'pk_live_public'],
+            // Live keys outside production would move real money from staging.
+            [false, 'sk_live_secret', 'pk_live_public'],
+            [false, 'sk_test_secret', 'pk_live_public'],
+        ];
+
+        foreach ($refused as [$production, $secret, $publishable]) {
+            $this->assertThrows(fn () => new MoyasarGateway($secret, $publishable, self::BASE, 20, 5, $production), LogicException::class, 'MOYASAR_PUBLISHABLE_KEY');
+        }
+
+        $this->assertInstanceOf(MoyasarGateway::class, new MoyasarGateway('sk_live_secret', 'pk_live_public', self::BASE, 20, 5, production: true));
+        $this->assertInstanceOf(MoyasarGateway::class, new MoyasarGateway('sk_test_secret', 'pk_test_public', self::BASE, 20, 5, production: false));
+    }
+
+    #[Test]
+    public function a_mastercard_hold_is_accepted_as_mastercard(): void
+    {
+        $campaign = Campaign::factory()->active()->create();
+        [, $token, $address] = $this->customerReadyToJoin();
+        $payment = $this->joinAs($token, $campaign, $address)->latestPayment;
+        $remote = $this->payment('authorized');
+        $remote['amount'] = $payment->authorized_amount_halalas;
+        $remote['metadata']['payment_id'] = $payment->uuid;
+        // Moyasar calls the network "master".
+        $remote['source']['company'] = 'master';
+        Http::fake([self::BASE.'/payments/'.self::ID => Http::response($remote)]);
+
+        $this->withToken($token)->postJson("/api/v1/payments/{$payment->uuid}/sync", ['provider_payment_id' => self::ID])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'authorized')
+            ->assertJsonPath('data.payment.status', 'authorized')
+            ->assertJsonPath('data.payment.scheme', 'mastercard');
     }
 
     private function gateway(): PaymentGateway

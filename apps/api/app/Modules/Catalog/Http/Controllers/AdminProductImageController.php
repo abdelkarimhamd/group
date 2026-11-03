@@ -9,11 +9,11 @@ use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductImage;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Support\Audit\AuditLogger;
+use App\Support\Files\StoredFiles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -66,7 +66,7 @@ final class AdminProductImageController extends AdminController
                 return $image;
             });
         } catch (Throwable $e) {
-            Storage::disk($disk)->delete($path);
+            StoredFiles::deleteQuietly($disk, $path);
 
             throw $e;
         }
@@ -89,7 +89,7 @@ final class AdminProductImageController extends AdminController
         });
 
         // The row is gone for good; remove the file after the commit.
-        Storage::disk($deleted->disk)->delete($deleted->path);
+        StoredFiles::deleteQuietly($deleted->disk, $deleted->path);
 
         return response()->noContent();
     }

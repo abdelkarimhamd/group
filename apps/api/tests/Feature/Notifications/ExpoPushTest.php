@@ -89,6 +89,54 @@ class ExpoPushTest extends TestCase
     }
 
     #[Test]
+    public function devices_of_two_expo_projects_are_sent_one_project_at_a_time(): void
+    {
+        $tokens = ['ExponentPushToken[old-1]', 'ExponentPushToken[new-1]', 'ExponentPushToken[old-2]'];
+        Http::fake(function (Request $request) {
+            $to = array_column(json_decode($request->body(), true), 'to');
+
+            return match ($to) {
+                ['ExponentPushToken[old-1]', 'ExponentPushToken[old-2]'] => Http::response(['data' => [
+                    ['status' => 'ok', 'id' => 'OLD-1'],
+                    ['status' => 'error', 'message' => 'gone', 'details' => ['error' => 'DeviceNotRegistered']],
+                ]]),
+                ['ExponentPushToken[new-1]'] => Http::response(['data' => [['status' => 'ok', 'id' => 'NEW-1']]]),
+                default => Http::response(['errors' => [[
+                    'code' => 'PUSH_TOO_MANY_EXPERIENCE_IDS',
+                    'message' => 'All push notification messages in the same request must be for the same project; separate your push notifications by project.',
+                    'details' => [
+                        '@groupbuy/old' => ['ExponentPushToken[old-1]', 'ExponentPushToken[old-2]'],
+                        '@groupbuy/new' => ['ExponentPushToken[new-1]'],
+                    ],
+                ]]], 400),
+            };
+        });
+
+        $this->assertSame('OLD-1', $this->sender()->send($tokens, 'Hi', 'There'));
+        Http::assertSentCount(3);
+    }
+
+    #[Test]
+    public function a_refused_request_never_puts_push_tokens_in_the_error(): void
+    {
+        Http::fake([self::URL => Http::response(['errors' => [
+            ['code' => 'VALIDATION_ERROR', 'message' => '"ExponentPushToken[secret-1]" is not valid', 'details' => ['to' => ['ExponentPushToken[secret-1]']]],
+            ['code' => 'PUSH_TOO_MANY_EXPERIENCE_IDS', 'message' => 'Separate by project.', 'details' => ['@a/one' => ['ExponentPushToken[secret-1]']]],
+        ]], 400)]);
+
+        try {
+            $this->sender()->send(['ExponentPushToken[secret-1]'], 'Hi', 'There');
+            $this->fail('Expected the send to fail.');
+        } catch (PushDeliveryFailed $e) {
+            $this->assertStringContainsString('VALIDATION_ERROR', $e->getMessage());
+            $this->assertStringNotContainsString('secret-1', $e->getMessage());
+        }
+
+        // One project only: nothing to split, so no second request.
+        Http::assertSentCount(1);
+    }
+
+    #[Test]
     public function the_access_token_is_sent_when_enhanced_security_is_on(): void
     {
         config(['services.push.expo.access_token' => 'expo-secret']);

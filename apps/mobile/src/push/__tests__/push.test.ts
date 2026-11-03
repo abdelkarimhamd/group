@@ -91,11 +91,15 @@ describe('registerForPush', () => {
     expect(register).not.toHaveBeenCalled();
   });
 
-  it('never throws when the token or the API fails', async () => {
-    Notifications.getExpoPushTokenAsync.mockRejectedValueOnce(new Error('no network'));
+  it('never throws when the token or the API fails, and says why in development', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const noFirebase = new Error('Default FirebaseApp is not initialized');
+    Notifications.getExpoPushTokenAsync.mockRejectedValueOnce(noFirebase);
     await expect(registerForPush()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith('Push registration failed', noFirebase);
 
     register.mockRejectedValueOnce(new Error('500'));
     await expect(registerForPush()).resolves.toBeUndefined();
+    warn.mockRestore();
   });
 });

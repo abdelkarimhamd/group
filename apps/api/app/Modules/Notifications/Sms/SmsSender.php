@@ -4,7 +4,9 @@ namespace App\Modules\Notifications\Sms;
 
 /**
  * Sends one text message. Implementations throw SmsDeliveryFailed when the
- * message could not be handed to the provider.
+ * message could not be handed to the provider (safe to retry), and its
+ * subclass SmsOutcomeUnknown when it may have been, with no way to check
+ * or to drop a repeat (not retried).
  */
 interface SmsSender
 {

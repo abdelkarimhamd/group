@@ -32,8 +32,19 @@ final class MoyasarGateway implements PaymentGateway
     /** Refusals that are about our set-up, not the payment: retrying after a fix can work. */
     private const SETUP_ERRORS = [401, 403, 405];
 
+    /** Moyasar's names for the card networks, as ours (Confirmations, the scheme CHECK). */
+    private const SCHEMES = ['master' => 'mastercard'];
+
+    /**
+     * Production takes live keys only, anywhere else test keys only, and the
+     * two keys always match: the payment form makes its payment with the
+     * publishable key, and a payment made in the other mode is invisible to
+     * the secret key (every join would fail, or real cards would be held
+     * where nothing can confirm or release them).
+     */
     public function __construct(
         private readonly string $secretKey,
+        string $publishableKey,
         private readonly string $baseUrl,
         private readonly int $timeoutSeconds,
         private readonly int $connectTimeoutSeconds,
@@ -43,8 +54,12 @@ final class MoyasarGateway implements PaymentGateway
             throw new LogicException('Set MOYASAR_SECRET_KEY to use the Moyasar gateway.');
         }
 
-        if ($production && ! str_starts_with($secretKey, 'sk_live_')) {
-            throw new LogicException('Production needs a live Moyasar secret key (sk_live_...).');
+        $mode = $production ? 'live' : 'test';
+
+        if (! str_starts_with($secretKey, "sk_{$mode}_") || ! str_starts_with($publishableKey, "pk_{$mode}_")) {
+            throw new LogicException($production
+                ? 'Production needs live Moyasar keys: MOYASAR_SECRET_KEY sk_live_... and MOYASAR_PUBLISHABLE_KEY pk_live_....'
+                : 'Outside production use test Moyasar keys: MOYASAR_SECRET_KEY sk_test_... and MOYASAR_PUBLISHABLE_KEY pk_test_....');
         }
     }
 
@@ -105,7 +120,7 @@ final class MoyasarGateway implements PaymentGateway
             amountHalalas: $body['amount'],
             currency: is_string($body['currency'] ?? null) ? strtoupper($body['currency']) : '',
             sourceType: is_string($source['type'] ?? null) ? $source['type'] : null,
-            scheme: is_string($source['company'] ?? null) ? strtolower($source['company']) : null,
+            scheme: is_string($source['company'] ?? null) ? (self::SCHEMES[strtolower($source['company'])] ?? strtolower($source['company'])) : null,
             cardLast4: strlen((string) $digits) >= 4 ? substr((string) $digits, -4) : null,
             capturedHalalas: is_int($body['captured'] ?? null) ? $body['captured'] : 0,
             paymentId: is_string($paymentId) && $paymentId !== '' ? strtolower($paymentId) : null,

@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\SentryScrubber;
+
 /**
  * Sentry Laravel SDK configuration file.
  *
@@ -59,6 +61,12 @@ return [
 
     // Configures which data is collected automatically, `null` keeps collecting data based on `send_default_pii`
     'data_collection' => null,
+
+    // Customer data the SDK would still send (PostgreSQL DETAIL text, phone
+    // numbers, query strings, function arguments) is removed here.
+    'before_send' => [SentryScrubber::class, 'event'],
+
+    'before_send_transaction' => [SentryScrubber::class, 'transaction'],
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#ignore_exceptions
     // 'ignore_exceptions' => [],

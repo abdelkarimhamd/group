@@ -2,6 +2,7 @@
 
 namespace App\Modules\Notifications\Sms;
 
+use App\Support\Http\Failures;
 use Illuminate\Support\Facades\Http;
 use LogicException;
 use Throwable;
@@ -9,8 +10,10 @@ use Throwable;
 /**
  * Taqnyat's SMS API (POST /v1/messages, JSON, bearer token). The sender
  * name must already be active on the account. Taqnyat keeps no reference
- * of ours and has no way to look a message up, so a send whose answer was
- * lost may arrive twice when it is retried.
+ * of ours and has no way to look a message up, so a send that may have
+ * reached it (a timeout after sending, a 5xx) is never sent again: it
+ * throws SmsOutcomeUnknown. Only a send that certainly never left, or a
+ * definite refusal, is a SmsDeliveryFailed to retry.
  */
 final class TaqnyatSmsSender implements SmsSender
 {
@@ -35,7 +38,11 @@ final class TaqnyatSmsSender implements SmsSender
                     'sender' => $this->sender,
                 ]);
         } catch (Throwable $e) {
-            throw new SmsDeliveryFailed('Taqnyat could not be reached: '.$e->getMessage(), previous: $e);
+            if (Failures::neverSent($e)) {
+                throw new SmsDeliveryFailed('Taqnyat could not be reached: '.$e->getMessage(), previous: $e);
+            }
+
+            throw new SmsOutcomeUnknown('Taqnyat did not answer; the message may have arrived: '.$e->getMessage(), previous: $e);
         }
 
         $body = $response->json();
@@ -46,6 +53,10 @@ final class TaqnyatSmsSender implements SmsSender
         }
 
         $why = is_string($body['message'] ?? null) && $body['message'] !== '' ? $body['message'] : 'no reason given';
+
+        if ($response->serverError()) {
+            throw new SmsOutcomeUnknown("Taqnyat failed ({$response->status()}); the message may have arrived: {$why}");
+        }
 
         throw new SmsDeliveryFailed("Taqnyat refused the message ({$response->status()}): {$why}");
     }

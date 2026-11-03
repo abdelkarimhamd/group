@@ -74,6 +74,7 @@ class AppServiceProvider extends ServiceProvider
             'fake' => new FakeMoyasarGateway($app->isProduction()),
             'moyasar' => new MoyasarGateway(
                 (string) config('services.moyasar.secret_key'),
+                (string) config('services.moyasar.publishable_key'),
                 (string) config('services.moyasar.base_url'),
                 (int) config('services.moyasar.timeout_seconds'),
                 (int) config('services.moyasar.connect_timeout_seconds'),

@@ -4,4 +4,4 @@ namespace App\Modules\Notifications\Sms;
 
 use RuntimeException;
 
-final class SmsDeliveryFailed extends RuntimeException {}
+class SmsDeliveryFailed extends RuntimeException {}

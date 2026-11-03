@@ -51,7 +51,9 @@ export async function registerForPush(): Promise<void> {
 
     const { data: token } = await getExpoPushTokenAsync({ projectId });
     await api.registerDeviceToken(Platform.OS === 'ios' ? 'ios' : 'android', token);
-  } catch {
-    // The next sign-in tries again.
+  } catch (error) {
+    // The next sign-in tries again. On Android a missing Firebase config
+    // (google-services.json, see app.config.ts) ends up here.
+    if (__DEV__) console.warn('Push registration failed', error);
   }
 }

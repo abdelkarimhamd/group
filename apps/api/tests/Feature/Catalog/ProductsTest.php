@@ -11,9 +11,11 @@ use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Identity\Enums\AdminRole;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\InteractsWithIdentity;
+use Tests\Fakes\UndeletableDisk;
 use Tests\TestCase;
 
 class ProductsTest extends TestCase
@@ -208,6 +210,25 @@ class ProductsTest extends TestCase
         $this->assertSame($product->uuid, AuditLog::where('action', 'product_image.delete')->sole()->before['product_id']);
 
         $this->withToken($this->token)->deleteJson("/api/v1/admin/product-images/{$image['id']}")->assertNotFound();
+    }
+
+    #[Test]
+    public function a_photo_is_deleted_even_when_its_file_cannot_be_removed(): void
+    {
+        $disk = UndeletableDisk::fake('public');
+        Log::spy();
+        $product = Product::factory()->active()->create(['category_id' => $this->category->id]);
+        $image = $this->withToken($this->token)->post("/api/v1/admin/products/{$product->uuid}/images", [
+            'file' => UploadedFile::fake()->image('blender.jpg', 800, 800),
+        ], ['Accept' => 'application/json'])->assertCreated()->json('data.id');
+        $path = ProductImage::where('uuid', $image)->sole()->path;
+
+        // The row is gone, so the answer is 204 whatever the storage says;
+        // the file left behind is logged for cleanup.
+        $this->withToken($this->token)->deleteJson("/api/v1/admin/product-images/{$image}")->assertNoContent();
+        $this->assertSame(0, ProductImage::count());
+        $disk->assertExists($path);
+        Log::shouldHaveReceived('warning')->with('storage.orphan_file', ['disk' => 'public', 'path' => $path])->once();
     }
 
     #[Test]
