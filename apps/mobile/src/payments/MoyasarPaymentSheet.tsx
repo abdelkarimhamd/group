@@ -13,6 +13,17 @@ import { colors, space } from '@/theme/tokens';
 import { paymentPageUrl, providerPaymentIdFromMessage, returnFromForm } from './moyasarPage';
 import type { PaymentSheetProps, PaymentSheetResult } from './types';
 
+const ALL_ORIGINS = ['*'];
+
+/**
+ * What may load inside the form: web pages (the form, Moyasar, the bank's 3-D Secure pages) and
+ * the frames such pages build (srcdoc, data: and blob:). Phone numbers and app links, this app's
+ * own included, never leave the form.
+ */
+export function loadsInForm(url: string): boolean {
+  return /^(https?:\/\/|about:blank|about:srcdoc|data:|blob:)/i.test(url);
+}
+
 /**
  * Moyasar's payment form (cards, and Apple Pay on iPhone) inside the app. It is the website's
  * own form, opened in a WebView, so card details go from Moyasar's form to Moyasar and the app
@@ -116,11 +127,15 @@ function MoyasarForm({
             const id = providerPaymentIdFromMessage(event.nativeEvent.data);
             if (id) providerPaymentId.current = id;
           }}
-          // Web pages (the form, Moyasar, the bank's 3-D Secure pages) load here; react-native-webview
-          // hands anything else, such as a bank app's link, to the phone before this runs.
-          onShouldStartLoadWithRequest={(request) => !caughtReturn(request.url)}
-          // A return the platform did not offer to the callback above (Android does not for
-          // every redirect) is caught as it starts loading.
+          // Every navigation comes to the check below (react-native-webview would otherwise hand
+          // non-web links to the phone first, including this app's own scheme).
+          originWhitelist={ALL_ORIGINS}
+          onShouldStartLoadWithRequest={(request) =>
+            !caughtReturn(request.url) && loadsInForm(request.url)
+          }
+          // Android sometimes lets a return load anyway (it waits only 250 ms for the check above,
+          // and never offers a POST); it is caught when that page commits. Loaded in the sheet,
+          // the website's return page has no session and changes nothing.
           onNavigationStateChange={(navigation) => void caughtReturn(navigation.url)}
           onError={() => setFailed(true)}
           onHttpError={(event) => {

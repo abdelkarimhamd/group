@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Linking, Platform } from 'react-native';
 import type { WebViewProps } from 'react-native-webview';
 import {
@@ -105,7 +105,7 @@ describe('the Moyasar payment sheet', () => {
     expect(onResult).toHaveBeenCalledWith({ kind: 'dismissed', providerPaymentId: 'pay_123' });
   });
 
-  it('loads web pages in the sheet and leaves other links to the phone', async () => {
+  it('loads web pages and their frames, and keeps every other link inside the form', async () => {
     const onResult = await open();
     // The navigation check as react-native-webview really runs it: its origin whitelist first,
     // then the sheet's own callback.
@@ -117,17 +117,27 @@ describe('the Moyasar payment sheet', () => {
       web.originWhitelist ?? defaultOriginWhitelist,
       web.onShouldStartLoadWithRequest,
     );
-    const go = (url: string) => check({ nativeEvent: { url, lockIdentifier: 1 } } as never);
+    const loads = (url: string) => {
+      check({ nativeEvent: { url, lockIdentifier: 1 } } as never);
+      return loadRequest.mock.lastCall?.[0] as boolean;
+    };
 
-    go('https://acs.bank.example/challenge');
-    expect(loadRequest).toHaveBeenLastCalledWith(true, 'https://acs.bank.example/challenge', 1);
-    go('bankapp://approve?tx=1');
-    expect(loadRequest).toHaveBeenLastCalledWith(false, 'bankapp://approve?tx=1', 1);
-    await waitFor(() => expect(openURL).toHaveBeenCalledWith('bankapp://approve?tx=1'));
+    expect(loads('https://acs.bank.example/challenge')).toBe(true);
+    expect(loads('about:blank')).toBe(true);
+    expect(loads('about:srcdoc')).toBe(true);
+    expect(loads('data:text/html,<form></form>')).toBe(true);
+    expect(loads('blob:https://acs.bank.example/0f3a')).toBe(true);
+
+    expect(loads('groupbuy://joins/1')).toBe(false);
+    expect(loads('tel:+966500000000')).toBe(false);
+    expect(loads('intent://pay#Intent;scheme=x;end')).toBe(false);
+    expect(loads('javascript:alert(1)')).toBe(false);
+    await act(async () => {});
+    expect(canOpenURL).not.toHaveBeenCalled();
+    expect(openURL).not.toHaveBeenCalled();
     expect(onResult).not.toHaveBeenCalled();
 
-    go(RETURN);
-    expect(loadRequest).toHaveBeenLastCalledWith(false, RETURN, 1);
+    expect(loads(RETURN)).toBe(false);
     expect(onResult).toHaveBeenCalledWith({ kind: 'completed', providerPaymentId: 'pay_123' });
     canOpenURL.mockRestore();
     openURL.mockRestore();
