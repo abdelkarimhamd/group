@@ -13,6 +13,7 @@ use App\Modules\Payments\Models\Refund;
 use App\Modules\Payments\Services\Refunds;
 use App\Support\Actor;
 use App\Support\Audit\AuditLogger;
+use App\Support\Audit\StatusHistory;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -32,6 +33,7 @@ final class Decisions
         private readonly Refunds $refunds,
         private readonly CampaignCancellations $cancellations,
         private readonly AuditLogger $audit,
+        private readonly StatusHistory $history,
     ) {}
 
     /**
@@ -78,6 +80,7 @@ final class Decisions
             $request->decided_at = CarbonImmutable::now();
             $request->reason = $reason;
             $request->save();
+            $this->history->record($request, ApprovalStatus::Pending, $to, $actor, $reason === null ? null : mb_substr($reason, 0, 255));
 
             match (true) {
                 $subject instanceof Refund && $to === ApprovalStatus::Approved => $this->refunds->approve($subject, $actor),

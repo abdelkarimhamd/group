@@ -6,12 +6,14 @@ use App\Models\AuditLog;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Finance\Models\ReconciliationItem;
 use App\Modules\Finance\Models\ReconciliationRun;
+use App\Modules\Finance\Services\Reconciliation;
 use App\Modules\Identity\Enums\AdminRole;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
+use RuntimeException;
 use Tests\Concerns\ClosesCampaigns;
 use Tests\Fakes\ScriptedMoyasarGateway;
 use Tests\TestCase;
@@ -141,6 +143,64 @@ class ReconciliationTest extends TestCase
     }
 
     #[Test]
+    public function a_hold_we_are_releasing_that_moyasar_still_holds_is_reported_after_the_grace_period(): void
+    {
+        // A cancelled join: the hold stays authorized, with a reason, until the void lands.
+        $other = $this->closableCampaign();
+        [$join] = $this->paidJoin($other, 1);
+        $payment = $join->latestPayment()->firstOrFail();
+        $payment->forceFill(['rejection_reason' => 'participation_cancelled'])->save();
+
+        $gateway = new ScriptedMoyasarGateway;
+        $gateway->report((string) $payment->provider_payment_id, $payment);
+        foreach ($this->payments as $captured) {
+            $gateway->report((string) $captured->provider_payment_id, $captured, status: 'captured');
+            $gateway->setStatus((string) $captured->provider_payment_id, 'captured', $captured->captured_amount_halalas);
+        }
+        $this->app->instance(PaymentGateway::class, $gateway);
+        $today = CarbonImmutable::now('Asia/Riyadh')->toDateString();
+
+        // The void was only just sent: not yet a mismatch.
+        $this->artisan('payments:reconcile', ['--date' => $today])->assertSuccessful();
+        $this->assertSame(0, ReconciliationItem::count());
+
+        // Hours later Moyasar still holds the money.
+        $this->travel(2)->hours();
+        $this->artisan('payments:reconcile', ['--date' => $today])->assertSuccessful();
+        $item = ReconciliationItem::query()->sole();
+        $this->assertSame([$payment->id, 'stuck_void'], [$item->payment_authorization_id, $item->mismatch_type->value]);
+    }
+
+    #[Test]
+    public function a_run_that_breaks_is_marked_failed_and_one_cut_off_is_closed_by_the_next(): void
+    {
+        $cutOff = ReconciliationRun::create(['run_date' => '2026-11-01', 'started_at' => CarbonImmutable::now()->subHours(5)]);
+        $this->mock(PaymentGateway::class, fn ($mock) => $mock->shouldReceive('fetch')->andThrow(new RuntimeException('Unexpected response shape')));
+
+        try {
+            app(Reconciliation::class)->run(CarbonImmutable::parse($this->day, 'Asia/Riyadh'));
+            $this->fail('An unexpected error is not swallowed.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('Unexpected response shape', $e->getMessage());
+        }
+
+        $run = ReconciliationRun::query()->latest('id')->firstOrFail();
+        $this->assertSame(['failed', 'The run stopped on an unexpected error; see the logs.'], [$run->status->value, $run->error]);
+        $this->assertNotNull($run->finished_at);
+        $this->assertSame(['failed', 'The run stopped before it finished.'], [$cutOff->refresh()->status->value, $cutOff->error]);
+    }
+
+    #[Test]
+    public function a_date_that_is_not_a_calendar_day_is_refused(): void
+    {
+        foreach (['abc', '2026/11/02', '2026-11-02x', '2026-13-45', '26-11-02'] as $date) {
+            $this->artisan('payments:reconcile', ['--date' => $date])->expectsOutput('Give --date as YYYY-MM-DD.')->assertExitCode(2);
+        }
+
+        $this->assertSame(0, ReconciliationRun::count());
+    }
+
+    #[Test]
     public function a_run_moyasar_cannot_answer_fails_and_says_why(): void
     {
         $gateway = new ScriptedMoyasarGateway;
@@ -152,7 +212,6 @@ class ReconciliationTest extends TestCase
         $run = ReconciliationRun::query()->sole();
         $this->assertSame(['failed', 'Moyasar is unreachable.'], [$run->status->value, $run->error]);
         $this->assertNotNull($run->finished_at);
-        $this->artisan('payments:reconcile', ['--date' => '2026-13-45'])->assertExitCode(2);
     }
 
     #[Test]

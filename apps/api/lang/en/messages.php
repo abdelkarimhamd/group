@@ -67,6 +67,8 @@ return [
         'payment_not_captured' => 'Only a captured payment can be refunded.',
         'order_not_for_payment' => 'That order was not paid with this payment.',
         'refund_exceeds_captured' => 'The refund is more than what is left of the captured amount.',
+        'same_admin' => 'A second admin has to decide this request, not the one who asked for it.',
+        'already_resolved' => 'This mismatch was already resolved.',
         'purchase_order_incomplete' => 'Record the Alibaba order number and the exchange rate first, and a freight tracking reference before shipping.',
         'shipment_exists' => 'This order already has a shipment.',
         'event_before_shipment' => 'An update cannot be dated before the courier picked up the order.',

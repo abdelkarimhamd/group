@@ -3,6 +3,7 @@
 namespace Tests\Feature\Finance;
 
 use App\Models\AuditLog;
+use App\Models\StatusTransition;
 use App\Modules\Campaign\Jobs\ExecuteCampaignCancellation;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignEvent;
@@ -18,6 +19,8 @@ use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\PaymentTransaction;
 use App\Modules\Payments\Models\Refund;
 use Carbon\CarbonImmutable;
+use Illuminate\Bus\UniqueLock;
+use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
@@ -118,6 +121,89 @@ class CancellingCampaignsTest extends TestCase
     }
 
     #[Test]
+    public function refunds_still_waiting_for_approval_are_withdrawn_and_the_cancellation_returns_everything(): void
+    {
+        // Support asked to refund part of the first join; nobody decided yet.
+        $payment = PaymentAuthorization::query()->where('status', 'captured')->orderBy('id')->firstOrFail();
+        $manual = $this->asAdmin(AdminRole::Support)->postJson('/api/v1/admin/refunds', ['payment_id' => $payment->uuid, 'amount_halalas' => 5000, 'reason' => 'defective'])
+            ->assertCreated()
+            ->json('data');
+
+        $approval = $this->requestCancellation()->assertStatus(202)->json('data.id');
+        $this->asAdmin(AdminRole::Finance)->postJson("/api/v1/admin/approval-requests/{$approval}/approve")->assertOk();
+
+        // The waiting refund is rejected and its request withdrawn, undecided.
+        $withdrawn = Refund::query()->where('uuid', $manual['id'])->sole();
+        $request = ApprovalRequest::query()->where('uuid', $manual['approval_request_id'])->sole();
+        $this->assertSame(['rejected', 'cancelled', null], [$withdrawn->status->value, $request->status->value, $request->decided_by_admin_id]);
+        $this->assertSame(['pending', 'cancelled'], $this->transitions($request));
+        $this->assertSame(1, AuditLog::query()->where('action', 'approval.withdraw')->count());
+        $this->asAdmin(AdminRole::Finance)->postJson("/api/v1/admin/approval-requests/{$manual['approval_request_id']}/reject", ['reason' => 'Already refunded'])
+            ->assertConflict();
+
+        // Every captured join gets all of its money back.
+        $this->assertSame([24000, 12000], Refund::query()->where('reason', 'campaign_cancelled_after_capture')->orderBy('id')->pluck('amount_halalas')->all());
+        $this->assertSame(['refunded', 'refunded'], PaymentAuthorization::query()->where('status', '!=', 'voided')->orderBy('id')->pluck('status')->map->value->all());
+        $this->assertSame([0, 0, 0], $this->balances());
+
+        $cancellation = ApprovalRequest::query()->where('uuid', $approval)->sole();
+        $this->assertNotNull($cancellation->executed_at);
+        $this->assertSame(['pending', 'approved'], $this->transitions($cancellation));
+        $event = CampaignEvent::query()->where('campaign_id', $this->campaign->id)->where('event_type', 'cancelled')->sole();
+        $this->assertSame(1, $event->payload['withdrawn_refund_requests']);
+    }
+
+    #[Test]
+    public function an_approved_cancellation_holds_the_campaign_until_carried_out_and_a_lost_one_is_queued_again(): void
+    {
+        Queue::fake([ExecuteCampaignCancellation::class]);
+        $approval = $this->requestCancellation()->assertStatus(202)->json('data.id');
+        $this->asAdmin(AdminRole::Finance)->postJson("/api/v1/admin/approval-requests/{$approval}/approve")->assertOk();
+        $id = ApprovalRequest::query()->where('uuid', $approval)->value('id');
+        $pushed = fn () => Queue::pushed(ExecuteCampaignCancellation::class, fn (ExecuteCampaignCancellation $job) => $job->approvalRequestId === $id);
+
+        // Until it is carried out, the purchase order does not move.
+        $purchaseOrder = SupplierPurchaseOrder::query()->sole();
+        $this->asAdmin(AdminRole::Operations)->postJson("/api/v1/admin/purchase-orders/{$purchaseOrder->uuid}/status", ['status' => 'placed'])
+            ->assertConflict()
+            ->assertJsonPath('code', 'invalid_transition');
+
+        // Its job was lost (and its lock expired): the sweep queues it again, once.
+        (new UniqueLock(app(Cache::class)))->release(new ExecuteCampaignCancellation($id));
+        $this->artisan('finance:requeue-approved')->assertSuccessful();
+        $this->assertCount(1, $pushed());
+        $this->travel(16)->minutes();
+        $this->artisan('finance:requeue-approved')->expectsOutputToContain('1 campaign cancellations')->assertSuccessful();
+        $this->artisan('finance:requeue-approved')->assertSuccessful();
+        $this->assertCount(2, $pushed());
+
+        $pushed()->last()->handle(app(CampaignCancellations::class));
+        $this->assertSame('cancelled', $this->campaign->refresh()->status->value);
+        $this->assertSame('cancelled', $purchaseOrder->refresh()->status->value);
+        $this->assertNotNull(ApprovalRequest::query()->whereKey($id)->value('executed_at'));
+
+        $this->travel(16)->minutes();
+        $this->artisan('finance:requeue-approved')->expectsOutputToContain('0 campaign cancellations')->assertSuccessful();
+    }
+
+    #[Test]
+    public function a_cancellation_that_can_no_longer_be_carried_out_says_so_and_stops(): void
+    {
+        Queue::fake([ExecuteCampaignCancellation::class]);
+        $approval = $this->requestCancellation()->assertStatus(202)->json('data.id');
+        $this->asAdmin(AdminRole::Finance)->postJson("/api/v1/admin/approval-requests/{$approval}/approve")->assertOk();
+        $id = ApprovalRequest::query()->where('uuid', $approval)->value('id');
+
+        // Changed by hand behind the application's back.
+        $this->campaign->forceFill(['status' => 'fulfilling'])->save();
+
+        $this->assertTrue(app(CampaignCancellations::class)->execute($id));
+        $this->assertSame(0, Refund::count());
+        $this->assertNotNull(ApprovalRequest::query()->whereKey($id)->value('executed_at'));
+        $this->assertSame(1, AuditLog::query()->where('action', 'approval.not_carried_out')->count());
+    }
+
+    #[Test]
     public function a_campaign_that_moved_on_can_no_longer_be_cancelled(): void
     {
         $approval = $this->requestCancellation()->assertStatus(202)->json('data.id');
@@ -150,6 +236,14 @@ class CancellingCampaignsTest extends TestCase
     private function requestCancellation(): TestResponse
     {
         return $this->asAdmin(AdminRole::CampaignManager)->postJson("/api/v1/admin/campaigns/{$this->campaign->uuid}/cancel", ['reason' => 'Supplier stopped making it']);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function transitions(ApprovalRequest $request): array
+    {
+        return StatusTransition::query()->where('subject_type', 'approval_request')->where('subject_id', $request->id)->orderBy('id')->pluck('to_status')->all();
     }
 
     private function asAdmin(AdminRole $role): static

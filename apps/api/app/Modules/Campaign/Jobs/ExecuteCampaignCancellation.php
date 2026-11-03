@@ -13,13 +13,18 @@ use Throwable;
 
 /**
  * Carries out an approved campaign cancellation. While a capture of the
- * campaign is in flight it comes back every minute, for up to two hours.
+ * campaign is in flight it comes back every minute, for up to two hours;
+ * after that, or if the job is lost, finance:requeue-approved queues it
+ * again until the request is carried out (approval_requests.executed_at).
  */
 class ExecuteCampaignCancellation implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
     public int $tries = 120;
+
+    /** Longer than every try together, so a requeue is dropped while this job still waits. */
+    public int $uniqueFor = 3 * 3600;
 
     public function __construct(public readonly int $approvalRequestId) {}
 

@@ -22,6 +22,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Daily reconciliation against Moyasar (spec, Payments: reconciliation).
@@ -50,7 +51,7 @@ final class Reconciliation
         'capture_failed' => ['authorized', 'voided'],
     ];
 
-    /** Ours, where Moyasar still holding the money means our release did not land. */
+    /** Ours, where Moyasar still holding the money means our release did not land (also an authorized hold with a rejection reason). */
     private const RELEASED = [PaymentStatus::Voided, PaymentStatus::Expired, PaymentStatus::CaptureFailed];
 
     public function __construct(
@@ -65,6 +66,7 @@ final class Reconciliation
     {
         $zone = (string) config('groupbuy.display_timezone');
         $day = ($day ?? CarbonImmutable::now($zone)->subDay())->setTimezone($zone)->startOfDay();
+        $this->failAbandoned();
         $run = ReconciliationRun::create([
             'run_date' => $day->toDateString(),
             'started_at' => CarbonImmutable::now(),
@@ -82,15 +84,21 @@ final class Reconciliation
                     $mismatches += $this->check($run, $payment) ? 1 : 0;
                 }
             });
-        } catch (GatewayException $e) {
-            Log::critical('payments.reconciliation.failed', ['run' => $run->uuid, 'error' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            // Moyasar being unreachable is expected now and then; anything else is a bug.
+            $expected = $e instanceof GatewayException;
+            Log::critical('payments.reconciliation.failed', ['run' => $run->uuid, 'error' => $e->getMessage(), 'exception' => $e::class]);
             $run->forceFill([
                 'status' => ReconciliationStatus::Failed,
                 'payments_checked' => $checked,
                 'mismatch_count' => $mismatches,
-                'error' => mb_substr($e->getMessage(), 0, 500),
+                'error' => $expected ? mb_substr($e->getMessage(), 0, 500) : 'The run stopped on an unexpected error; see the logs.',
                 'finished_at' => CarbonImmutable::now(),
             ])->save();
+
+            if (! $expected) {
+                throw $e;
+            }
 
             return $run;
         }
@@ -136,6 +144,29 @@ final class Reconciliation
 
             return $item;
         });
+    }
+
+    /**
+     * Runs still marked running long after they started were cut off (a
+     * deploy, a crash): they are marked failed so they do not show as in
+     * progress for ever.
+     */
+    private function failAbandoned(): void
+    {
+        $cutoff = CarbonImmutable::now()->subMinutes((int) config('groupbuy.finance.reconciliation_timeout_minutes'));
+
+        ReconciliationRun::query()
+            ->where('status', ReconciliationStatus::Running)
+            ->where('started_at', '<', $cutoff)
+            ->get()
+            ->each(function (ReconciliationRun $run): void {
+                Log::critical('payments.reconciliation.abandoned', ['run' => $run->uuid]);
+                $run->forceFill([
+                    'status' => ReconciliationStatus::Failed,
+                    'error' => 'The run stopped before it finished.',
+                    'finished_at' => CarbonImmutable::now(),
+                ])->save();
+            });
     }
 
     /**
@@ -196,11 +227,20 @@ final class Reconciliation
             return MismatchType::OrphanHold;
         }
 
-        if ($remote->status === 'authorized' && in_array($payment->status, self::RELEASED, true)) {
-            // A failed capture is voided right away; give the void an hour.
-            $since = CarbonImmutable::now()->subHour();
+        // A hold released here (a cancelled join, a duplicate) stays authorized
+        // with a rejection reason until Moyasar confirms the void. Like a
+        // failed capture, its void is sent right away: give it time.
+        $releasing = $payment->status === PaymentStatus::Authorized && $payment->rejection_reason !== null;
+        $voidSettling = ($releasing || $payment->status === PaymentStatus::CaptureFailed)
+            && ! $payment->updated_at->lessThan(CarbonImmutable::now()->subMinutes((int) config('groupbuy.finance.void_grace_minutes')));
 
-            return $payment->status !== PaymentStatus::CaptureFailed || $payment->updated_at->lessThan($since) ? MismatchType::StuckVoid : null;
+        if ($remote->status === 'authorized' && ($releasing || in_array($payment->status, self::RELEASED, true))) {
+            return $voidSettling ? null : MismatchType::StuckVoid;
+        }
+
+        if ($releasing && $remote->status === 'voided' && $voidSettling) {
+            // The void landed; our row follows when its job hears back.
+            return null;
         }
 
         $expected = self::EXPECTED[$payment->status->value] ?? null;

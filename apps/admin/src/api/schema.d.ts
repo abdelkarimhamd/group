@@ -1433,7 +1433,7 @@ export interface paths {
     put?: never;
     /**
      * Approve, then carry out the action
-     * @description The approver must hold the finance role and must not be the requester (403 `same_admin`). A `manual_refund` is then carried out after commit: Moyasar voids the hold while the payment can still be voided, otherwise refunds it; a credit note and ledger entries follow when it lands, and the refund shows `failed` if Moyasar refuses. An approved `campaign_cancellation` refunds every captured join, voids the remaining holds and cancels the orders and the purchase order. Other request types cannot be decided yet (409 `invalid_transition`), nor can a request that is no longer pending, or a campaign cancellation whose campaign can no longer be cancelled.
+     * @description The approver must hold the finance role and must not be the requester (403 `same_admin`). A `manual_refund` is then carried out after commit: Moyasar voids the hold while the payment can still be voided, otherwise refunds it; a credit note and ledger entries follow when it lands, and the refund shows `failed` if Moyasar refuses. An approved `campaign_cancellation` holds the campaign (no new capture, no closing step, no purchase order change) until it is carried out: it withdraws refund requests of its captured joins still pending (their status becomes `cancelled`), refunds everything left on every captured join, voids the remaining holds and cancels the orders and the purchase order. Other request types cannot be decided yet (409 `invalid_transition`), nor can a request that is no longer pending, or a campaign cancellation whose campaign can no longer be cancelled.
      */
     post: operations['adminApproveRequest'];
     delete?: never;

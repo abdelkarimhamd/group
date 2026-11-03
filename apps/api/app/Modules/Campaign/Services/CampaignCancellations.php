@@ -33,12 +33,18 @@ use Illuminate\Support\Facades\Log;
 /**
  * Cancelling a campaign after captures started, once a finance admin
  * approved it (spec, Campaign states: cancelled). In one transaction with
- * the campaign locked: every captured join gets an approved refund of what
- * is left on its payment (sent after commit), orders not yet shipped are
+ * the campaign locked: refunds of captured joins still waiting for approval
+ * are withdrawn, every captured join gets an approved refund of what is
+ * left on its payment (sent after commit), orders not yet shipped are
  * cancelled, the supplier purchase order is cancelled, joins still holding
- * a card are released, and the campaign is cancelled. While a capture is
- * in flight it waits, so no money is taken after the refunds are made.
- * Lock order: campaign, purchase order, participation, payment, order.
+ * a card are released, and the campaign is cancelled.
+ *
+ * From approval until it is carried out (executed_at) the campaign waits:
+ * no new capture starts, closing does not move on, customers are not told
+ * the deal succeeded, and the purchase order does not advance. A capture
+ * already in flight is let finish first, so no money is taken after the
+ * refunds are made. Lock order: campaign, purchase order, participation,
+ * payment, order, refund.
  */
 final class CampaignCancellations
 {
@@ -56,6 +62,21 @@ final class CampaignCancellations
     {
         return $campaign->status === CampaignStatus::Purchasing
             || ($campaign->status === CampaignStatus::Closing && $campaign->closing_step !== ClosingStep::Notifying && $campaign->closing_step !== ClosingStep::Done);
+    }
+
+    /**
+     * An approved cancellation of the campaign is still to be carried out.
+     * Ask with the campaign locked: approval locks it too.
+     */
+    public static function waiting(Campaign $campaign): bool
+    {
+        return ApprovalRequest::query()
+            ->where('type', ApprovalType::CampaignCancellation)
+            ->where('subject_type', $campaign->getMorphClass())
+            ->where('subject_id', $campaign->getKey())
+            ->where('status', ApprovalStatus::Approved)
+            ->whereNull('executed_at')
+            ->exists();
     }
 
     /**
@@ -79,20 +100,37 @@ final class CampaignCancellations
     public function execute(int $approvalRequestId): bool
     {
         return DB::transaction(function () use ($approvalRequestId): bool {
-            $request = ApprovalRequest::query()->find($approvalRequestId);
+            $found = ApprovalRequest::query()->find($approvalRequestId);
 
-            if ($request === null || $request->type !== ApprovalType::CampaignCancellation || $request->status !== ApprovalStatus::Approved) {
+            if ($found === null || $found->type !== ApprovalType::CampaignCancellation || $found->status !== ApprovalStatus::Approved || $found->executed_at !== null) {
                 return true;
             }
 
-            $campaign = Campaign::query()->whereKey($request->subject_id)->lockForUpdate()->firstOrFail();
+            // The subject before the request, as when it was decided.
+            $campaign = Campaign::query()->whereKey($found->subject_id)->lockForUpdate()->firstOrFail();
+            $request = ApprovalRequest::query()->whereKey($found->id)->lockForUpdate()->firstOrFail();
+
+            if ($request->executed_at !== null) {
+                return true;
+            }
+
+            $actor = Actor::admin((int) $request->decided_by_admin_id);
 
             if ($campaign->status === CampaignStatus::Cancelled) {
+                $this->carriedOut($request);
+
                 return true;
             }
 
             if (! self::cancellable($campaign)) {
+                // Waiting campaigns cannot move on, so this means a bug or a hand-made change.
                 Log::critical('campaigns.cancellation.not_possible', ['campaign' => $campaign->uuid, 'status' => $campaign->status->value, 'approval_request' => $request->uuid]);
+                $this->audit->record($actor, 'approval.not_carried_out', $request, null, [
+                    'type' => $request->type->value,
+                    'campaign_status' => $campaign->status->value,
+                    'closing_step' => $campaign->closing_step?->value,
+                ]);
+                $this->carriedOut($request);
 
                 return true;
             }
@@ -103,9 +141,9 @@ final class CampaignCancellations
                 return false;
             }
 
-            $actor = Actor::admin((int) $request->decided_by_admin_id);
             $purchaseOrder = SupplierPurchaseOrder::query()->where('campaign_id', $campaign->id)->lockForUpdate()->first();
             $refunded = 0;
+            $withdrawn = 0;
             $cancelledOrders = 0;
 
             $captured = CampaignParticipation::query()
@@ -123,8 +161,13 @@ final class CampaignCancellations
                     ->first();
                 $order = CustomerOrder::query()->where('participation_id', $participation->id)->lockForUpdate()->first();
 
-                if ($payment !== null && $this->refunds->createApproved($payment, $order, RefundReason::CampaignCancelledAfterCapture, $request, $actor) !== null) {
-                    $refunded++;
+                if ($payment !== null) {
+                    // A refund still waiting for approval would be left out of the full refund.
+                    $withdrawn += $this->refunds->withdrawPending($payment, 'campaign_cancelled', $actor);
+
+                    if ($this->refunds->createApproved($payment, $order, RefundReason::CampaignCancelledAfterCapture, $request, $actor) !== null) {
+                        $refunded++;
+                    }
                 }
 
                 if ($order !== null && in_array($order->status, [OrderStatus::Confirmed, OrderStatus::Processing, OrderStatus::ReadyToShip], true)) {
@@ -158,13 +201,21 @@ final class CampaignCancellations
 
             $this->lifecycle->cancelApproved($campaign, $request, $actor, [
                 'refunds' => $refunded,
+                'withdrawn_refund_requests' => $withdrawn,
                 'cancelled_orders' => $cancelledOrders,
                 'purchase_order_cancelled' => $purchaseOrder !== null && $purchaseOrder->status === PurchaseOrderStatus::Cancelled,
                 'supplier_paid' => $supplierPaid,
             ]);
+            $this->carriedOut($request);
 
             return true;
         });
+    }
+
+    private function carriedOut(ApprovalRequest $request): void
+    {
+        $request->executed_at = CarbonImmutable::now();
+        $request->save();
     }
 
     /**

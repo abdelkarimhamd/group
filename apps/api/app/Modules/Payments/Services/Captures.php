@@ -7,6 +7,7 @@ use App\Modules\Campaign\Enums\ClosingStep;
 use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
+use App\Modules\Campaign\Services\CampaignCancellations;
 use App\Modules\Campaign\Services\Closing;
 use App\Modules\Orders\Services\Invoices;
 use App\Modules\Orders\Services\Orders;
@@ -207,6 +208,11 @@ class Captures
             $attempt = PaymentTransaction::query()->where('idempotency_key', self::attemptKey($payment))->lockForUpdate()->first();
 
             if ($attempt !== null && $attempt->status !== TransactionStatus::Pending) {
+                return null;
+            }
+
+            // An approved cancellation waits only for captures already in flight.
+            if ($attempt === null && CampaignCancellations::waiting($campaign)) {
                 return null;
             }
 

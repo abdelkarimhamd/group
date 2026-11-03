@@ -8,6 +8,7 @@ use App\Modules\Campaign\Enums\ClosingStep;
 use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignEvent;
+use App\Modules\Campaign\Services\CampaignCancellations;
 use App\Modules\Campaign\Services\CampaignEvents;
 use App\Modules\Campaign\Services\CampaignLifecycle;
 use App\Modules\Identity\Models\AdminUser;
@@ -196,7 +197,8 @@ final class PurchaseOrders
             $order = SupplierPurchaseOrder::query()->where('uuid', $uuid)->lockForUpdate()->firstOrFail();
             $from = $order->status;
 
-            if ($from->isClosed() || $to->rank() <= $from->rank() || $campaign->status !== CampaignStatus::Purchasing) {
+            // Nothing moves while an approved cancellation of the campaign is still to be carried out.
+            if ($from->isClosed() || $to->rank() <= $from->rank() || $campaign->status !== CampaignStatus::Purchasing || CampaignCancellations::waiting($campaign)) {
                 throw new ApiException(409, 'invalid_transition');
             }
 

@@ -24,12 +24,13 @@ use App\Modules\Payments\Models\PaymentTransaction;
 use App\Modules\Payments\Models\Refund;
 use App\Modules\Payments\Services\Refunds;
 use Carbon\CarbonImmutable;
+use Illuminate\Bus\UniqueLock;
+use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
-use RuntimeException;
 use Tests\Concerns\ClosesCampaigns;
 use Tests\Fakes\ScriptedMoyasarGateway;
 use Tests\TestCase;
@@ -209,12 +210,13 @@ class ApprovingRefundsTest extends TestCase
         [$other, $otherApproval] = $this->requestRefund(5000);
         $this->decide('post', "/api/v1/admin/approval-requests/{$otherApproval->uuid}/approve")->assertOk();
 
-        try {
-            app(Refunds::class)->execute($other);
-            $this->fail('A second refund of a payment waits for the first.');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('in flight', $e->getMessage());
-        }
+        // It sends nothing and stays approved, without using up its tries;
+        // its job ends there (the queue then frees its unique lock).
+        $sent = count($gateway->refunds);
+        app(Refunds::class)->execute($other);
+        (new UniqueLock(app(Cache::class)))->release(new ExecuteRefund($other->id));
+        $this->assertSame('approved', $other->refresh()->status->value);
+        $this->assertCount($sent, $gateway->refunds);
 
         // The retry asks first (nothing went back), then sends the same refund again.
         $fetches = count($gateway->fetches);
@@ -230,8 +232,86 @@ class ApprovingRefundsTest extends TestCase
         app(Refunds::class)->execute($refund);
         $this->assertCount(2, $gateway->refunds);
 
+        // Settling the first one sends the one that waited.
+        $this->assertCount(2, Queue::pushed(ExecuteRefund::class, fn (ExecuteRefund $job) => $job->refundId === $other->id));
         app(Refunds::class)->execute($other);
         $this->assertSame(15000, $this->payment->refresh()->refunded_amount_halalas);
+    }
+
+    #[Test]
+    public function a_refund_left_unfinished_when_its_job_ran_out_or_was_lost_is_sent_again_by_the_sweep(): void
+    {
+        Queue::fake([ExecuteRefund::class]);
+        $this->travel(3)->hours();
+        $gateway = $this->scripted();
+        $gateway->refundOutcomes[$this->payment->provider_payment_id] = ['timeout'];
+        [$refund, $approval] = $this->requestRefund(10000);
+        $this->decide('post', "/api/v1/admin/approval-requests/{$approval->uuid}/approve")->assertOk();
+
+        // Moyasar never answered and the job used up its tries (the queue then frees its lock).
+        try {
+            app(Refunds::class)->execute($refund);
+            $this->fail('An unknown outcome is retried.');
+        } catch (GatewayException) {
+        }
+        (new UniqueLock(app(Cache::class)))->release(new ExecuteRefund($refund->id));
+        $this->assertSame('processing', $refund->refresh()->status->value);
+
+        // Another refund was approved but its job was lost before it ran.
+        [$lost, $lostApproval] = $this->requestRefund(5000);
+        $this->decide('post', "/api/v1/admin/approval-requests/{$lostApproval->uuid}/approve")->assertOk();
+        (new UniqueLock(app(Cache::class)))->release(new ExecuteRefund($lost->id));
+        $pushed = fn (Refund $r) => Queue::pushed(ExecuteRefund::class, fn (ExecuteRefund $job) => $job->refundId === $r->id);
+        $this->assertSame([1, 1], [$pushed($refund)->count(), $pushed($lost)->count()]);
+
+        // Too soon: the sweep leaves them to their jobs.
+        $this->artisan('finance:requeue-approved')->assertSuccessful();
+        $this->assertSame([1, 1], [$pushed($refund)->count(), $pushed($lost)->count()]);
+
+        // Later both are queued again, once each, and go through.
+        $this->travel(16)->minutes();
+        $this->artisan('finance:requeue-approved')->expectsOutputToContain('Queued 2 refunds')->assertSuccessful();
+        $this->artisan('finance:requeue-approved')->assertSuccessful();
+        $this->assertSame([2, 2], [$pushed($refund)->count(), $pushed($lost)->count()]);
+
+        $pushed($refund)->last()->handle(app(Refunds::class));
+        $pushed($lost)->last()->handle(app(Refunds::class));
+        $this->assertSame(['succeeded', 'succeeded'], [$refund->refresh()->status->value, $lost->refresh()->status->value]);
+        $this->assertSame(15000, $this->payment->refresh()->refunded_amount_halalas);
+
+        // Nothing is left to queue.
+        $this->travel(16)->minutes();
+        $this->artisan('finance:requeue-approved')->expectsOutputToContain('Queued 0 refunds')->assertSuccessful();
+    }
+
+    #[Test]
+    public function credit_notes_never_credit_more_vat_than_the_invoice_charged(): void
+    {
+        // A one-unit order of 120.00 SAR: net 104.35, VAT 15.65.
+        $campaign = $this->closableCampaign();
+        [$single] = $this->paidJoin($campaign, 1);
+        $this->paidJoin($campaign, 2);
+        $this->captureAll($campaign);
+        $payment = $single->latestPayment()->firstOrFail();
+        $order = CustomerOrder::query()->where('participation_id', $single->id)->sole();
+        $invoice = Invoice::query()->where('customer_order_id', $order->id)->where('type', 'simplified_tax_invoice')->sole();
+        $this->assertSame([12000, 10435, 1565], [$invoice->total_halalas, $invoice->net_halalas, $invoice->vat_halalas]);
+
+        // Split one by one, 10.01 and 109.98 would credit 1.31 + 14.35 VAT,
+        // a halala more than the invoice charged, and leave the last 0.01 at -0.01 VAT.
+        $this->travel(3)->hours();
+        foreach ([1001, 10998, 1] as $amount) {
+            $approval = $this->decide('post', '/api/v1/admin/refunds', ['payment_id' => $payment->uuid, 'amount_halalas' => $amount, 'reason' => 'defective'], AdminRole::Support)
+                ->assertCreated()
+                ->json('data.approval_request_id');
+            $this->decide('post', "/api/v1/admin/approval-requests/{$approval}/approve")->assertOk();
+        }
+
+        $notes = Invoice::query()->where('customer_order_id', $order->id)->where('type', 'credit_note')->orderBy('id')->get();
+        $this->assertSame([[1001, 870, 131], [10998, 9564, 1434], [1, 1, 0]], $notes->map(fn (Invoice $note) => [$note->total_halalas, $note->net_halalas, $note->vat_halalas])->all());
+        $this->assertSame([12000, 10435, 1565], [(int) $notes->sum('total_halalas'), (int) $notes->sum('net_halalas'), (int) $notes->sum('vat_halalas')]);
+        $this->assertSame(['refunded', 12000], [$payment->refresh()->status->value, $payment->refunded_amount_halalas]);
+        $this->assertSame(['succeeded', 'succeeded', 'succeeded'], Refund::query()->where('payment_authorization_id', $payment->id)->orderBy('id')->pluck('status')->map->value->all());
     }
 
     #[Test]
@@ -275,6 +355,7 @@ class ApprovingRefundsTest extends TestCase
         $this->assertSame([[], []], [$gateway->voids, $gateway->refunds]);
         $this->assertSame(1, AuditLog::query()->where('action', 'approval.reject')->count());
         $this->assertSame(1, AuditLog::query()->where('action', 'refund.reject')->count());
+        $this->assertSame(['pending', 'rejected'], $this->transitions('approval_request', $approval->id));
         $this->requestRefund(36000);
     }
 

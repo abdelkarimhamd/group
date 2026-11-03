@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Services\CampaignNotices;
+use App\Modules\Finance\Enums\ApprovalStatus;
 use App\Modules\Finance\Enums\ApprovalType;
 use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Finance\Services\Approvals;
@@ -40,7 +41,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LogicException;
-use RuntimeException;
 
 /**
  * Refunds (spec, Payments: refunds). An admin asks; a second admin with the
@@ -58,7 +58,11 @@ use RuntimeException;
  *
  * An unknown outcome leaves the attempt pending and the job retries; each
  * retry fetches the payment first and sends again only if Moyasar shows
- * nothing was returned. A payment's refunds are sent one at a time.
+ * nothing was returned. A payment's refunds are sent one at a time: one
+ * that finds another in flight stays approved and is sent when that one
+ * settles. finance:requeue-approved queues again any refund left approved
+ * or processing (its job ran out of tries or was lost), so PostgreSQL, not
+ * the queue, remembers what still has to go back.
  */
 final class Refunds
 {
@@ -157,6 +161,38 @@ final class Refunds
     }
 
     /**
+     * Refunds of a payment still waiting for approval are rejected, and
+     * their approval requests withdrawn, when an approved campaign
+     * cancellation returns everything left on the payment instead. Call
+     * with the payment locked, before createApproved. Returns how many.
+     */
+    public function withdrawPending(PaymentAuthorization $payment, string $reason, Actor $actor): int
+    {
+        $pending = Refund::query()
+            ->where('payment_authorization_id', $payment->id)
+            ->where('status', RefundStatus::PendingApproval)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($pending as $refund) {
+            $refund->status = RefundStatus::Rejected;
+            $refund->save();
+            $this->history->record($refund, RefundStatus::PendingApproval, RefundStatus::Rejected, $actor, $reason);
+            $this->audit->record($actor, 'refund.reject', $refund, ['status' => RefundStatus::PendingApproval->value], ['status' => RefundStatus::Rejected->value, 'reason' => $reason]);
+
+            $request = $refund->approval_request_id === null ? null
+                : ApprovalRequest::query()->whereKey($refund->approval_request_id)->lockForUpdate()->first();
+
+            if ($request?->status === ApprovalStatus::Pending) {
+                $this->approvals->withdraw($request, $reason, $actor);
+            }
+        }
+
+        return $pending->count();
+    }
+
+    /**
      * Locks a refund for a decision on its approval request: its payment
      * first, as everywhere else.
      */
@@ -207,7 +243,6 @@ final class Refunds
      * ExecuteRefund, outside any transaction.
      *
      * @throws GatewayException when the outcome is unknown; the job retries
-     * @throws RuntimeException while another refund of the payment is in flight; the job retries
      */
     public function execute(Refund $refund): void
     {
@@ -300,7 +335,10 @@ final class Refunds
                 ->exists();
 
             if ($inFlight) {
-                throw new RuntimeException("Another refund of payment {$payment->uuid} is in flight.");
+                // It stays approved; the one in flight sends it when it settles.
+                Log::info('payments.refund.waiting', ['refund' => $refund->uuid, 'payment' => $payment->uuid]);
+
+                return null;
             }
 
             if ($refund->status === RefundStatus::Approved) {
@@ -387,6 +425,7 @@ final class Refunds
             $this->history->record($refund, RefundStatus::Processing, RefundStatus::Succeeded, $actor);
 
             $this->ledger->postRefund($refund, $order, $creditNote, $actor);
+            $this->sendWaiting($payment);
             $this->audit->record($actor, 'refund.succeed', $refund, ['status' => RefundStatus::Processing->value], [
                 'status' => RefundStatus::Succeeded->value,
                 'amount_halalas' => $refund->amount_halalas,
@@ -418,7 +457,7 @@ final class Refunds
     private function refused(Refund $refund, PaymentTransaction $attempt, GatewayResult $result, Actor $actor): void
     {
         DB::transaction(function () use ($refund, $attempt, $result, $actor): void {
-            PaymentAuthorization::query()->whereKey($refund->payment_authorization_id)->lockForUpdate()->firstOrFail();
+            $payment = PaymentAuthorization::query()->whereKey($refund->payment_authorization_id)->lockForUpdate()->firstOrFail();
             $refund = Refund::query()->whereKey($refund->id)->lockForUpdate()->firstOrFail();
             $row = PaymentTransaction::query()->whereKey($attempt->id)->lockForUpdate()->firstOrFail();
 
@@ -450,7 +489,21 @@ final class Refunds
                 'error_code' => $result->errorCode,
                 'error_message' => $result->errorMessage,
             ]);
+            $this->sendWaiting($payment);
         });
+    }
+
+    /**
+     * After commit, send the payment's refunds that waited for the one in flight.
+     */
+    private function sendWaiting(PaymentAuthorization $payment): void
+    {
+        Refund::query()
+            ->where('payment_authorization_id', $payment->id)
+            ->where('status', RefundStatus::Approved)
+            ->orderBy('id')
+            ->pluck('id')
+            ->each(fn (int $id) => ExecuteRefund::dispatch($id)->afterCommit());
     }
 
     /**

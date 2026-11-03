@@ -8,6 +8,7 @@ use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Identity\Models\AdminUser;
 use App\Support\Actor;
 use App\Support\Audit\AuditLogger;
+use App\Support\Audit\StatusHistory;
 use Illuminate\Database\Eloquent\Model;
 use LogicException;
 
@@ -20,7 +21,10 @@ use LogicException;
  */
 class Approvals
 {
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly StatusHistory $history,
+    ) {}
 
     /**
      * Open (or find) the pending request. Call inside the transaction that
@@ -50,6 +54,7 @@ class Approvals
             'status' => ApprovalStatus::Pending,
         ]);
 
+        $this->history->record($request, null, ApprovalStatus::Pending, Actor::admin($by->id));
         $this->audit->record(Actor::admin($by->id), 'approval.request', $request, after: [
             'type' => $type->value,
             'subject_type' => $subject->getMorphClass(),
@@ -57,6 +62,28 @@ class Approvals
         ] + $payload);
 
         return $request;
+    }
+
+    /**
+     * A waiting request that no longer needs a decision (its refund was
+     * overtaken by a campaign cancellation, say) is withdrawn: cancelled,
+     * with nobody's decision on it. Call with its subject and the request
+     * locked, in the transaction that makes it pointless.
+     */
+    public function withdraw(ApprovalRequest $request, string $reason, Actor $actor): void
+    {
+        if ($request->status !== ApprovalStatus::Pending) {
+            throw new LogicException("Approval request {$request->id} is {$request->status->value}, not pending.");
+        }
+
+        $request->status = ApprovalStatus::Cancelled;
+        $request->reason = $reason;
+        $request->save();
+        $this->history->record($request, ApprovalStatus::Pending, ApprovalStatus::Cancelled, $actor, $reason);
+        $this->audit->record($actor, 'approval.withdraw', $request,
+            ['status' => ApprovalStatus::Pending->value],
+            ['status' => ApprovalStatus::Cancelled->value, 'type' => $request->type->value, 'reason' => $reason],
+        );
     }
 
     public function pending(ApprovalType $type, Model $subject): ?ApprovalRequest

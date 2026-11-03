@@ -93,8 +93,10 @@ final class Invoices
      * A credit note against the order's tax invoice, for money returned.
      * A first refund of the whole invoice repeats its lines; any other
      * refund is one VAT-inclusive line. Never more than the invoice minus
-     * the credit notes already issued. Call in the transaction that records
-     * the refund.
+     * the credit notes already issued, and never more VAT or net than is
+     * left on it: the notes of an order never credit more VAT than the
+     * invoice charged, and the last one takes exactly what is left. Call in
+     * the transaction that records the refund.
      */
     public function issueCreditNote(CustomerOrder $order, int $amountHalalas, Actor $actor): Invoice
     {
@@ -106,6 +108,7 @@ final class Invoices
             ->where('customer_order_id', $order->id)
             ->where('type', InvoiceType::CreditNote);
         $credited = (int) (clone $notes)->sum('total_halalas');
+        $creditedVat = (int) (clone $notes)->sum('vat_halalas');
         $amount = Money::sar($amountHalalas);
 
         if (! $amount->greaterThan(Money::zero()) || $amount->greaterThan(Money::sar($original->total_halalas - $credited))) {
@@ -119,13 +122,16 @@ final class Invoices
             $net = Money::sar($original->net_halalas);
             $vat = Money::sar($original->vat_halalas);
         } else {
-            if ($credited + $amountHalalas === $original->total_halalas) {
-                // The last note takes the VAT left, so the notes add up to the invoice.
-                $vat = Money::sar($original->vat_halalas - (int) (clone $notes)->sum('vat_halalas'));
-                $net = $amount->minus($vat);
-            } else {
-                ['net' => $net, 'vat' => $vat] = $amount->splitVatInclusive($rate);
-            }
+            // Split at the invoice's rate, then keep both parts within what is
+            // left on the invoice. Rounding each note on its own could otherwise
+            // credit a halala more VAT than was charged, and leave the last
+            // note negative. For the last note both bounds meet: it takes
+            // exactly the VAT and net left, so the notes add up to the invoice.
+            $vatLeft = $original->vat_halalas - $creditedVat;
+            $netLeft = ($original->total_halalas - $credited) - $vatLeft;
+            $vatHalalas = max(0, $amountHalalas - $netLeft, min($amount->splitVatInclusive($rate)['vat']->minor, $vatLeft, $amountHalalas));
+            $vat = Money::sar($vatHalalas);
+            $net = $amount->minus($vat);
 
             $lines = [[
                 'description_ar' => 'استرداد مبلغ من الطلب '.$order->order_number,

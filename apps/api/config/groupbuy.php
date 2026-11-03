@@ -106,6 +106,22 @@ return [
         'void_after_capture_minutes' => 120,
     ],
 
+    'finance' => [
+        // An approved refund or campaign cancellation not finished this long
+        // after it last changed is queued again by finance:requeue-approved
+        // (its job ran out of tries or was lost). A copy is dropped while the
+        // first job still waits, so this only sets how soon a lost one resumes.
+        'requeue_after_minutes' => 15,
+
+        // A hold we released (or whose capture failed) is voided right away;
+        // reconciliation reports it as stuck only once this long has passed.
+        'void_grace_minutes' => 60,
+
+        // A reconciliation run still marked running after this long was cut
+        // off (a deploy, a crash); the next run marks it failed.
+        'reconciliation_timeout_minutes' => 180,
+    ],
+
     'orders' => [
         // Spec, Orders: a customer may return within 7 days of delivery.
         'return_window_days' => 7,

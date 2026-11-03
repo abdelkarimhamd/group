@@ -8,8 +8,10 @@ use App\Modules\Campaign\Events\CampaignFailed;
 use App\Modules\Campaign\Events\CampaignNeedsAdmin;
 use App\Modules\Campaign\Events\CampaignSucceeded;
 use App\Modules\Campaign\Http\Resources\ParticipationResource;
+use App\Modules\Campaign\Jobs\ExecuteCampaignCancellation;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
+use App\Modules\Campaign\Services\CampaignCancellations;
 use App\Modules\Campaign\Services\Closing;
 use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Identity\Enums\AdminRole;
@@ -19,6 +21,7 @@ use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Jobs\CapturePayment;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\PaymentTransaction;
+use App\Modules\Payments\Models\Refund;
 use App\Modules\Payments\Services\Captures;
 use App\Modules\Supplier\Models\Supplier;
 use App\Modules\Supplier\Models\SupplierQuotation;
@@ -414,6 +417,53 @@ class ClosingCampaignsTest extends TestCase
 
         // The last result woke the job, which moved the campaign on.
         $this->assertSame(['purchasing', 'done'], [$this->campaign->refresh()->status->value, $this->campaign->closing_step->value]);
+    }
+
+    #[Test]
+    public function an_approved_cancellation_starts_no_new_capture_and_waits_for_the_one_in_flight(): void
+    {
+        Queue::fake([CapturePayment::class, ExecuteCampaignCancellation::class]);
+        $inFlight = $this->paidJoin(2);
+        $notYet = $this->paidJoin(2);
+        $this->gateway->captureOutcomes[$this->providerId($inFlight)] = ['timeout'];
+        $this->closeAtDeadline();
+        $this->confirm()->assertOk();
+
+        // One capture is sent and Moyasar does not answer.
+        try {
+            app(Captures::class)->capture($inFlight->latestPayment, Actor::system());
+            $this->fail('An unknown outcome is retried.');
+        } catch (GatewayException) {
+        }
+
+        // Meanwhile finance approves cancelling the campaign; it waits for that capture.
+        $approval = $this->postAsAdmin("/api/v1/admin/campaigns/{$this->campaign->uuid}/cancel", ['reason' => 'Supplier stopped making it'])
+            ->assertStatus(202)
+            ->json('data.id');
+        [, $finance] = $this->adminWithToken(AdminRole::Finance);
+        $this->postAsAdmin("/api/v1/admin/approval-requests/{$approval}/approve", [], $finance)->assertOk();
+        $id = (int) ApprovalRequest::query()->where('uuid', $approval)->value('id');
+        $this->assertFalse(app(CampaignCancellations::class)->execute($id));
+
+        // No new capture starts, and closing does not move on.
+        app(Captures::class)->capture($notYet->latestPayment, Actor::system());
+        app(Closing::class)->run($this->campaign->id);
+        $this->assertSame([$this->providerId($inFlight)], array_values(array_unique(array_column($this->gateway->captures, 0))));
+        $this->assertSame('authorized', $notYet->latestPayment->refresh()->status->value);
+
+        // The capture in flight is settled; the campaign still waits.
+        app(Captures::class)->capture($inFlight->latestPayment, Actor::system());
+        $this->assertSame('captured', $inFlight->latestPayment->refresh()->status->value);
+        $this->assertSame(['closing', 'capturing'], [$this->campaign->refresh()->status->value, $this->campaign->closing_step->value]);
+        $this->assertSame(0, SupplierPurchaseOrder::count());
+
+        // Then the cancellation goes through: that money goes back and the other hold is released.
+        $this->assertTrue(app(CampaignCancellations::class)->execute($id));
+        $this->assertSame('cancelled', $this->campaign->refresh()->status->value);
+        $this->assertSame([['succeeded', 'void', 21000]], Refund::query()->get()->map(fn (Refund $r) => [$r->status->value, $r->method->value, $r->amount_halalas])->all());
+        $this->assertSame('refunded', $inFlight->latestPayment->refresh()->status->value);
+        $this->assertContains($this->providerId($notYet), $this->gateway->voids);
+        $this->assertNotSame('captured', $notYet->latestPayment->refresh()->status->value);
     }
 
     #[Test]
