@@ -207,6 +207,17 @@ class LiveProgressTest extends TestCase
     }
 
     #[Test]
+    public function a_run_is_stopped_before_the_next_run_of_its_campaign_may_start(): void
+    {
+        $job = new BroadcastProgress(1);
+        $overlap = $job->middleware()[0];
+
+        $this->assertInstanceOf(WithoutOverlapping::class, $overlap);
+        $this->assertLessThan($overlap->expiresAfter, $job->timeout);
+        $this->assertTrue($job->failOnTimeout);
+    }
+
+    #[Test]
     public function changes_made_while_a_push_waits_share_it(): void
     {
         Queue::fake([BroadcastProgress::class]);

@@ -54,8 +54,9 @@ final class CampaignController extends Controller
     /**
      * Polled by the campaign page, and read after every Reverb (re)connect to
      * catch up on missed pushes; cached for at most 2 seconds. A push stores
-     * what it sends in the same entry first, so the catch-up read is never
-     * older than a push sent before it.
+     * what it sends in the same entry first, so the catch-up read is not older
+     * than a push sent before it (short of a read here stalling for longer
+     * than the cache lasts; the next push or the slow poll corrects that).
      */
     public function progress(string $campaign): JsonResponse
     {

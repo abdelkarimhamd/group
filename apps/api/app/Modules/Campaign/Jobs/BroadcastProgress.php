@@ -11,6 +11,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\Attributes\CountCrashesAsExceptions;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Cache;
@@ -31,9 +32,11 @@ use Pusher\PusherException;
  * Pushes are best effort: clients catch up with GET /campaigns/{id}/progress
  * when they connect and keep a slow poll, so a push Reverb did not take is
  * logged and dropped, never retried. Before sending, the job stores the
- * payload where that endpoint caches it, so a catch-up read is never older
- * than a push sent before it.
+ * payload where that endpoint caches it, so a catch-up read is not older
+ * than a push sent before it (short of a read stalling for longer than the
+ * cache lasts; the next push or the slow poll corrects that).
  */
+#[CountCrashesAsExceptions]
 class BroadcastProgress implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
@@ -48,11 +51,19 @@ class BroadcastProgress implements ShouldBeUniqueUntilProcessing, ShouldQueue
      */
     public int $tries = 0;
 
-    /** Errors other than Reverb's (the database, say) are tried again, up to here. */
+    /**
+     * Errors other than Reverb's (the database, say) are tried again, up to
+     * here; runs that killed their worker count too.
+     */
     public int $maxExceptions = 3;
 
-    /** A run that hangs fails instead of coming back forever. */
-    public int $timeout = 30;
+    /**
+     * A run that hangs fails instead of coming back forever. Below the
+     * overlap lock's 15 seconds (middleware()), so a run is stopped before
+     * the next run of its campaign may start: an older push never follows a
+     * newer one.
+     */
+    public int $timeout = 10;
 
     public bool $failOnTimeout = true;
 

@@ -35,6 +35,7 @@ const mockPusher = {
   key: null as unknown,
   handlers: new Map<string, Set<Handler>>(),
   stateHandlers: new Set<(change: { previous: string; current: string }) => void>(),
+  channels: new Set<string>(),
   subscribed: false,
   state: 'connecting',
   disconnected: 0,
@@ -64,18 +65,22 @@ jest.mock('pusher-js', () => ({
         unbind: (_event: string, cb: (change: { previous: string; current: string }) => void) =>
           mockPusher.stateHandlers.delete(cb),
       },
-      subscribe: (name: string) => ({
-        get subscribed() {
-          return mockPusher.subscribed;
-        },
-        bind: (event: string, cb: Handler) => {
-          const key = `${name} ${event}`;
-          mockPusher.handlers.set(key, (mockPusher.handlers.get(key) ?? new Set()).add(cb));
-        },
-        unbind: (event: string, cb: Handler) =>
-          mockPusher.handlers.get(`${name} ${event}`)?.delete(cb),
-      }),
-      unsubscribe: () => undefined,
+      subscribe: (name: string) => {
+        mockPusher.channels.add(name);
+        return {
+          get subscribed() {
+            return mockPusher.subscribed;
+          },
+          bind: (event: string, cb: Handler) => {
+            const key = `${name} ${event}`;
+            mockPusher.handlers.set(key, (mockPusher.handlers.get(key) ?? new Set()).add(cb));
+          },
+          unbind: (event: string, cb: Handler) =>
+            mockPusher.handlers.get(`${name} ${event}`)?.delete(cb),
+        };
+      },
+      unsubscribe: (name: string) => mockPusher.channels.delete(name),
+      allChannels: () => [...mockPusher.channels].map((name) => ({ name })),
       connect: () => {
         mockPusher.state = 'connecting';
       },
@@ -138,9 +143,10 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
 });
 
+// The app keeps one pusher-js client for its life, so the one the first test builds serves
+// them all: its own connection handler stays bound; each test's listeners unbind on unmount.
 beforeEach(() => {
   mockPusher.handlers.clear();
-  mockPusher.stateHandlers.clear();
   mockPusher.subscribed = false;
   mockPusher.state = 'connecting';
   mockPusher.disconnected = 0;
@@ -219,22 +225,27 @@ it('reads on every subscribe, polls slowly while connected, and fast when the co
 
 it('reads when the app comes back to the foreground', async () => {
   const listeners: ((state: AppStateStatus) => void)[] = [];
-  const spy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
-    listeners.push(listener as (state: AppStateStatus) => void);
-    return { remove: () => undefined } as ReturnType<typeof AppState.addEventListener>;
-  });
-  const { reads, hook } = await setup();
-  await act(async () => {
-    setState('connected');
-    fire('pusher:subscription_succeeded');
-  });
-  await act(() => pause(250));
-  const before = reads();
+  // AppState is already a mock here: swap its implementation for this test only (restoring a
+  // spy on it would wipe the implementation the other tests rely on).
+  await jest.mocked(AppState.addEventListener).withImplementation(
+    (_type, listener) => {
+      listeners.push(listener as (state: AppStateStatus) => void);
+      return { remove: () => undefined } as ReturnType<typeof AppState.addEventListener>;
+    },
+    async () => {
+      const { reads, hook } = await setup();
+      await act(async () => {
+        setState('connected');
+        fire('pusher:subscription_succeeded');
+      });
+      await act(() => pause(250));
+      const before = reads();
 
-  await act(async () => {
-    for (const listener of listeners) listener('active');
-  });
-  await waitFor(() => expect(reads()).toBe(before + 1));
-  await hook.unmount();
-  spy.mockRestore();
+      await act(async () => {
+        for (const listener of listeners) listener('active');
+      });
+      await waitFor(() => expect(reads()).toBe(before + 1));
+      await hook.unmount();
+    },
+  );
 });

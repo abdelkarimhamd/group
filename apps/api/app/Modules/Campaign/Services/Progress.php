@@ -49,8 +49,8 @@ final class Progress
     /**
      * Where GET /campaigns/{id}/progress keeps a campaign's payload, for
      * groupbuy.campaigns.progress_cache_seconds. A push stores what it sends
-     * there first (BroadcastProgress), so a read made after a push never
-     * answers with older numbers.
+     * there first (BroadcastProgress), so a read made after a push does not
+     * answer with older numbers (see CampaignController::progress).
      */
     public static function cacheKey(string $campaignUuid): string
     {
