@@ -60,6 +60,36 @@ return [
             'report' => false,
         ],
 
+        // Product photos on S3-compatible storage (MEDIA_DISK=s3-media). The
+        // bucket or the CDN in front of it (AWS_MEDIA_URL) allows public reads
+        // by bucket policy; no per-object ACLs, which new buckets refuse.
+        's3-media' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_MEDIA_BUCKET'),
+            'url' => env('AWS_MEDIA_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'throw' => true,
+            'report' => false,
+        ],
+
+        // Supplier quote files (DOCUMENTS_DISK=s3-documents): a private bucket,
+        // read only through short-lived signed links.
+        's3-documents' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_DOCUMENTS_BUCKET'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'throw' => true,
+            'report' => false,
+        ],
+
     ],
 
     /*

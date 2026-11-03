@@ -26,14 +26,18 @@ use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Identity\Models\PrivacyConsent;
 use App\Modules\Identity\Models\User;
 use App\Modules\Identity\Otp\OtpService;
+use App\Modules\Notifications\Push\ExpoPushSender;
 use App\Modules\Notifications\Push\LogPushSender;
 use App\Modules\Notifications\Push\PushSender;
 use App\Modules\Notifications\Sms\LogSmsSender;
 use App\Modules\Notifications\Sms\SmsSender;
+use App\Modules\Notifications\Sms\TaqnyatSmsSender;
+use App\Modules\Notifications\Sms\UnifonicSmsSender;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
 use App\Modules\Orders\Models\SupplierPurchaseOrder;
 use App\Modules\Payments\Gateway\FakeMoyasarGateway;
+use App\Modules\Payments\Gateway\MoyasarGateway;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\Refund;
@@ -68,6 +72,13 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(PaymentGateway::class, fn ($app) => match ($driver = config('services.moyasar.driver')) {
             'fake' => new FakeMoyasarGateway($app->isProduction()),
+            'moyasar' => new MoyasarGateway(
+                (string) config('services.moyasar.secret_key'),
+                (string) config('services.moyasar.base_url'),
+                (int) config('services.moyasar.timeout_seconds'),
+                (int) config('services.moyasar.connect_timeout_seconds'),
+                $app->isProduction(),
+            ),
             default => throw new InvalidArgumentException("Unknown Moyasar driver [{$driver}]."),
         });
 
@@ -76,11 +87,28 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(SmsSender::class, fn ($app) => match ($driver = config('services.sms.driver')) {
             'log' => new LogSmsSender($app->isProduction(), config('services.sms.log_channel')),
+            'unifonic' => new UnifonicSmsSender(
+                (string) config('services.sms.unifonic.app_sid'),
+                (string) config('services.sms.sender'),
+                (string) config('services.sms.unifonic.base_url'),
+                (int) config('services.sms.timeout_seconds'),
+            ),
+            'taqnyat' => new TaqnyatSmsSender(
+                (string) config('services.sms.taqnyat.token'),
+                (string) config('services.sms.sender'),
+                (string) config('services.sms.taqnyat.base_url'),
+                (int) config('services.sms.timeout_seconds'),
+            ),
             default => throw new InvalidArgumentException("Unknown SMS driver [{$driver}]."),
         });
 
         $this->app->singleton(PushSender::class, fn ($app) => match ($driver = config('services.push.driver')) {
             'log' => new LogPushSender($app->isProduction(), config('services.push.log_channel')),
+            'expo' => new ExpoPushSender(
+                (string) config('services.push.expo.url'),
+                (string) config('services.push.expo.access_token'),
+                (int) config('services.push.expo.timeout_seconds'),
+            ),
             default => throw new InvalidArgumentException("Unknown push driver [{$driver}]."),
         });
     }

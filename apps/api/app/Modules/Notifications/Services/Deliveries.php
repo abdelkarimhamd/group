@@ -139,7 +139,7 @@ final class Deliveries
 
             Log::info('notifications.sending', ['notification_id' => $notification->id, 'to' => SaudiMobile::mask($user->phone_e164)]);
 
-            return $this->sms->send($user->phone_e164, $text['body']);
+            return $this->sms->send($user->phone_e164, $text['body'], "notification:{$notification->uuid}");
         }
 
         if ($notification->channel === NotificationChannel::Push) {

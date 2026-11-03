@@ -54,7 +54,7 @@ final class OtpService
             $this->sms->send($phone, __('messages.sms.otp', [
                 'code' => $code,
                 'minutes' => $config['ttl_minutes'],
-            ]));
+            ]), "otp:{$uuid}");
         } catch (SmsDeliveryFailed $e) {
             Log::error('Sign-in code SMS failed', [
                 'challenge_id' => $challenge->uuid,

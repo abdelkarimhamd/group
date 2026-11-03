@@ -9,7 +9,7 @@ namespace App\Modules\Notifications\Push;
 interface PushSender
 {
     /**
-     * @param  list<string>  $tokens  Firebase registration tokens
+     * @param  list<string>  $tokens  the devices' push tokens (Expo push tokens for the expo driver)
      * @param  array<string, string>  $data  passed to the app with the message
      * @return string|null the provider's message ID
      *

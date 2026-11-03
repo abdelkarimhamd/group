@@ -11,18 +11,18 @@ use PHPUnit\Framework\Assert;
  */
 final class FakeSmsSender implements SmsSender
 {
-    /** @var list<array{to: string, message: string}> */
+    /** @var list<array{to: string, message: string, reference: string|null}> */
     public array $sent = [];
 
     public bool $failing = false;
 
-    public function send(string $to, string $message): ?string
+    public function send(string $to, string $message, ?string $reference = null): ?string
     {
         if ($this->failing) {
             throw new SmsDeliveryFailed('Provider unavailable (fake).');
         }
 
-        $this->sent[] = ['to' => $to, 'message' => $message];
+        $this->sent[] = ['to' => $to, 'message' => $message, 'reference' => $reference];
 
         return 'fake-sms-'.count($this->sent);
     }
