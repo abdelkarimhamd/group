@@ -14,6 +14,8 @@ use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Broadcasting\BroadcastManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -143,31 +145,65 @@ class LiveProgressTest extends TestCase
     }
 
     #[Test]
-    public function a_push_that_gave_up_waiting_lets_the_next_change_queue_one(): void
+    public function a_read_made_after_a_push_answers_at_least_the_pushed_numbers(): void
     {
-        Queue::fake([BroadcastProgress::class]);
         $campaign = Campaign::factory()->active()->withTiers()->create();
+        $url = "/api/v1/campaigns/{$campaign->uuid}/progress";
+        $cached = $this->getJson($url)->assertOk()->json('data');
 
-        CampaignProgressChanged::dispatch($campaign->id);
-        CampaignProgressChanged::dispatch($campaign->id);
-        Queue::assertPushedTimes(BroadcastProgress::class, 1);
+        // A change the endpoint's cache has not seen yet.
+        DB::table('campaigns')->where('id', $campaign->id)->update(['reserved_qty' => DB::raw('reserved_qty + 1')]);
+        $this->assertSame($cached, $this->getJson($url)->json('data'));
 
-        // Its waits ran out before its run started (a lost run held the
-        // overlap lock): it still held the unique lock.
-        Queue::pushed(BroadcastProgress::class)->first()->failed(null);
+        // A client that subscribed just after this push reads to catch up.
+        $this->reverbAccepts(1);
         CampaignProgressChanged::dispatch($campaign->id);
 
-        Queue::assertPushedTimes(BroadcastProgress::class, 2);
+        $pushed = json_decode($this->pushed(0)['data'], true);
+        $this->assertGreaterThan($cached['version'], $pushed['version']);
+        $this->assertSame($pushed, $this->getJson($url)->json('data'));
     }
 
     #[Test]
-    public function waiting_for_another_run_is_bounded_by_time_not_tries(): void
+    public function a_push_that_waited_long_in_a_busy_queue_still_goes_out(): void
     {
-        $job = new BroadcastProgress(1);
+        $campaign = Campaign::factory()->active()->withTiers()->create();
+        BroadcastProgress::dispatch($campaign->id)->onConnection('database');
+        $this->reverbAccepts(1);
 
-        $this->assertFalse(isset($job->tries));
-        $this->assertSame(now()->addSeconds(60)->getTimestamp(), $job->retryUntil()->getTimestamp());
-        $this->assertSame(3, $job->maxExceptions);
+        $this->travel(10)->minutes();
+        $this->work();
+
+        $this->assertCount(1, $this->sent);
+        $this->assertSame(0, DB::table('jobs')->count());
+        $this->assertSame(0, DB::table('failed_jobs')->count());
+    }
+
+    #[Test]
+    public function a_push_waits_for_the_campaigns_previous_run_however_many_tries_that_takes(): void
+    {
+        $campaign = Campaign::factory()->active()->withTiers()->create();
+        // Another run for this campaign is under way.
+        $overlap = Cache::lock((new WithoutOverlapping((string) $campaign->id))->getLockKey(new BroadcastProgress($campaign->id)), 15);
+        $this->assertTrue($overlap->get());
+        BroadcastProgress::dispatch($campaign->id)->onConnection('database');
+
+        // The worker allows one try; each wait is a try.
+        foreach (range(1, 3) as $wait) {
+            $this->work();
+            $this->travel(2)->seconds();
+        }
+        $this->assertSame([], $this->sent);
+        $this->assertSame(1, DB::table('jobs')->count());
+        $this->assertSame(0, DB::table('failed_jobs')->count());
+
+        $overlap->release();
+        $this->reverbAccepts(1);
+        $this->work();
+
+        $this->assertCount(1, $this->sent);
+        $this->assertSame(0, DB::table('jobs')->count());
+        $this->assertSame(0, DB::table('failed_jobs')->count());
     }
 
     #[Test]
@@ -205,6 +241,12 @@ class LiveProgressTest extends TestCase
         }
 
         $this->assertSame([], $this->sent);
+    }
+
+    /** One pass of a production-like worker on the database queue. */
+    private function work(): void
+    {
+        Artisan::call('queue:work', ['connection' => 'database', '--once' => true, '--tries' => 1, '--sleep' => 0]);
     }
 
     private function reverbAccepts(int $times): void

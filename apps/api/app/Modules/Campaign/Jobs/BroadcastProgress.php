@@ -5,20 +5,17 @@ namespace App\Modules\Campaign\Jobs;
 use App\Modules\Campaign\Events\ProgressUpdated;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Services\Progress;
-use DateTimeInterface;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Broadcasting\BroadcastException;
 use Illuminate\Bus\Queueable;
-use Illuminate\Bus\UniqueLock;
-use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Pusher\PusherException;
-use Throwable;
 
 /**
  * Pushes one campaign's progress to the website and app over Reverb.
@@ -33,28 +30,36 @@ use Throwable;
  *
  * Pushes are best effort: clients catch up with GET /campaigns/{id}/progress
  * when they connect and keep a slow poll, so a push Reverb did not take is
- * logged and dropped, never retried.
+ * logged and dropped, never retried. Before sending, the job stores the
+ * payload where that endpoint caches it, so a catch-up read is never older
+ * than a push sent before it.
  */
 class BroadcastProgress implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
     /**
-     * Waiting for another run of the same campaign (middleware()) releases
-     * the job, and every release counts as a try, so tries are bounded by
-     * time instead (retryUntil): longer than a lost run's overlap lock lives.
+     * No limit on tries: waiting for another run of the same campaign
+     * (middleware()) releases the job, and every release counts as a try.
+     * The wait ends anyway, since only that one run holds the overlap lock,
+     * and a lost run's lock expires after 15 seconds. Not retryUntil either:
+     * it counts from dispatch, so a busy queue would fail pushes before they
+     * ever ran, and a late push still reads the newest numbers.
      */
+    public int $tries = 0;
+
+    /** Errors other than Reverb's (the database, say) are tried again, up to here. */
     public int $maxExceptions = 3;
+
+    /** A run that hangs fails instead of coming back forever. */
+    public int $timeout = 30;
+
+    public bool $failOnTimeout = true;
 
     /** A lock left by a lost job expires; the next change pushes again. */
     public int $uniqueFor = 60;
 
     public function __construct(public readonly int $campaignId) {}
-
-    public function retryUntil(): DateTimeInterface
-    {
-        return now()->addSeconds($this->uniqueFor);
-    }
 
     /**
      * @return list<int>
@@ -87,8 +92,11 @@ class BroadcastProgress implements ShouldBeUniqueUntilProcessing, ShouldQueue
             return;
         }
 
+        $payload = Progress::payload($campaign);
+        Cache::put(Progress::cacheKey($campaign->uuid), $payload, (int) config('groupbuy.campaigns.progress_cache_seconds'));
+
         try {
-            broadcast(new ProgressUpdated($campaign->uuid, Progress::payload($campaign)));
+            broadcast(new ProgressUpdated($campaign->uuid, $payload));
         } catch (BroadcastException|GuzzleException|PusherException $e) {
             // BroadcastException: Reverb answered with an error. Guzzle's: no
             // answer. PusherException: an answer that was not Reverb's (a
@@ -98,14 +106,5 @@ class BroadcastProgress implements ShouldBeUniqueUntilProcessing, ShouldQueue
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    /**
-     * A job that gave up while waiting never started its run, so it still
-     * holds its unique lock: let the next change queue a push at once.
-     */
-    public function failed(?Throwable $e): void
-    {
-        (new UniqueLock(app(Cache::class)))->release($this);
     }
 }

@@ -160,6 +160,12 @@ function expireReservations(now = Date.now()) {
   for (const p of participations.values()) {
     if (p.status === "pending_payment" && p.reservationExpiresAt <= now) {
       p.status = "reservation_expired";
+      // Its units are on sale again: a change to the campaign, as in the API.
+      const campaign = campaigns.find((c) => c.id === p.campaignId);
+      if (campaign) {
+        campaign.updated_at = now;
+        campaign.version += 1;
+      }
       for (const id of p.paymentIds) {
         const payment = payments.get(id)!;
         if (payment.status === "pending_authorization") {

@@ -121,6 +121,7 @@ export type PusherClient = {
   connection: Connection;
   subscribe(channel: string): Channel;
   unsubscribe(channel: string): void;
+  allChannels(): { name: string }[];
   connect(): void;
   disconnect(): void;
 };
@@ -160,6 +161,20 @@ type Shared = {
 let shared: Shared | null = null;
 
 /**
+ * On (re)connecting, pusher-js subscribes again to every channel it holds.
+ * It still holds one left while its subscribe was unanswered (unsubscribe
+ * then only cancels it) if the connection dropped meanwhile: drop those, so
+ * no campaign is followed after its last page has gone. `state_change` comes
+ * before pusher-js's own `connected` handler.
+ */
+function dropUnheld(mine: Shared, client: PusherClient, state: string) {
+  if (state !== "connected") return;
+  for (const { name } of client.allChannels()) {
+    if (!mine.channels.has(name)) client.unsubscribe(name);
+  }
+}
+
+/**
  * Listens for one campaign's pushes. Returns the function that stops; it
  * may be called before the client has loaded.
  */
@@ -176,10 +191,13 @@ export function subscribeToProgress(
 
   if (!shared || shared.factory !== factory) {
     const created: Shared = { factory, client: factory(config), users: 0, channels: new Map() };
-    // A client that failed to load is forgotten, so the next page tries again.
-    created.client.catch(() => {
-      if (shared === created) shared = null;
-    });
+    created.client.then(
+      (client) => client.connection.bind("state_change", ({ current }) => dropUnheld(created, client, current)),
+      () => {
+        // A client that failed to load is forgotten, so the next page tries again.
+        if (shared === created) shared = null;
+      },
+    );
     shared = created;
   }
   const mine = shared;

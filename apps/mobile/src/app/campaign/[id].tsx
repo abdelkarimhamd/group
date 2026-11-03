@@ -58,10 +58,22 @@ function CampaignView({
   const { t, money, minor, date, timeLeft } = useFormat();
   const { isSignedIn } = useAuth();
   const now = useNow(30_000);
-  const phase = campaignPhase(campaign.status);
-  const live = useCampaignProgress(campaign.id, phase === 'open' || phase === 'closing');
+  const loadedPhase = campaignPhase(campaign.status);
+  const live = useCampaignProgress(
+    campaign.id,
+    loadedPhase === 'open' || loadedPhase === 'closing',
+  );
   const progress = latestProgress(campaign.progress, live.data);
-  const current = { ...campaign, progress, current_unit_price: progress.current_unit_price };
+  // Status and deadline come with the live numbers too: a pushed close, cancellation or
+  // extension shows at once, not at the next pull-to-refresh.
+  const current: CampaignDetail = {
+    ...campaign,
+    status: progress.status,
+    deadline_at: progress.deadline_at,
+    progress,
+    current_unit_price: progress.current_unit_price,
+  };
+  const phase = campaignPhase(current.status);
 
   const [variantId, setVariantId] = useState<string | null>(campaign.variants[0]?.id ?? null);
   const [quantity, setQuantity] = useState(1);
@@ -117,7 +129,7 @@ function CampaignView({
 
       <View style={styles.section}>
         <View style={styles.titleRow}>
-          <CampaignStatusPill status={campaign.status} />
+          <CampaignStatusPill status={current.status} />
           <Text variant="small" color="textSubtle">
             {t('campaign.code', { code: campaign.code })}
           </Text>
@@ -130,7 +142,7 @@ function CampaignView({
         ) : null}
       </View>
 
-      <Outcome campaign={campaign} />
+      <Outcome campaign={current} />
 
       <Card style={styles.cardGap}>
         <View style={styles.priceRow}>
@@ -171,8 +183,8 @@ function CampaignView({
             <Icon name="time-outline" size={16} color="textMuted" />
             <Text variant="small" color="textMuted">
               {phase === 'open'
-                ? t('campaigns.endsIn', { time: timeLeft(campaign.deadline_at, now) })
-                : t('campaign.closes', { date: date(campaign.deadline_at) })}
+                ? t('campaigns.endsIn', { time: timeLeft(current.deadline_at, now) })
+                : t('campaign.closes', { date: date(current.deadline_at) })}
             </Text>
             {live.isSuccess ? (
               <View style={styles.liveDot} accessibilityLabel={t('progress.live')} />

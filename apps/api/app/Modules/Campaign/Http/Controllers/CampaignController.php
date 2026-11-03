@@ -52,20 +52,25 @@ final class CampaignController extends Controller
     }
 
     /**
-     * Polled by the campaign page, and read again after a Reverb reconnect;
-     * cached for at most 2 seconds.
+     * Polled by the campaign page, and read after every Reverb (re)connect to
+     * catch up on missed pushes; cached for at most 2 seconds. A push stores
+     * what it sends in the same entry first, so the catch-up read is never
+     * older than a push sent before it.
      */
     public function progress(string $campaign): JsonResponse
     {
-        $data = Cache::remember(
-            'campaign-progress:'.$campaign,
-            (int) config('groupbuy.campaigns.progress_cache_seconds'),
-            fn (): ?array => ($model = self::visible()->with('currentTiers')->where('uuid', $campaign)->first()) === null
-                ? null
-                : Progress::payload($model),
-        );
+        $key = Progress::cacheKey($campaign);
+        $data = Cache::get($key);
 
-        abort_if($data === null, 404);
+        if ($data === null) {
+            $model = self::visible()->with('currentTiers')->where('uuid', $campaign)->first();
+            abort_if($model === null, 404);
+
+            $data = Progress::payload($model);
+            // add, not put: never replace what a push stored meanwhile, which
+            // clients may already show.
+            Cache::add($key, $data, (int) config('groupbuy.campaigns.progress_cache_seconds'));
+        }
 
         return response()->json(['data' => $data]);
     }

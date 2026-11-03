@@ -163,3 +163,21 @@ describe('joining a deal', () => {
     expect(authToken.get()).toBe('new-token');
   });
 });
+
+describe('the campaign screen', () => {
+  it('takes a status change that comes with the live numbers', async () => {
+    mockApi()
+      .on('GET', `/campaigns/${ids.kettle}`, { body: { data: campaignDetail('en') } })
+      .on('GET', `/campaigns/${ids.kettle}/progress`, {
+        body: { data: progress({ status: 'cancelled', version: 11 }) },
+      });
+
+    await renderRouter(APP, { initialUrl: `/campaign/${ids.kettle}` });
+
+    expect(
+      await screen.findByText('This deal was cancelled. Every hold was released or refunded.'),
+    ).toBeOnTheScreen();
+    expect(screen.getByText('Cancelled')).toBeOnTheScreen();
+    expect(screen.queryByTestId('join-button')).toBeNull();
+  });
+});

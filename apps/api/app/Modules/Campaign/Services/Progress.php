@@ -47,6 +47,17 @@ final class Progress
     }
 
     /**
+     * Where GET /campaigns/{id}/progress keeps a campaign's payload, for
+     * groupbuy.campaigns.progress_cache_seconds. A push stores what it sends
+     * there first (BroadcastProgress), so a read made after a push never
+     * answers with older numbers.
+     */
+    public static function cacheKey(string $campaignUuid): string
+    {
+        return 'campaign-progress:'.$campaignUuid;
+    }
+
+    /**
      * The price of the next unit sold: the tier for committed quantity + 1.
      */
     public static function currentUnitPrice(Campaign $campaign): Money

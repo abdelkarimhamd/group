@@ -50,7 +50,7 @@ With `EXPO_PUBLIC_PAYMENT_PROVIDER=moyasar`, `src/payments/MoyasarPaymentSheet.t
 
 ### Live progress
 
-pusher-js's React Native build watches the network through `@react-native-community/netinfo` (included in Expo Go; a development build needs rebuilding after this was added). The campaign screen and the checkout share one connection, and one subscription per campaign. Pushes for another campaign, older numbers (by `updated_at`) and anything not in the contract's shape are ignored, whether they come from a push or a read.
+pusher-js's React Native build watches the network through `@react-native-community/netinfo` (included in Expo Go; a development build needs rebuilding after this was added). The campaign screen and the checkout share one connection, and one subscription per campaign. Pushes for another campaign or not in the contract's shape are ignored. Of a push and a read, the one with the higher `version` is shown (the same version is the same state). The campaign screen takes its status and deadline from these numbers too, so a pushed close, cancellation or extension shows at once.
 
 `EXPO_PUBLIC_WEB_URL` must be the same origin as the API's `WEB_URL`, because the page refuses a checkout that returns anywhere else. Without it the app uses the website's dev server (port 3000) on the machine running Metro.
 

@@ -118,6 +118,10 @@ function fakePusher() {
   const channels = new Map<string, Map<string, Set<(data: unknown) => void>>>();
   const stateHandlers = new Set<(change: { previous: string; current: string }) => void>();
   const subscribedChannels = new Set<string>();
+  // Subscribes sent and not yet answered: like pusher-js, unsubscribe then
+  // only cancels, and the channel stays held.
+  const pending = new Set<string>();
+  const resubscribed: string[] = [];
   const client = {
     connection: {
       state: "connecting",
@@ -131,6 +135,7 @@ function fakePusher() {
     subscribe: vi.fn((name: string) => {
       const events = channels.get(name) ?? new Map<string, Set<(data: unknown) => void>>();
       channels.set(name, events);
+      if (!subscribedChannels.has(name)) pending.add(name);
       return {
         get subscribed() {
           return subscribedChannels.has(name);
@@ -144,9 +149,11 @@ function fakePusher() {
       };
     }),
     unsubscribe: vi.fn((name: string) => {
+      if (pending.has(name)) return;
       channels.delete(name);
       subscribedChannels.delete(name);
     }),
+    allChannels: () => [...channels.keys()].map((name) => ({ name })),
     connect: vi.fn(() => {
       client.connection.state = "connecting";
     }),
@@ -158,15 +165,29 @@ function fakePusher() {
   return {
     client: client as unknown as PusherClient & typeof client,
     fire(channel: string, event: string, data?: unknown) {
-      if (event === "pusher:subscription_succeeded") subscribedChannels.add(channel);
+      if (event === "pusher:subscription_succeeded") {
+        pending.delete(channel);
+        subscribedChannels.add(channel);
+      }
       for (const cb of [...(channels.get(channel)?.get(event) ?? [])]) cb(data);
     },
     state(current: string) {
       const previous = client.connection.state;
       client.connection.state = current;
-      if (current !== "connected") subscribedChannels.clear();
+      if (current !== "connected") {
+        subscribedChannels.clear();
+        pending.clear();
+      }
       for (const cb of [...stateHandlers]) cb({ previous, current });
+      // Then pusher-js subscribes again to every channel it holds.
+      if (current === "connected" && previous !== "connected") {
+        for (const name of channels.keys()) {
+          pending.add(name);
+          resubscribed.push(name);
+        }
+      }
     },
+    resubscribed,
     listeners: () => [...channels.values()].reduce((n, events) => n + [...events.values()].reduce((m, s) => m + s.size, 0), 0) + stateHandlers.size,
   };
 }
@@ -230,7 +251,8 @@ describe("listening for a campaign's pushes", () => {
     await flush();
     await flush();
     expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
-    expect(pusher.listeners()).toBe(0);
+    // Only the client's own check on reconnecting is left.
+    expect(pusher.listeners()).toBe(1);
   });
 
   it("keeps the connection when the next live page opens soon, and reuses the client after an idle close", async () => {
@@ -284,6 +306,26 @@ describe("listening for a campaign's pushes", () => {
     await flush();
     expect(pusher.client.unsubscribe).toHaveBeenCalledWith(`campaigns.${ID}`);
     expect(pusher.client.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops following a campaign left while its subscribe was unanswered, once the connection comes back", async () => {
+    const pusher = fakePusher();
+    const factory = async () => pusher.client;
+    const stopLeft = subscribeToProgress(ID, { onProgress: vi.fn(), onLive: vi.fn() }, config, factory, 0);
+    const stopStaying = subscribeToProgress("another", { onProgress: vi.fn(), onLive: vi.fn() }, config, factory, 0);
+    await flush();
+    pusher.state("connected");
+
+    // The page leaves before Reverb answers its subscribe, then the
+    // connection drops and comes back.
+    stopLeft();
+    pusher.state("unavailable");
+    pusher.state("connecting");
+    pusher.resubscribed.length = 0;
+    pusher.state("connected");
+
+    expect(pusher.resubscribed).toEqual(["campaigns.another"]);
+    stopStaying();
   });
 
   it("does nothing when stopped before pusher-js has loaded", async () => {
