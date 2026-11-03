@@ -42,6 +42,13 @@ return [
         'log_channel' => env('SMS_LOG_CHANNEL'),
     ],
 
+    // Firebase Cloud Messaging comes with the real integrations; until then
+    // push messages are written to the log (refused in production).
+    'push' => [
+        'driver' => env('PUSH_DRIVER', 'log'),
+        'log_channel' => env('PUSH_LOG_CHANNEL'),
+    ],
+
     // Card payments. Until the merchant account is approved the "fake" driver
     // stands in for Moyasar: it authorizes, captures and voids without any
     // network call, and refuses to run in production. See docs/architecture.md.

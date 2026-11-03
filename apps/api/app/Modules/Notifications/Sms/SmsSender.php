@@ -10,8 +10,9 @@ interface SmsSender
 {
     /**
      * @param  string  $to  Saudi mobile number in E.164
+     * @return string|null the provider's message ID
      *
      * @throws SmsDeliveryFailed
      */
-    public function send(string $to, string $message): void;
+    public function send(string $to, string $message): ?string;
 }

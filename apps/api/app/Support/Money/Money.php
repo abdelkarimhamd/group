@@ -127,17 +127,25 @@ final class Money implements JsonSerializable
      */
     public function format(): string
     {
+        return $this->decimal().' '.$this->currency->value;
+    }
+
+    /**
+     * The amount in major units without the currency, such as "49.00",
+     * for texts that name the currency in their own language.
+     */
+    public function decimal(): string
+    {
         $decimals = $this->currency->decimals();
         $divisor = 10 ** $decimals;
         $sign = $this->minor < 0 ? '-' : '';
 
         // Split before taking the absolute value: abs(PHP_INT_MIN) would be a float.
         return sprintf(
-            '%s%d.%0'.$decimals.'d %s',
+            '%s%d.%0'.$decimals.'d',
             $sign,
             abs(intdiv($this->minor, $divisor)),
             abs($this->minor % $divisor),
-            $this->currency->value,
         );
     }
 

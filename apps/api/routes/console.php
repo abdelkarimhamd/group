@@ -4,6 +4,7 @@ use App\Modules\Campaign\Console\CampaignTickCommand;
 use App\Modules\Campaign\Console\SweepClosingCommand;
 use App\Modules\Fulfillment\Console\CompleteDeliveredOrdersCommand;
 use App\Modules\Identity\Models\OtpChallenge;
+use App\Modules\Notifications\Console\DispatchDueNotificationsCommand;
 use App\Modules\Payments\Console\ExpireHoldsCommand;
 use App\Modules\Payments\Console\RequeueWebhooksCommand;
 use App\Modules\Supplier\Console\ExpireQuotationsCommand;
@@ -35,3 +36,6 @@ Schedule::command(RequeueWebhooksCommand::class)->everyFiveMinutes()->withoutOve
 // Delivered orders past their 7-day return window are completed, and with
 // them any campaign that has nothing left on its way.
 Schedule::command(CompleteDeliveredOrdersCommand::class)->hourly()->withoutOverlapping()->onOneServer();
+
+// Customer messages due for a retry, or whose job was lost, are sent again.
+Schedule::command(DispatchDueNotificationsCommand::class)->everyMinute()->withoutOverlapping()->onOneServer();

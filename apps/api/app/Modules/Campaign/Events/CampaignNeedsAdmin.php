@@ -7,8 +7,9 @@ use Illuminate\Foundation\Events\Dispatchable;
 
 /**
  * Captures finished below the target or the supplier MOQ (closing step 6):
- * an admin must proceed or cancel. Fired after commit. Notifications (E14)
- * alert ops at once.
+ * an admin must proceed or cancel. Fired after commit. Admins find it in
+ * the portal's campaign list; alerts to ops by SMS or email come with the
+ * real integrations.
  */
 final class CampaignNeedsAdmin implements ShouldDispatchAfterCommit
 {

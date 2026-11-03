@@ -14,6 +14,7 @@ use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Campaign\Models\CampaignPriceTier;
 use App\Modules\Catalog\Enums\VariantStatus;
 use App\Modules\Identity\Models\User;
+use App\Modules\Notifications\Enums\NotificationTemplate;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
 use App\Modules\Payments\Models\PaymentAuthorization;
@@ -51,6 +52,7 @@ class Joins
         private readonly CampaignEvents $events,
         private readonly CampaignLifecycle $lifecycle,
         private readonly Holds $holds,
+        private readonly CampaignNotices $notices,
     ) {}
 
     /**
@@ -175,7 +177,9 @@ class Joins
             'hold_unit_price_halalas' => $participation->hold_unit_price_halalas,
         ]);
 
-        if ($campaign->deal_confirmed_at === null && $campaign->committed_qty >= $campaign->min_target_qty) {
+        $confirmed = $campaign->deal_confirmed_at === null && $campaign->committed_qty >= $campaign->min_target_qty;
+
+        if ($confirmed) {
             $campaign->deal_confirmed_at = $now;
             $campaign->save();
             $this->events->record($campaign, CampaignEvents::DEAL_CONFIRMED, $actor, ['min_target_qty' => $campaign->min_target_qty]);
@@ -200,6 +204,15 @@ class Joins
         if ($campaign->status === CampaignStatus::Active && $campaign->committed_qty === $campaign->max_qty) {
             $this->events->record($campaign, CampaignEvents::MAX_REACHED, $actor, ['max_qty' => $campaign->max_qty]);
             $this->lifecycle->enterClosing($campaign, $actor);
+        }
+
+        // Told once closing may have started, so a join that fills the
+        // campaign (or lands while it settles its joins) is not promised
+        // a deadline that has gone.
+        $this->notices->joined($campaign, $participation);
+
+        if ($confirmed) {
+            $this->notices->dealConfirmed($campaign);
         }
 
         $this->wakeClosingIfSettled($campaign);
@@ -264,6 +277,7 @@ class Joins
             }
 
             $this->events->record($campaign, CampaignEvents::JOIN_CANCELLED, $actor, ['participation_id' => $participation->uuid, 'quantity' => $participation->qty, 'was' => 'authorized']);
+            $this->notices->holdReleased(NotificationTemplate::JoinCancelled, $campaign, $participation);
             $priceAfter = $tiers->current($campaign->committed_qty);
 
             if ($priceAfter->minQty !== $priceBefore->minQty) {

@@ -7,7 +7,8 @@ use Illuminate\Foundation\Events\Dispatchable;
 
 /**
  * The campaign reached its target for the first time. Fired once, after the
- * commit that set deal_confirmed_at. Notifications (E14) tell participants.
+ * commit that set deal_confirmed_at. Customers with a paid join are told
+ * by CampaignNotices in that transaction.
  */
 final class CampaignDealConfirmed implements ShouldDispatchAfterCommit
 {

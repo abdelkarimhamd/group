@@ -23,6 +23,8 @@ use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Identity\Models\PrivacyConsent;
 use App\Modules\Identity\Models\User;
 use App\Modules\Identity\Otp\OtpService;
+use App\Modules\Notifications\Push\LogPushSender;
+use App\Modules\Notifications\Push\PushSender;
 use App\Modules\Notifications\Sms\LogSmsSender;
 use App\Modules\Notifications\Sms\SmsSender;
 use App\Modules\Orders\Models\CustomerOrder;
@@ -72,6 +74,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(SmsSender::class, fn ($app) => match ($driver = config('services.sms.driver')) {
             'log' => new LogSmsSender($app->isProduction(), config('services.sms.log_channel')),
             default => throw new InvalidArgumentException("Unknown SMS driver [{$driver}]."),
+        });
+
+        $this->app->singleton(PushSender::class, fn ($app) => match ($driver = config('services.push.driver')) {
+            'log' => new LogPushSender($app->isProduction(), config('services.push.log_channel')),
+            default => throw new InvalidArgumentException("Unknown push driver [{$driver}]."),
         });
     }
 

@@ -21,6 +21,7 @@ use App\Modules\Finance\Enums\ApprovalType;
 use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Finance\Services\Approvals;
 use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Notifications\Enums\NotificationTemplate;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
 use App\Modules\Payments\Models\PaymentAuthorization;
@@ -61,6 +62,7 @@ class CampaignLifecycle
         private readonly MarginCalculator $margins,
         private readonly Holds $holds,
         private readonly Approvals $approvals,
+        private readonly CampaignNotices $notices,
     ) {}
 
     /**
@@ -400,6 +402,7 @@ class CampaignLifecycle
             $change = ['deadline_at' => $newDeadline->toIso8601ZuluString(), 'reason' => $reason];
             $this->events->record($campaign, CampaignEvents::EXTENDED, $actor, ['from_deadline_at' => $old->toIso8601ZuluString()] + $change);
             $this->audit->record($actor, 'campaign.extend', $campaign, ['deadline_at' => $old->toIso8601ZuluString()], $change);
+            $this->notices->extended($campaign);
             CampaignProgressChanged::dispatch($campaign->id);
 
             return $campaign;
@@ -580,6 +583,11 @@ class CampaignLifecycle
 
             foreach ($participation->payments()->whereIn('status', [PaymentStatus::PendingAuthorization, PaymentStatus::Authorized])->get() as $payment) {
                 $this->holds->release($payment, RejectionReason::CampaignClosed, $actor);
+            }
+
+            // Only paid joins had a hold to tell the customer about.
+            if ($from === ParticipationStatus::Authorized) {
+                $this->notices->holdReleased($reason === 'campaign_cancelled' ? NotificationTemplate::CampaignCancelled : NotificationTemplate::CampaignFailed, $campaign, $participation);
             }
 
             $released++;

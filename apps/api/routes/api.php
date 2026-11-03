@@ -15,6 +15,7 @@ use App\Modules\Identity\Http\Controllers\AddressController;
 use App\Modules\Identity\Http\Controllers\AdminAccountsController;
 use App\Modules\Identity\Http\Controllers\AdminAuthController;
 use App\Modules\Identity\Http\Controllers\CustomerAuthController;
+use App\Modules\Notifications\Http\Controllers\DeviceTokenController;
 use App\Modules\Orders\Http\Controllers\AdminOrderController;
 use App\Modules\Orders\Http\Controllers\AdminPurchaseOrderController;
 use App\Modules\Orders\Http\Controllers\MyOrderController;
@@ -57,6 +58,7 @@ Route::prefix('v1')->name('v1.')->group(function () {
         Route::get('me', [AccountController::class, 'show'])->name('me.show');
         Route::patch('me', [AccountController::class, 'update'])->name('me.update');
         Route::post('me/privacy-consent', [AccountController::class, 'acceptPrivacyPolicy'])->name('me.privacy-consent');
+        Route::post('me/device-tokens', [DeviceTokenController::class, 'store'])->name('me.device-tokens.store');
 
         Route::get('me/addresses', [AddressController::class, 'index'])->name('me.addresses.index');
         Route::post('me/addresses', [AddressController::class, 'store'])->name('me.addresses.store');

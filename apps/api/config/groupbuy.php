@@ -111,6 +111,19 @@ return [
         'return_window_days' => 7,
     ],
 
+    // Spec, E14: sends run on the queue with retries, and every send is logged.
+    'notifications' => [
+        // Tries per message before it is marked failed, and the wait before
+        // each retry (minutes). notifications:dispatch-due sends retries.
+        'max_attempts' => 5,
+        'retry_after_minutes' => [1, 5, 15, 60],
+        // A message not sent this long after it was written, or after a try
+        // started, lost its job and is tried again.
+        'stuck_after_minutes' => 10,
+        // Devices kept per customer; older tokens are dropped.
+        'max_devices_per_user' => 10,
+    ],
+
     // The seller of record printed on every VAT invoice. Real values come from
     // the commercial registration and VAT certificate (E1); the defaults mark
     // invoices made before then as not for use.

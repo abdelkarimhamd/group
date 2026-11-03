@@ -4,6 +4,9 @@ namespace App\Modules\Orders\Services;
 
 use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\CampaignParticipation;
+use App\Modules\Campaign\Services\CampaignNotices;
+use App\Modules\Notifications\Enums\NotificationTemplate;
+use App\Modules\Notifications\Services\Notifier;
 use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Payments\Enums\PaymentStatus;
@@ -24,6 +27,7 @@ final class Orders
         private readonly DocumentNumbers $numbers,
         private readonly Invoices $invoices,
         private readonly StatusHistory $history,
+        private readonly Notifier $notifier,
     ) {}
 
     /**
@@ -94,6 +98,14 @@ final class Orders
         $invoice = $this->invoices->issueTaxInvoice($order, $items, $actor);
         $order->vat_halalas = $invoice->vat_halalas;
         $order->save();
+
+        $participation->loadMissing(['user', 'campaign']);
+        $this->notifier->send($participation->user, NotificationTemplate::Charged, $order, [
+            'campaign' => CampaignNotices::title($participation->campaign),
+            'qty' => $order->qty,
+            'total_halalas' => $order->total_halalas,
+            'order' => $order->order_number,
+        ], "charged:customer_order:{$order->id}");
 
         return $order;
     }

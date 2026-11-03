@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
+use App\Modules\Campaign\Services\CampaignNotices;
 use App\Modules\Campaign\Services\Joins;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
@@ -52,6 +53,7 @@ class Confirmations
         private readonly StatusHistory $history,
         private readonly Joins $joins,
         private readonly Holds $holds,
+        private readonly CampaignNotices $notices,
     ) {}
 
     /**
@@ -168,6 +170,7 @@ class Confirmations
                 $payment->save();
                 Log::warning('payments.orphan_hold', ['payment' => $payment->uuid, 'provider_payment_id' => $remote->id]);
                 VoidPayment::dispatch($payment->id, $actor->type->value, $actor->id)->afterCommit();
+                $this->tellHoldReleased($participation, $payment, $payment->rejection_reason);
 
                 return $payment;
             }
@@ -268,14 +271,38 @@ class Confirmations
 
         if ($problem !== null) {
             VoidPayment::dispatch($payment->id, $actor->type->value, $actor->id)->afterCommit();
+            $this->tellHoldReleased($participation, $payment, $problem);
 
             return;
         }
 
-        // A campaign past settling its joins releases the units and this hold.
-        if (! $this->joins->commitAuthorized($participation, $actor) && $payment->refresh()->rejection_reason === null) {
-            $this->holds->release($payment, self::reasonFor($participation->refresh()->status), $actor);
+        // A campaign past settling its joins releases the units and this
+        // hold (the join's release usually voids it already).
+        if (! $this->joins->commitAuthorized($participation, $actor)) {
+            $reason = $payment->refresh()->rejection_reason;
+
+            if ($reason === null) {
+                $reason = self::reasonFor($participation->refresh()->status);
+                $this->holds->release($payment, $reason, $actor);
+            }
+
+            $this->tellHoldReleased($participation, $payment, $reason);
         }
+    }
+
+    /**
+     * A hold that came through after its join stopped counting (the
+     * reservation ran out, the campaign closed, the customer cancelled) is
+     * voided: the customer sees the money held, so they are told. Holds
+     * voided for breaking the rules, or as a second hold, are not.
+     */
+    private function tellHoldReleased(CampaignParticipation $participation, PaymentAuthorization $payment, ?RejectionReason $reason): void
+    {
+        if (! in_array($reason, [RejectionReason::ReservationExpired, RejectionReason::CampaignClosed, RejectionReason::ParticipationCancelled], true)) {
+            return;
+        }
+
+        $this->notices->holdVoided($participation->campaign()->firstOrFail(), $participation, $payment);
     }
 
     /**
