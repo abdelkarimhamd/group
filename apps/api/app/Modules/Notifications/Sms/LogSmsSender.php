@@ -18,7 +18,7 @@ final class LogSmsSender implements SmsSender
         private readonly ?string $channel = null,
     ) {}
 
-    public function send(string $to, string $message): ?string
+    public function send(string $to, string $message, ?string $reference = null): ?string
     {
         if ($this->production) {
             throw new SmsDeliveryFailed('The log SMS driver does not send messages. Set SMS_DRIVER to a real provider in production.');

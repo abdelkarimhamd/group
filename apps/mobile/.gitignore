@@ -44,3 +44,6 @@ yarn-error.*
 # local checks
 dist-check/
 coverage/
+
+# Firebase config for Android push (EAS file variable GOOGLE_SERVICES_JSON)
+google-services.json

@@ -100,6 +100,9 @@ return [
             // Always UTC, whatever the server default, so timestamptz values
             // and now() agree with the application clock.
             'timezone' => 'UTC',
+            // Query errors show the SQL with `?`, never the values (phone
+            // numbers, names, addresses), in logs and in Sentry.
+            'mask_bindings_in_exception_messages' => true,
         ],
 
         'sqlsrv' => [

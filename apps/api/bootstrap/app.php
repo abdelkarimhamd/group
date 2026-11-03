@@ -10,6 +10,7 @@ use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Sentry\Laravel\Integration as Sentry;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -47,6 +48,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(prepend: [SetLocaleFromRequest::class]);
     })
     ->withExceptions(function (Exceptions $exceptions) use ($apiError): void {
+        // Unexpected errors go to Sentry when SENTRY_LARAVEL_DSN is set (a no-op
+        // without it). Expected ones (validation, 404, auth, ApiException) are
+        // not reported by Laravel, so they never reach it.
+        Sentry::handles($exceptions);
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

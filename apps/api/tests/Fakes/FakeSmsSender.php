@@ -3,26 +3,34 @@
 namespace Tests\Fakes;
 
 use App\Modules\Notifications\Sms\SmsDeliveryFailed;
+use App\Modules\Notifications\Sms\SmsOutcomeUnknown;
 use App\Modules\Notifications\Sms\SmsSender;
 use PHPUnit\Framework\Assert;
 
 /**
- * Records texts instead of sending them. Set $failing to simulate a provider outage.
+ * Records texts instead of sending them. Set $failing to simulate a provider
+ * outage, $answerLost for a text that arrived but whose answer never came back.
  */
 final class FakeSmsSender implements SmsSender
 {
-    /** @var list<array{to: string, message: string}> */
+    /** @var list<array{to: string, message: string, reference: string|null}> */
     public array $sent = [];
 
     public bool $failing = false;
 
-    public function send(string $to, string $message): ?string
+    public bool $answerLost = false;
+
+    public function send(string $to, string $message, ?string $reference = null): ?string
     {
         if ($this->failing) {
             throw new SmsDeliveryFailed('Provider unavailable (fake).');
         }
 
-        $this->sent[] = ['to' => $to, 'message' => $message];
+        $this->sent[] = ['to' => $to, 'message' => $message, 'reference' => $reference];
+
+        if ($this->answerLost) {
+            throw new SmsOutcomeUnknown('Provider did not answer (fake).');
+        }
 
         return 'fake-sms-'.count($this->sent);
     }

@@ -191,9 +191,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Register a Firebase push token
-         * @description Mobile app only. Call it after sign-in and whenever Firebase issues a
-         *     new token. Registering the same token again just refreshes it; a
+         * Register a push token
+         * @description Mobile app only. Send the Expo push token (`ExponentPushToken[...]`,
+         *     from expo-notifications getExpoPushTokenAsync): the API sends through
+         *     Expo's push service, and other kinds of token get no messages. Call it
+         *     after sign-in and whenever the token changes. Registering the same token again just refreshes it; a
          *     token registered from another account moves to that account. Signing
          *     out (`POST /auth/logout`) removes it, so the device stops getting the
          *     account's messages. The customer's 10 most recently seen devices are

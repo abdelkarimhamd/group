@@ -342,6 +342,9 @@ const ar: Translations = {
     codeExhausted: 'أدخلت رمزًا خاطئًا عدة مرات. اطلب رمزًا جديدًا.',
     codeInvalid: 'الرمز غير صحيح. تحقّق منه وحاول مجددًا.',
   },
+  push: {
+    channelName: 'تحديثات الطلبات والعروض',
+  },
 };
 
 export default ar;

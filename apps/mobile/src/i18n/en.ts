@@ -333,6 +333,9 @@ const en = {
     codeExhausted: 'Too many wrong codes. Request a new one.',
     codeInvalid: "That code isn't right. Check it and try again.",
   },
+  push: {
+    channelName: 'Order and deal updates',
+  },
 };
 
 export default en;

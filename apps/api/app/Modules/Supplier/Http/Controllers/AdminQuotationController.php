@@ -19,11 +19,11 @@ use App\Modules\Supplier\Services\QuotationUsage;
 use App\Support\Audit\AuditLogger;
 use App\Support\Audit\Changes;
 use App\Support\Audit\StatusHistory;
+use App\Support\Files\StoredFiles;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -140,14 +140,14 @@ final class AdminQuotationController extends AdminController
                 return [$model, $previous];
             });
         } catch (Throwable $e) {
-            Storage::disk($disk)->delete($path);
+            StoredFiles::deleteQuietly($disk, $path);
 
             throw $e;
         }
 
         // The old file is no longer referenced; remove it after the commit.
         if ($previous !== null) {
-            Storage::disk($previous[0])->delete($previous[1]);
+            StoredFiles::deleteQuietly($previous[0], $previous[1]);
         }
 
         return QuotationResource::make($updated->load(QuotationResource::RELATIONS));
