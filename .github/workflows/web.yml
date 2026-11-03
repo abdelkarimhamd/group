@@ -24,6 +24,7 @@ jobs:
       API_BASE_URL: http://127.0.0.1:4010
       NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3100
       NEXT_PUBLIC_PAYMENTS_MODE: fake
+      NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY: pk_test_e2e
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4

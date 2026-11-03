@@ -38,3 +38,12 @@ jest.mock('@expo/vector-icons/Ionicons', () => {
   Ionicons.glyphMap = new Proxy({}, { has: () => true, get: () => 0 });
   return { __esModule: true, default: Ionicons };
 });
+
+// The WebView is native; screens that only import the Moyasar sheet get a plain view.
+jest.mock('react-native-webview', () => {
+  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  const { createElement } = jest.requireActual<typeof import('react')>('react');
+  return {
+    WebView: ({ testID }: { testID?: string }) => createElement(View, { testID }),
+  };
+});

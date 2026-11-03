@@ -17,6 +17,7 @@
     "mock:prism": "prism mock ../api/openapi/v1.yaml -h 127.0.0.1 -p 4010"
   },
   "dependencies": {
+    "moyasar-payment-form": "2.3.0",
     "next": "16.4.3",
     "openapi-fetch": "^0.17.0",
     "react": "19.3.0",
@@ -32,6 +33,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "jsdom": "^26.1.0",
     "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4",
     "typescript": "^5",

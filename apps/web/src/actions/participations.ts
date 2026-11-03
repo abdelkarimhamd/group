@@ -83,8 +83,9 @@ export async function retryPayment(input: {
 }
 
 /**
- * Called by the payment return page. The API fetches the payment from the
- * provider itself; the redirect's own status parameter is never trusted.
+ * Called by Moyasar's form as soon as the payment exists, and by the payment
+ * return page. The API fetches the payment from the provider itself; the
+ * redirect's own status parameter is never trusted.
  */
 export async function syncPayment(input: {
   locale: string;

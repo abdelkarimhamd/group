@@ -2,6 +2,10 @@ import type { Participation } from '@/api/types';
 
 import { remainingUntil } from './time';
 
+/** How often, and how many times, the payment screen looks again while the bank is processing. */
+export const PENDING_CHECK_MS = 3_000;
+export const PENDING_CHECKS = 10;
+
 export type PayView =
   'confirming' | 'ready' | 'success' | 'declined' | 'pending' | 'failed' | 'expired' | 'other';
 
@@ -28,7 +32,14 @@ export function payView(
         return 'expired';
       }
       const payment = participation.payment;
-      if (!payment || payment.status === 'failed' || payment.status === 'voided') {
+      // A hold the API refused (wrong amount, charged at once…) is voided shortly after; the
+      // customer can already try another card.
+      if (
+        !payment ||
+        payment.status === 'failed' ||
+        payment.status === 'voided' ||
+        payment.rejection_reason
+      ) {
         return 'declined';
       }
       if (payment.status === 'pending_authorization') {

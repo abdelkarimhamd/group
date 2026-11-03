@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { retryPayment } from "@/actions/participations";
+import { retryPayment, syncPayment } from "@/actions/participations";
 import { useI18n } from "@/i18n/client";
 import { formatMoney, interpolate } from "@/i18n/format";
 import { useNow } from "@/hooks/use-now";
-import { fakeProviderPaymentId, paymentsMode } from "@/lib/payments";
+import { fakeProviderPaymentId, paymentsMode, rememberPaymentInTab } from "@/lib/payments";
 import type { Participation, Payment } from "@/lib/api/types";
 import { TimeUntil } from "./countdown";
+import { MoyasarForm } from "./moyasar-form";
 import { Alert, Button, ButtonLink, Card, Spinner } from "./ui";
 
 type JoinRef = Pick<Participation, "id" | "hold_amount" | "reservation_expires_at"> & {
@@ -16,14 +17,18 @@ type JoinRef = Pick<Participation, "id" | "hold_amount" | "reservation_expires_a
 };
 
 /**
- * The card hold. Moyasar's hosted form goes here once that integration lands
- * (third-party work comes last); until then the fake mode sends the API's
- * fake provider IDs through the same return page Moyasar will use.
+ * The card hold: Moyasar's payment form, or in fake mode two buttons that
+ * send the API's fake provider IDs through the same return page Moyasar uses.
  */
 export function PaymentStep({ participation, payment }: { participation: JoinRef; payment: Payment }) {
   const { t, locale } = useI18n();
   const now = useNow();
   const expired = now !== null && Date.parse(participation.reservation_expires_at) <= now;
+  const moyasar = paymentsMode() === "moyasar";
+
+  useEffect(() => {
+    if (moyasar) rememberPaymentInTab(payment.id);
+  }, [moyasar, payment.id]);
 
   if (expired) {
     return (
@@ -59,7 +64,7 @@ export function PaymentStep({ participation, payment }: { participation: JoinRef
         />
       </Alert>
 
-      {paymentsMode() === "fake" ? (
+      {!moyasar ? (
         <div className="space-y-3 rounded-xl border border-dashed border-brand-300 p-4">
           <p className="font-semibold text-slate-900">{t.payment.fakeTitle}</p>
           <p className="text-sm text-slate-600">{t.payment.fakeBody}</p>
@@ -72,15 +77,36 @@ export function PaymentStep({ participation, payment }: { participation: JoinRef
             </ButtonLink>
           </div>
         </div>
+      ) : payment.checkout ? (
+        <MoyasarForm
+          checkout={payment.checkout}
+          // As soon as Moyasar has the payment, before any 3-D Secure redirect:
+          // the API stores Moyasar's ID (or settles the hold at once), so the
+          // hold is found even if the customer never comes back.
+          record={(providerPaymentId) => syncPayment({ locale, paymentId: payment.id, providerPaymentId })}
+        />
       ) : (
-        <Alert tone="neutral">{t.payment.providerPending}</Alert>
+        <Alert tone="danger">{t.payment.formFailed}</Alert>
       )}
     </Card>
   );
 }
 
 /** "Try another card": a fresh attempt for the same reserved units. */
-export function RetryPayment({ participation, label }: { participation: JoinRef; label: string }) {
+/**
+ * `onStarted` hands the new attempt to a parent that shows the form itself
+ * (the join page, whose data refreshes to that attempt); without it the form
+ * opens here.
+ */
+export function RetryPayment({
+  participation,
+  label,
+  onStarted,
+}: {
+  participation: JoinRef;
+  label: string;
+  onStarted?: (payment: Payment) => void;
+}) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const [payment, setPayment] = useState<Payment | null>(null);
@@ -98,7 +124,8 @@ export function RetryPayment({ participation, label }: { participation: JoinRef;
         campaignId: participation.campaign.id,
       });
       if (result.ok) {
-        setPayment(result.payment);
+        if (onStarted) onStarted(result.payment);
+        else setPayment(result.payment);
         return;
       }
       if (result.status === 401) {

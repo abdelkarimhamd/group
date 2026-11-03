@@ -3,7 +3,8 @@ import path from "node:path";
 
 // Browser tests run the production build against the mock stack: the
 // fixture API behind Prism, which checks every request against the
-// contract. Build first with API_BASE_URL=http://127.0.0.1:4010.
+// contract. Build first with API_BASE_URL=http://127.0.0.1:4010 and
+// NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY=pk_test_e2e (the app payment page's tests).
 const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 3100);
 const baseURL = `http://127.0.0.1:${WEB_PORT}`;
 export const VIOLATIONS_FILE = path.resolve(__dirname, ".mock/contract-violations.log");

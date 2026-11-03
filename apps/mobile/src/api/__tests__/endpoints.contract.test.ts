@@ -17,6 +17,7 @@ jest.mock('@/config', () => ({
   config: {
     apiUrl: process.env.CONTRACT_API_URL ?? 'http://127.0.0.1:4011',
     paymentProvider: 'fake',
+    webUrl: 'http://127.0.0.1:3000',
     privacyPolicyUrl: null,
     progressPollMs: 5_000,
   },

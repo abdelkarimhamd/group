@@ -422,7 +422,11 @@ export interface paths {
     put?: never;
     /**
      * Check a payment with Moyasar after the form
-     * @description Call when Moyasar redirects back, with the Moyasar payment ID from the
+     * @description Call as soon as Moyasar's form reports the payment it created (before
+     *     any 3-D Secure step: the payment is then still `initiated`, and the
+     *     participation stays `pending_payment` while its Moyasar ID is kept, so
+     *     the hold is found even if the customer never comes back), and again
+     *     when Moyasar redirects back, with the Moyasar payment ID from the
      *     redirect. The API fetches the payment from Moyasar and accepts the hold
      *     only if it is `authorized` for exactly the hold amount in SAR, by an
      *     allowed method, while the reservation is valid. Anything else is voided

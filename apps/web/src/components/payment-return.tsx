@@ -6,6 +6,7 @@ import { syncPayment } from "@/actions/participations";
 import { useI18n } from "@/i18n/client";
 import { formatMoney, interpolate } from "@/i18n/format";
 import type { Participation } from "@/lib/api/types";
+import { paymentInTab } from "@/lib/payments";
 import { RetryPayment } from "./payment-step";
 import { Alert, ButtonLink, Card, Spinner } from "./ui";
 
@@ -20,6 +21,8 @@ type State =
 
 const RECHECK_MS = 3000;
 const MAX_CHECKS = 10;
+/** How long the page keeps asking when it gets no answer, before it says so. */
+const GIVE_UP_AFTER_MS = 45_000;
 
 export function PaymentReturn() {
   const { t, locale } = useI18n();
@@ -34,10 +37,16 @@ export function PaymentReturn() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let checks = 0;
+    const started = Date.now();
+    // Our ID from the redirect, else from this tab's form (the session cookie is the last resort).
+    const ourPaymentId = paymentId ?? paymentInTab();
 
     async function check() {
       checks += 1;
-      const result = await syncPayment({ locale, paymentId, providerPaymentId: providerPaymentId! });
+      const result = await syncPayment({ locale, paymentId: ourPaymentId, providerPaymentId: providerPaymentId! }).catch(
+        // The browser did not reach this site (a dropped connection, a deploy).
+        () => ({ ok: false as const, status: 0, code: "network" }),
+      );
       if (cancelled) return;
       if (!result.ok) {
         if (result.status === 401) {
@@ -48,6 +57,10 @@ export function PaymentReturn() {
           setState({ kind: "mismatch" });
         } else if (result.status === 404) {
           setState({ kind: "missing" });
+        } else if ([0, 429, 503].includes(result.status) && Date.now() - started < GIVE_UP_AFTER_MS) {
+          // We or Moyasar did not answer this time: ask again shortly (as asked, when throttled).
+          const wait = "retryAfter" in result && result.retryAfter ? result.retryAfter * 1000 : RECHECK_MS;
+          timer = setTimeout(check, Math.min(Math.max(wait, RECHECK_MS), 15_000));
         } else {
           setState({ kind: "error", network: result.status === 0 });
         }
