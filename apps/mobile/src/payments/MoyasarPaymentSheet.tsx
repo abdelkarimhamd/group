@@ -116,11 +116,9 @@ function MoyasarForm({
             const id = providerPaymentIdFromMessage(event.nativeEvent.data);
             if (id) providerPaymentId.current = id;
           }}
-          onShouldStartLoadWithRequest={(request) => {
-            if (caughtReturn(request.url)) return false;
-            // Only web pages: no app links, phone numbers or intents from inside the form.
-            return /^(https?:|about:blank|about:srcdoc|data:)/i.test(request.url);
-          }}
+          // Web pages (the form, Moyasar, the bank's 3-D Secure pages) load here; react-native-webview
+          // hands anything else, such as a bank app's link, to the phone before this runs.
+          onShouldStartLoadWithRequest={(request) => !caughtReturn(request.url)}
           // A return the platform did not offer to the callback above (Android does not for
           // every redirect) is caught as it starts loading.
           onNavigationStateChange={(navigation) => void caughtReturn(navigation.url)}

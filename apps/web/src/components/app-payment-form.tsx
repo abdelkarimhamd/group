@@ -18,9 +18,12 @@ export type AppPaymentMessage = { type: "moyasar_payment"; id: string };
 
 /**
  * The payment form for the mobile app. It covers the site's header and
- * footer, and shows the form only inside the app's WebView: opened in a
- * browser it explains that, so a crafted link cannot show a payment form
- * on this site.
+ * footer. Opened in a browser it says to use the app; it shows the form only
+ * where a React Native WebView's message bridge exists. That bridge is not
+ * proof that the page is in our app, so the checkout is held to this site's
+ * own Moyasar account and return page (parseAppCheckout): the most a shared
+ * link can do is ask someone to pay one of the sender's own pending joins,
+ * for its exact amount, until its reservation runs out.
  */
 export function AppPaymentForm() {
   const { t } = useI18n();

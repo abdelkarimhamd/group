@@ -81,6 +81,13 @@ test.describe("the app's payment page", () => {
     await expect(page.getByText(ar.payment.appInvalid)).toBeVisible();
   });
 
+  test("inside any app's WebView, a checkout for another Moyasar account is refused", async ({ page, baseURL }) => {
+    await page.addInitScript(asTheApp);
+    await page.goto(pageFor({ ...checkout(baseURL!), publishable_api_key: "pk_live_someoneelse" }));
+    await expect(page.getByTestId("app-payment")).toHaveAttribute("data-state", "invalid");
+    await expect(page.getByTestId("moyasar-form")).toHaveCount(0);
+  });
+
   test("inside the app, the card form asks Moyasar for a hold and tells the app its ID", async ({ page, baseURL }) => {
     const toApp: unknown[] = [];
     await page.exposeFunction("__toApp", (message: string) => toApp.push(JSON.parse(message)));

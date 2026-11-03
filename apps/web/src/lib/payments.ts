@@ -24,17 +24,18 @@ const TAB_KEY = "gb_pending_payment";
  * at once, before any redirect. Storage may be unavailable; then the
  * session's pending-payment cookie is the fallback.
  */
-export function rememberPaymentInTab(paymentId: string, storage: Pick<Storage, "setItem"> | undefined = globalThis.sessionStorage): void {
+export function rememberPaymentInTab(paymentId: string, storage?: Pick<Storage, "setItem"> | null): void {
   try {
-    storage?.setItem(TAB_KEY, paymentId);
+    // Reading window.sessionStorage itself throws where site data is blocked.
+    (storage === undefined ? globalThis.sessionStorage : storage)?.setItem(TAB_KEY, paymentId);
   } catch {
     // Private mode or blocked storage.
   }
 }
 
-export function paymentInTab(storage: Pick<Storage, "getItem"> | undefined = globalThis.sessionStorage): string | null {
+export function paymentInTab(storage?: Pick<Storage, "getItem"> | null): string | null {
   try {
-    return storage?.getItem(TAB_KEY) || null;
+    return (storage === undefined ? globalThis.sessionStorage : storage)?.getItem(TAB_KEY) || null;
   } catch {
     return null;
   }
@@ -179,11 +180,18 @@ function isStringList(value: unknown, allowed: Set<string>): value is string[] {
 /**
  * Reads the checkout the mobile app put in the page's URL fragment (the API's
  * MoyasarCheckout as JSON). The fragment never reaches a server. Anything
- * that is not a checkout the API could have made is refused, and the payment
- * must come back to this same site's /payments/return, so a crafted link
- * cannot send the customer's payment or the redirect anywhere else.
+ * that is not a checkout the API could have made is refused: it must use this
+ * site's own Moyasar account (`publishableKey`, the API's
+ * MOYASAR_PUBLISHABLE_KEY; none set refuses everything) and come back to
+ * this site's /payments/return for the same payment. A crafted link can
+ * therefore never send a card payment or the redirect anywhere else.
  */
-export function parseAppCheckout(hash: string, origin: string): MoyasarCheckout | null {
+export function parseAppCheckout(
+  hash: string,
+  origin: string,
+  publishableKey: string | undefined = process.env.NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY,
+): MoyasarCheckout | null {
+  if (!publishableKey) return null;
   let value: unknown;
   try {
     value = JSON.parse(decodeURIComponent(hash.replace(/^#/, "")));
@@ -196,6 +204,7 @@ export function parseAppCheckout(hash: string, origin: string): MoyasarCheckout 
   if (
     typeof c.publishable_api_key !== "string" ||
     !PUBLISHABLE_KEY.test(c.publishable_api_key) ||
+    c.publishable_api_key !== publishableKey ||
     typeof c.amount !== "number" ||
     !Number.isSafeInteger(c.amount) ||
     c.amount < 100 ||
