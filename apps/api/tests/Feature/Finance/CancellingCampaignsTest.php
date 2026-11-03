@@ -168,6 +168,12 @@ class CancellingCampaignsTest extends TestCase
             ->assertConflict()
             ->assertJsonPath('code', 'invalid_transition');
 
+        // Asking to cancel again returns the approved request, and the portal no longer offers it.
+        $this->assertSame($approval, $this->requestCancellation()->assertStatus(202)->json('data.id'));
+        $this->assertSame(1, ApprovalRequest::query()->count());
+        $actions = $this->asAdmin(AdminRole::CampaignManager)->getJson("/api/v1/admin/campaigns/{$this->campaign->uuid}")->assertOk()->json('data.available_actions');
+        $this->assertNotContains('cancel', $actions);
+
         // Its job was lost (and its lock expired): the sweep queues it again, once.
         (new UniqueLock(app(Cache::class)))->release(new ExecuteCampaignCancellation($id));
         $this->artisan('finance:requeue-approved')->assertSuccessful();

@@ -38,6 +38,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Audit\StatusHistory;
 use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LogicException;
@@ -66,6 +67,9 @@ use LogicException;
  */
 final class Refunds
 {
+    /** How long one runner holds a refund: a few Moyasar calls of at most 25 seconds each. */
+    private const SEND_LOCK_SECONDS = 300;
+
     public function __construct(
         private readonly Approvals $approvals,
         private readonly StatusHistory $history,
@@ -250,11 +254,41 @@ final class Refunds
             throw new LogicException('Never call the payment provider inside a database transaction.');
         }
 
+        // One runner per refund at a time. Its job is unique, but that lock
+        // can run out while a job is still retrying through a long outage,
+        // and Moyasar documents no idempotency for refunds: a second copy
+        // that finds this one sending stops, and the first carries on.
+        $lock = Cache::lock('payments:refund:'.$refund->id, self::SEND_LOCK_SECONDS);
+
+        if (! $lock->get()) {
+            Log::info('payments.refund.busy', ['refund' => $refund->uuid]);
+
+            return;
+        }
+
+        try {
+            $sendAsRefund = $this->send($refund);
+        } finally {
+            $lock->release();
+        }
+
+        // A refused void (the capture settled, say) is sent again as a refund.
+        if ($sendAsRefund) {
+            $this->execute($refund);
+        }
+    }
+
+    /**
+     * One try: ask first if an earlier one may have landed, send, record.
+     * Returns true when a refused void should go again as a refund.
+     */
+    private function send(Refund $refund): bool
+    {
         $actor = Actor::system();
         $attempt = $this->prepare($refund, $actor);
 
         if ($attempt === null) {
-            return;
+            return false;
         }
 
         $payment = PaymentAuthorization::query()->findOrFail($refund->payment_authorization_id);
@@ -264,7 +298,7 @@ final class Refunds
         if ($attempt->attempts > 0 && $this->landed($this->gateway->fetch($providerId), $payment, $attempt)) {
             $this->succeeded($refund, $attempt, $providerId, ['resolved_by' => 'fetch'], $actor);
 
-            return;
+            return false;
         }
 
         $attempt->increment('attempts');
@@ -278,7 +312,7 @@ final class Refunds
             if ($this->landed($this->gateway->fetch($providerId), $payment, $attempt)) {
                 $this->succeeded($refund, $attempt, $providerId, ['resolved_by' => 'fetch'], $actor);
 
-                return;
+                return false;
             }
 
             throw $e;
@@ -287,7 +321,7 @@ final class Refunds
         if ($result->succeeded) {
             $this->succeeded($refund, $attempt, $result->providerReference, $result->payload, $actor);
 
-            return;
+            return false;
         }
 
         // A refusal: an earlier call may still have landed.
@@ -295,7 +329,7 @@ final class Refunds
             if ($this->landed($this->gateway->fetch($providerId), $payment, $attempt)) {
                 $this->succeeded($refund, $attempt, $providerId, ['resolved_by' => 'fetch'], $actor);
 
-                return;
+                return false;
             }
         } catch (GatewayException) {
             // The refusal itself is a definite answer.
@@ -303,10 +337,7 @@ final class Refunds
 
         $this->refused($refund, $attempt, $result, $actor);
 
-        // A refused void (the capture settled, say) is sent again as a refund.
-        if ($attempt->type === TransactionType::Void) {
-            $this->execute($refund);
-        }
+        return $attempt->type === TransactionType::Void;
     }
 
     /**

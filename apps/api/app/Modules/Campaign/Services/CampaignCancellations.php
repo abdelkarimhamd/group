@@ -70,13 +70,21 @@ final class CampaignCancellations
      */
     public static function waiting(Campaign $campaign): bool
     {
+        return self::waitingRequest($campaign) !== null;
+    }
+
+    /**
+     * The approved cancellation still to be carried out, if any.
+     */
+    public static function waitingRequest(Campaign $campaign): ?ApprovalRequest
+    {
         return ApprovalRequest::query()
             ->where('type', ApprovalType::CampaignCancellation)
             ->where('subject_type', $campaign->getMorphClass())
             ->where('subject_id', $campaign->getKey())
             ->where('status', ApprovalStatus::Approved)
             ->whereNull('executed_at')
-            ->exists();
+            ->first();
     }
 
     /**

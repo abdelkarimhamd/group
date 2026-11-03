@@ -1229,9 +1229,10 @@ export interface paths {
          *     `purchasing`), money may have to go back, so it opens a
          *     `campaign_cancellation` approval request for a second admin with the
          *     finance role instead (202) and changes nothing else; asking again
-         *     returns the request already waiting. Approving it (refunds, order
-         *     cancellation) comes with the approvals flow. `fulfilling` and ended
-         *     campaigns answer 409 `invalid_transition`.
+         *     returns the request already waiting, or the approved one not yet
+         *     carried out. Approving it refunds captured joins and cancels the
+         *     orders (`POST /admin/approval-requests/{id}/approve`). `fulfilling`
+         *     and ended campaigns answer 409 `invalid_transition`.
          */
         post: operations["adminCancelCampaign"];
         delete?: never;
@@ -1433,7 +1434,7 @@ export interface paths {
         put?: never;
         /**
          * Approve, then carry out the action
-         * @description The approver must hold the finance role and must not be the requester (403 `same_admin`). A `manual_refund` is then carried out after commit: Moyasar voids the hold while the payment can still be voided, otherwise refunds it; a credit note and ledger entries follow when it lands, and the refund shows `failed` if Moyasar refuses. An approved `campaign_cancellation` holds the campaign (no new capture, no closing step, no purchase order change) until it is carried out: it withdraws refund requests of its captured joins still pending (their status becomes `cancelled`), refunds everything left on every captured join, voids the remaining holds and cancels the orders and the purchase order. Other request types cannot be decided yet (409 `invalid_transition`), nor can a request that is no longer pending, or a campaign cancellation whose campaign can no longer be cancelled.
+         * @description The approver must hold the finance role and must not be the requester (403 `same_admin`). A `manual_refund` is then carried out after commit: Moyasar voids the hold while the payment can still be voided, otherwise refunds it; a credit note and ledger entries follow when it lands, and the refund shows `failed` if Moyasar refuses. An approved `campaign_cancellation` holds the campaign (no new capture, no closing step, no purchase order change) until it is carried out: it withdraws refund requests of its captured joins still pending (the refund becomes `rejected` and its approval request `cancelled`, both with the reason `campaign_cancelled`), sends no capture that has not already reached Moyasar, refunds everything left on every captured join, voids the remaining holds and cancels the orders and the purchase order. Other request types cannot be decided yet (409 `invalid_transition`), nor can a request that is no longer pending, or a campaign cancellation whose campaign can no longer be cancelled.
          */
         post: operations["adminApproveRequest"];
         delete?: never;
