@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { api } from '@/api/endpoints';
@@ -18,7 +18,7 @@ import { Text } from '@/components/Text';
 import { useNow } from '@/components/useNow';
 import { clock, useFormat } from '@/i18n/useFormat';
 import { PaymentSheet, type PaymentSheetResult } from '@/payments';
-import { payView } from '@/lib/payment';
+import { PENDING_CHECK_MS, PENDING_CHECKS, payView } from '@/lib/payment';
 import { remainingUntil } from '@/lib/time';
 import { colors, space, type ColorName } from '@/theme/tokens';
 
@@ -46,11 +46,14 @@ function PayFlow({ participation }: { participation: Participation }) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.progress(next.campaign.id) });
   };
 
+  // `background` syncs (re-checks while the bank processes, or recording a payment the
+  // customer walked away from) neither show the confirming screen nor report errors.
   const sync = useMutation({
-    mutationFn: (args: { paymentId: string; providerPaymentId: string }) =>
+    mutationFn: (args: { paymentId: string; providerPaymentId: string; background?: boolean }) =>
       api.syncPayment(args.paymentId, args.providerPaymentId),
     onSuccess: store,
   });
+  const foreground = !sync.variables?.background;
 
   const retry = useMutation({
     mutationFn: () => api.retryParticipationPayment(participation.id),
@@ -64,17 +67,53 @@ function PayFlow({ participation }: { participation: Participation }) {
 
   const onSheetResult = (result: PaymentSheetResult) => {
     setSheetOpen(false);
-    if (result.kind === 'completed' && payment) {
+    if (!payment || !result.providerPaymentId) return;
+    if (result.kind === 'completed') {
       setProviderPaymentId(result.providerPaymentId);
       sync.mutate({ paymentId: payment.id, providerPaymentId: result.providerPaymentId });
+    } else {
+      // Closed after Moyasar made a payment (say, during 3-D Secure): record it, so a hold
+      // that went through shows up, and keep the form available otherwise.
+      sync.mutate({
+        paymentId: payment.id,
+        providerPaymentId: result.providerPaymentId,
+        background: true,
+      });
     }
   };
 
   const view = payView(participation, {
     now,
-    syncing: sync.isPending,
+    syncing: sync.isPending && foreground,
     returnedFromProvider: providerPaymentId !== null,
   });
+  const syncError = foreground ? sync.error : null;
+
+  const checkAgain = (background: boolean) => {
+    if (background && sync.isPending) return;
+    if (payment && providerPaymentId) {
+      sync.mutate({ paymentId: payment.id, providerPaymentId, background });
+    } else {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.participation(participation.id) });
+    }
+  };
+
+  // While the bank is still processing, look again every few seconds for a while; after that
+  // the customer can check by hand.
+  const checkAgainRef = useRef(checkAgain);
+  useEffect(() => {
+    checkAgainRef.current = checkAgain;
+  });
+  useEffect(() => {
+    if (view !== 'pending') return;
+    let checks = 0;
+    const timer = setInterval(() => {
+      checks += 1;
+      if (checks >= PENDING_CHECKS) clearInterval(timer);
+      checkAgainRef.current(true);
+    }, PENDING_CHECK_MS);
+    return () => clearInterval(timer);
+  }, [view]);
   const reservationLeft = remainingUntil(participation.reservation_expires_at, now);
   const rejection = payment?.rejection_reason
     ? t(`pay.rejection_${payment.rejection_reason}`)
@@ -124,7 +163,7 @@ function PayFlow({ participation }: { participation: Participation }) {
             message={t('pay.reservedFor', { time: clock(reservationLeft) })}
           />
           {summary}
-          {sync.error ? <Notice tone="danger" message={errorMessage(sync.error)} /> : null}
+          {syncError ? <Notice tone="danger" message={errorMessage(syncError)} /> : null}
         </>
       );
       footer = (
@@ -191,21 +230,15 @@ function PayFlow({ participation }: { participation: Participation }) {
             title={t('pay.pendingTitle')}
             body={t('pay.pendingBody')}
           />
-          {sync.error ? <Notice tone="danger" message={errorMessage(sync.error)} /> : null}
+          {syncError ? <Notice tone="danger" message={errorMessage(syncError)} /> : null}
         </>
       );
       footer = (
         <Button
+          testID="check-again"
           title={t('pay.checkAgain')}
-          onPress={() => {
-            if (payment && providerPaymentId) {
-              sync.mutate({ paymentId: payment.id, providerPaymentId });
-            } else {
-              void queryClient.invalidateQueries({
-                queryKey: queryKeys.participation(participation.id),
-              });
-            }
-          }}
+          loading={sync.isPending}
+          onPress={() => checkAgain(false)}
         />
       );
       break;

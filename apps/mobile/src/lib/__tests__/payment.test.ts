@@ -26,6 +26,14 @@ describe('payView', () => {
     expect(payView(participation('en', { payment: null }), base)).toBe('declined');
   });
 
+  it('offers another card when the API refused a hold it is about to void', () => {
+    const refused = participation('en', {
+      payment: payment({ status: 'authorized', rejection_reason: 'not_authorize_only' }),
+    });
+    expect(payView(refused, base)).toBe('declined');
+    expect(payView(refused, { ...base, returnedFromProvider: true })).toBe('declined');
+  });
+
   it('follows the participation status first', () => {
     expect(payView(authorizedParticipation('en'), base)).toBe('success');
     expect(payView(participation('en', { status: 'payment_failed' }), base)).toBe('failed');

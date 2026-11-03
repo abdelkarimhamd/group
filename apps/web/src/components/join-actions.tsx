@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cancelParticipation } from "@/actions/participations";
 import { useI18n } from "@/i18n/client";
-import type { Participation } from "@/lib/api/types";
+import type { Participation, Payment } from "@/lib/api/types";
 import { PaymentStep, RetryPayment } from "./payment-step";
 import { Alert, Button, ButtonLink, Spinner } from "./ui";
 
@@ -16,6 +16,8 @@ export function JoinActions({ participation }: { participation: Participation })
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [continuing, setContinuing] = useState(false);
+  // A new attempt started here: its form stays put when the page refreshes to it.
+  const [retried, setRetried] = useState<Payment | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
   const payment = participation.payment;
@@ -52,7 +54,9 @@ export function JoinActions({ participation }: { participation: Participation })
     <div className="space-y-4" data-testid="join-actions">
       {notice ? <Alert tone={notice.tone}>{notice.text}</Alert> : null}
 
-      {awaitingCard && payment ? (
+      {retried && participation.status === "pending_payment" ? (
+        <PaymentStep participation={participation} payment={retried} />
+      ) : awaitingCard && payment ? (
         continuing ? (
           <PaymentStep participation={participation} payment={payment} />
         ) : (
@@ -60,7 +64,9 @@ export function JoinActions({ participation }: { participation: Participation })
         )
       ) : null}
 
-      {canRetry ? <RetryPayment participation={participation} label={t.joins.retryPayment} /> : null}
+      {canRetry && !retried ? (
+        <RetryPayment participation={participation} label={t.joins.retryPayment} onStarted={setRetried} />
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {participation.order_id ? (

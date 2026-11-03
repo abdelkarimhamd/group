@@ -15,6 +15,31 @@ export function fakeProviderPaymentId(paymentId: string, outcome: "authorized" |
   return `fake_${outcome}_${paymentId}`;
 }
 
+const TAB_KEY = "gb_pending_payment";
+
+/**
+ * Remembers, in this tab only, which payment the open form is for, so the
+ * return page still knows it if Moyasar's 3-D Secure redirect loses our
+ * payment_id. Per tab, so two joins paid in two tabs never mix, and written
+ * at once, before any redirect. Storage may be unavailable; then the
+ * session's pending-payment cookie is the fallback.
+ */
+export function rememberPaymentInTab(paymentId: string, storage: Pick<Storage, "setItem"> | undefined = globalThis.sessionStorage): void {
+  try {
+    storage?.setItem(TAB_KEY, paymentId);
+  } catch {
+    // Private mode or blocked storage.
+  }
+}
+
+export function paymentInTab(storage: Pick<Storage, "getItem"> | undefined = globalThis.sessionStorage): string | null {
+  try {
+    return storage?.getItem(TAB_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 const ASCII = /^[\x20-\x7E]+$/;
 
 /**
@@ -108,5 +133,102 @@ export function moyasarFormOptions(
         if (timer) clearTimeout(timer);
       }
     },
+  };
+}
+
+/**
+ * The mobile app's WebView: how the payment page inside it talks back to
+ * the app. iOS WebViews with Apple Pay enabled get no injected script, so
+ * there the page uses WebKit's message handler directly.
+ */
+export type AppBridge = (message: string) => void;
+
+type BridgeWindow = {
+  ReactNativeWebView?: { postMessage?: unknown };
+  webkit?: { messageHandlers?: { ReactNativeWebView?: { postMessage?: unknown } } };
+};
+
+export function appBridge(win: unknown): AppBridge | null {
+  const w = (win ?? {}) as BridgeWindow;
+  const android = w.ReactNativeWebView;
+  if (android && typeof android.postMessage === "function") {
+    const post = android.postMessage as (message: string) => void;
+    return (message) => post.call(android, message);
+  }
+  const ios = w.webkit?.messageHandlers?.ReactNativeWebView;
+  if (ios && typeof ios.postMessage === "function") {
+    const post = ios.postMessage as (message: string) => void;
+    return (message) => post.call(ios, message);
+  }
+  return null;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PUBLISHABLE_KEY = /^pk_(test|live)_[A-Za-z0-9]+$/;
+const METHODS = new Set(["creditcard", "applepay"]);
+const NETWORKS = new Set(["mada", "visa", "mastercard"]);
+
+function isStringList(value: unknown, allowed: Set<string>): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((item) => typeof item === "string" && allowed.has(item))
+  );
+}
+
+/**
+ * Reads the checkout the mobile app put in the page's URL fragment (the API's
+ * MoyasarCheckout as JSON). The fragment never reaches a server. Anything
+ * that is not a checkout the API could have made is refused, and the payment
+ * must come back to this same site's /payments/return, so a crafted link
+ * cannot send the customer's payment or the redirect anywhere else.
+ */
+export function parseAppCheckout(hash: string, origin: string): MoyasarCheckout | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(decodeURIComponent(hash.replace(/^#/, "")));
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const c = value as Record<string, unknown>;
+  const metadata = c.metadata as Record<string, unknown> | null | undefined;
+  if (
+    typeof c.publishable_api_key !== "string" ||
+    !PUBLISHABLE_KEY.test(c.publishable_api_key) ||
+    typeof c.amount !== "number" ||
+    !Number.isSafeInteger(c.amount) ||
+    c.amount < 100 ||
+    c.currency !== "SAR" ||
+    typeof c.description !== "string" ||
+    c.manual !== true ||
+    !isStringList(c.methods, METHODS) ||
+    !isStringList(c.supported_networks, NETWORKS) ||
+    !metadata ||
+    typeof metadata !== "object" ||
+    typeof metadata.payment_id !== "string" ||
+    !UUID.test(metadata.payment_id) ||
+    typeof c.callback_url !== "string"
+  ) {
+    return null;
+  }
+  let callback: URL;
+  try {
+    callback = new URL(c.callback_url);
+  } catch {
+    return null;
+  }
+  if (callback.origin !== origin || callback.pathname !== "/payments/return") return null;
+  if (callback.searchParams.get("payment_id") !== metadata.payment_id) return null;
+  return {
+    publishable_api_key: c.publishable_api_key,
+    amount: c.amount,
+    currency: "SAR",
+    description: c.description.slice(0, 255),
+    callback_url: callback.toString(),
+    methods: c.methods as MoyasarCheckout["methods"],
+    supported_networks: c.supported_networks as MoyasarCheckout["supported_networks"],
+    manual: true,
+    metadata: { payment_id: metadata.payment_id },
   };
 }

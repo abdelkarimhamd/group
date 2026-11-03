@@ -47,6 +47,85 @@ test("Apple Pay's domain file is served as it is, never moved under a locale", a
   expect(response.status()).toBe(404);
 });
 
+test.describe("the app's payment page", () => {
+  const PAYMENT_ID = "0198f5a2-0000-7000-8000-0000000000aa";
+  const checkout = (origin: string) => ({
+    publishable_api_key: "pk_test_e2e",
+    amount: 13_800,
+    currency: "SAR",
+    description: "GB-2611-0007 x2",
+    callback_url: `${origin}/payments/return?payment_id=${PAYMENT_ID}`,
+    methods: ["creditcard", "applepay"],
+    supported_networks: ["mada", "visa", "mastercard"],
+    manual: true,
+    metadata: { payment_id: PAYMENT_ID },
+  });
+  const pageFor = (value: unknown) => `/ar/payments/app#${encodeURIComponent(JSON.stringify(value))}`;
+  // What react-native-webview gives the page on Android; messages reach the test through __toApp.
+  const asTheApp = () => {
+    const w = window as unknown as { __toApp?: (message: string) => void; ReactNativeWebView: unknown };
+    w.ReactNativeWebView = { postMessage: (message: string) => w.__toApp?.(message) };
+  };
+
+  test("opened in a browser, it shows no payment form", async ({ page, baseURL }) => {
+    await page.goto(pageFor(checkout(baseURL!)));
+    await expect(page.getByTestId("app-payment")).toHaveAttribute("data-state", "app-only");
+    await expect(page.getByText(ar.payment.appOnly)).toBeVisible();
+    await expect(page.getByTestId("moyasar-form")).toHaveCount(0);
+  });
+
+  test("inside the app, a checkout for another site is refused", async ({ page }) => {
+    await page.addInitScript(asTheApp);
+    await page.goto(pageFor(checkout("https://evil.example")));
+    await expect(page.getByTestId("app-payment")).toHaveAttribute("data-state", "invalid");
+    await expect(page.getByText(ar.payment.appInvalid)).toBeVisible();
+  });
+
+  test("inside the app, the card form asks Moyasar for a hold and tells the app its ID", async ({ page, baseURL }) => {
+    const toApp: unknown[] = [];
+    await page.exposeFunction("__toApp", (message: string) => toApp.push(JSON.parse(message)));
+    await page.addInitScript(asTheApp);
+    await page.route("https://applepay.cdn-apple.com/**", (route) => route.abort());
+    const threeDs = `${baseURL}/ar/how-it-works?three_ds=1`;
+    let sent: Record<string, unknown> | null = null;
+    await page.route("https://api.moyasar.com/v1/payments", async (route) => {
+      sent = route.request().postDataJSON();
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "pay_e2e",
+          status: "initiated",
+          amount: 13_800,
+          currency: "SAR",
+          source: { type: "creditcard", transaction_url: threeDs, message: null },
+        }),
+      });
+    });
+
+    await page.goto(pageFor(checkout(baseURL!)));
+    await expect(page.getByTestId("moyasar-form")).toHaveAttribute("data-state", "ready");
+    // The form formats as it goes, so type like a person would.
+    await page.locator('input[name="mysr-cc-name"]').pressSequentially("Test Customer");
+    await page.locator('input[name="mysr-cc-number"]').pressSequentially("4111111111111111");
+    await page.locator('input[name="mysr-cc-exp"]').pressSequentially("1230");
+    await page.locator('input[name="mysr-cc-csc"]').pressSequentially("123");
+    await page.locator('[data-testid="moyasar-form"] button[type="submit"]').click();
+
+    // The form follows Moyasar's 3-D Secure link only after the app has the ID.
+    await expect(page).toHaveURL(threeDs);
+    expect(toApp).toEqual([{ type: "moyasar_payment", id: "pay_e2e" }]);
+    expect(sent).toMatchObject({
+      publishable_api_key: "pk_test_e2e",
+      amount: 13_800,
+      currency: "SAR",
+      callback_url: `${baseURL}/payments/return?payment_id=${PAYMENT_ID}`,
+      metadata: { payment_id: PAYMENT_ID },
+      source: { type: "creditcard", manual: true },
+    });
+  });
+});
+
 test.describe("joining", () => {
   test("sign in, join with a fake card hold, then cancel", async ({ page }) => {
     await page.goto(`/ar/campaigns/${KETTLE}`);
@@ -95,6 +174,50 @@ test.describe("joining", () => {
     await page.getByRole("button", { name: ar.payment.tryAnotherCard }).click();
     await page.getByTestId("payment-step").getByRole("link", { name: ar.payment.fakeApprove }).click();
     await expect(page.getByTestId("payment-return")).toHaveAttribute("data-state", "success");
+  });
+
+  test("on the join's page, another card opens a form that stays open", async ({ page }) => {
+    await page.goto(`/ar/campaigns/${KETTLE}/join`);
+    await signIn(page, undefined, null);
+    await page.getByTestId("privacy-consent").check();
+    await page.getByTestId("confirm-join").click();
+    await page.getByTestId("payment-step").getByRole("link", { name: ar.payment.fakeDecline }).click();
+    await expect(page.getByTestId("payment-return")).toHaveAttribute("data-state", "failed");
+    await page.getByRole("link", { name: ar.payment.viewJoin }).click();
+
+    const actions = page.getByTestId("join-actions");
+    await actions.getByRole("button", { name: ar.joins.retryPayment }).click();
+    // Scoped: Next keeps the earlier join page, with its own form, hidden in the tree.
+    const step = actions.getByTestId("payment-step");
+    await expect(step).toBeVisible();
+    // Starting the attempt refreshes the page's data; the form must survive it.
+    await page.waitForLoadState("networkidle");
+    await expect(step).toBeVisible();
+    await expect(actions.getByRole("button", { name: ar.joins.continuePayment })).toHaveCount(0);
+    await step.getByRole("link", { name: ar.payment.fakeApprove }).click();
+    await expect(page.getByTestId("payment-return")).toHaveAttribute("data-state", "success");
+  });
+
+  test("the return page asks again when a check does not reach the site", async ({ page }) => {
+    await page.goto(`/ar/campaigns/${KETTLE}/join`);
+    await signIn(page, undefined, null);
+    await page.getByTestId("privacy-consent").check();
+    await page.getByTestId("confirm-join").click();
+
+    // The first check (a server action posted to the page) is lost on the way.
+    let dropped = 0;
+    await page.route(/\/payments\/return/, (route) => {
+      const request = route.request();
+      if (request.method() === "POST" && request.headers()["next-action"] && dropped === 0) {
+        dropped += 1;
+        return route.abort("internetdisconnected");
+      }
+      return route.continue();
+    });
+    await page.getByTestId("payment-step").getByRole("link", { name: ar.payment.fakeApprove }).click();
+
+    await expect(page.getByTestId("payment-return")).toHaveAttribute("data-state", "success", { timeout: 15_000 });
+    expect(dropped).toBe(1);
   });
 });
 

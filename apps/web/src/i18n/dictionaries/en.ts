@@ -262,6 +262,8 @@ export const en: Dictionary = {
     fakeDecline: "Decline the card",
     formLoading: "Loading the payment form…",
     formFailed: "The payment form didn't load. Check your connection and refresh the page.",
+    appOnly: "This page works only inside our app. Open the app to pay.",
+    appInvalid: "This payment link isn't valid. Close this page and try again from the app.",
     checking: "Checking your payment…",
     successTitle: "You're in",
     successBody:
@@ -613,5 +615,6 @@ export const en: Dictionary = {
     join: "Join",
     paymentReturn: "Checking your payment",
     welcome: "Welcome",
+    appPayment: "Pay",
   },
 };

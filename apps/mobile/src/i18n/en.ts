@@ -150,6 +150,7 @@ const en = {
     pendingTitle: 'Still processing',
     pendingBody: 'Your bank is still processing the payment. Check again in a moment.',
     checkAgain: 'Check again',
+    formFailed: "The payment form didn't load. Check your connection and try again.",
     rejection_declined: 'Your bank declined the card.',
     rejection_amount_mismatch: 'The amount did not match the hold.',
     rejection_currency_mismatch: 'The payment was not in Saudi riyals.',

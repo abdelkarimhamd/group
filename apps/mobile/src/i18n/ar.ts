@@ -162,6 +162,7 @@ const ar: Translations = {
     pendingTitle: 'ما زالت قيد المعالجة',
     pendingBody: 'ما زال البنك يعالج عملية الدفع. تحقّق مجددًا بعد لحظات.',
     checkAgain: 'تحقّق مجددًا',
+    formFailed: 'تعذّر تحميل نموذج الدفع. تحقق من اتصالك ثم حاول مجددًا.',
     rejection_declined: 'رفض البنك البطاقة.',
     rejection_amount_mismatch: 'المبلغ لا يطابق مبلغ الحجز.',
     rejection_currency_mismatch: 'عملة الدفع ليست الريال السعودي.',
