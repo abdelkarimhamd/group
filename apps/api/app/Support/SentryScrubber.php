@@ -23,8 +23,13 @@ final class SentryScrubber
 {
     private const PHONE = '/(?<!\d)(?:(?:\+|00)?9665\d{8}|05\d{8})(?!\d)/';
 
-    /** PostgreSQL's DETAIL and CONTEXT lines, which quote the data. */
-    private const DETAIL = '/\s*(DETAIL|CONTEXT):\s.*?(?=\s\(Connection:|\R|$)/s';
+    /**
+     * PostgreSQL's DETAIL and CONTEXT text, which quotes the data, up to
+     * Laravel's "(Connection: ...)" suffix or the end. Never stops at a line
+     * break: a quoted value can hold one, and in byte mode \R would also stop
+     * at 0x85, the second byte of the Arabic letter meem.
+     */
+    private const DETAIL = '/\s*\b(DETAIL|CONTEXT):\s.*?(?=\s\(Connection:|\z)/s';
 
     public static function event(Event $event, ?EventHint $hint = null): ?Event
     {
@@ -52,8 +57,19 @@ final class SentryScrubber
                 $span->setDescription(self::text(self::withoutQuery($span->getDescription())));
             }
 
+            // Span::setData() merges, so a key is blanked, never unset.
             $data = $span->getData();
-            unset($data['http.query']);
+
+            if (array_key_exists('http.query', $data)) {
+                $data['http.query'] = '';
+            }
+
+            foreach (['url', 'http.url'] as $key) {
+                if (is_string($data[$key] ?? null)) {
+                    $data[$key] = explode('?', $data[$key], 2)[0];
+                }
+            }
+
             $span->setData(self::scrub($data));
         }
 
@@ -63,7 +79,11 @@ final class SentryScrubber
     /** The masking used everywhere: no DETAIL or CONTEXT text, no mobile numbers. */
     public static function text(string $text): string
     {
-        $text = preg_replace(self::DETAIL, ' $1: [removed]', $text) ?? $text;
+        // If PCRE gives up on a very long message, drop everything after the
+        // first DETAIL or CONTEXT rather than send it as it is.
+        $text = preg_replace(self::DETAIL, ' $1: [removed]', $text)
+            ?? preg_replace('/\b(DETAIL|CONTEXT):.*/s', '$1: [removed]', $text)
+            ?? '[removed]';
 
         return preg_replace(self::PHONE, '[phone]', $text) ?? $text;
     }

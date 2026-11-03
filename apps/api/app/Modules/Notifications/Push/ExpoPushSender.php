@@ -191,8 +191,9 @@ final class ExpoPushSender implements PushSender
 
         foreach ($errors as $error) {
             $code = is_string($error['code'] ?? null) ? $error['code'] : '';
-            $message = is_string($error['message'] ?? null) ? mb_substr($error['message'], 0, 200) : '';
-            $message = preg_replace('/Expo(nent)?PushToken\[[^\]]*\]/', '[token]', $message) ?? '';
+            // Mask before shortening, so no token is cut in half and missed.
+            $message = is_string($error['message'] ?? null) ? $error['message'] : '';
+            $message = mb_substr(preg_replace('/Expo(nent)?PushToken\[[^\]]*(\]|$)/', '[token]', $message) ?? '', 0, 200);
             $parts[] = trim($code.($code !== '' && $message !== '' ? ': ' : '').$message);
         }
 

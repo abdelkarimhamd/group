@@ -121,6 +121,8 @@ class ExpoPushTest extends TestCase
     {
         Http::fake([self::URL => Http::response(['errors' => [
             ['code' => 'VALIDATION_ERROR', 'message' => '"ExponentPushToken[secret-1]" is not valid', 'details' => ['to' => ['ExponentPushToken[secret-1]']]],
+            // A token that runs past the 200 characters kept of a message.
+            ['code' => 'VALIDATION_ERROR', 'message' => str_repeat('x', 170).' "ExponentPushToken[secret-1-long-enough]" is not valid'],
             ['code' => 'PUSH_TOO_MANY_EXPERIENCE_IDS', 'message' => 'Separate by project.', 'details' => ['@a/one' => ['ExponentPushToken[secret-1]']]],
         ]], 400)]);
 

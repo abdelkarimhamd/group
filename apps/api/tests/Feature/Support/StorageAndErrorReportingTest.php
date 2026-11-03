@@ -20,6 +20,7 @@ use Sentry\Options;
 use Sentry\SentrySdk;
 use Sentry\Serializer\PayloadSerializer;
 use Sentry\State\HubInterface;
+use Sentry\Tracing\Span;
 use Sentry\Transport\Result;
 use Sentry\Transport\ResultStatus;
 use Sentry\Transport\TransportInterface;
@@ -152,6 +153,38 @@ class StorageAndErrorReportingTest extends TestCase
             'from [phone], [phone], [phone] and [phone]; order 1205123456789 kept',
             SentryScrubber::text('from +966512345678, 00966512345678, 966512345678 and 0512345678; order 1205123456789 kept'),
         );
+    }
+
+    #[Test]
+    public function a_failing_row_is_removed_whatever_it_holds(): void
+    {
+        // 0x85 (the second byte of م) and a new line inside a value must not
+        // end the removal early.
+        $message = "SQLSTATE[23514]: Check violation: 7 ERROR:  new row for relation \"addresses\" violates check constraint \"addresses_coordinates_check\"\n"
+            ."DETAIL:  Failing row contains (12, 7, محمد العتيبي, مكة المكرمة, شارع\nالملك فهد, 24.1, null).\n"
+            .'CONTEXT:  SQL function "x" (Connection: pgsql, SQL: insert into "addresses" values (?, ?))';
+
+        $this->assertSame(
+            'SQLSTATE[23514]: Check violation: 7 ERROR:  new row for relation "addresses" violates check constraint "addresses_coordinates_check" DETAIL: [removed] (Connection: pgsql, SQL: insert into "addresses" values (?, ?))',
+            SentryScrubber::text($message),
+        );
+        $this->assertSame('ERROR: x DETAIL: [removed]', SentryScrubber::text("ERROR: x\nDETAIL:  Key (name)=(محمد) already exists."));
+    }
+
+    #[Test]
+    public function outgoing_calls_in_traces_keep_no_query_string(): void
+    {
+        $span = new Span;
+        $span->setDescription('GET https://api.example.sa/v1/lookup?mobile=0512345678');
+        $span->setData(['url' => 'https://api.example.sa/v1/lookup?mobile=0512345678', 'http.query' => 'mobile=0512345678', 'http.request.method' => 'GET']);
+        $event = Event::createTransaction()->setSpans([$span]);
+        $event->setRequest(['url' => 'https://api.example.sa/api/v1/admin/orders?search=0512345678', 'query_string' => 'search=0512345678']);
+
+        SentryScrubber::transaction($event);
+
+        $this->assertSame('GET https://api.example.sa/v1/lookup', $span->getDescription());
+        $this->assertSame(['url' => 'https://api.example.sa/v1/lookup', 'http.query' => '', 'http.request.method' => 'GET'], $span->getData());
+        $this->assertSame(['url' => 'https://api.example.sa/api/v1/admin/orders'], $event->getRequest());
     }
 
     /**
