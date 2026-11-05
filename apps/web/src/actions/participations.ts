@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { isLocale, type Locale } from "@/i18n/config";
-import { createApi, unwrap } from "@/lib/api/server";
+import { requestApi, unwrap } from "@/lib/api/server";
 import { toActionFailure, type ActionFailure } from "@/lib/api/errors";
 import type { Participation, Payment } from "@/lib/api/types";
 import { getPendingPayment, getToken, setPendingPayment } from "@/lib/session";
@@ -10,7 +10,7 @@ import { getPendingPayment, getToken, setPendingPayment } from "@/lib/session";
 async function authed(localeValue: string) {
   const locale: Locale = isLocale(localeValue) ? localeValue : "ar";
   const token = await getToken();
-  return { locale, api: token ? createApi(locale, token) : null };
+  return { locale, api: token ? await requestApi(locale, token) : null };
 }
 
 const signedOut: ActionFailure = { ok: false, status: 401, code: "unauthenticated" };

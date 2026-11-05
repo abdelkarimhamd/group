@@ -20,9 +20,11 @@ on:
       - "deploy/api/**"
       - ".github/workflows/images.yml"
 
+# A newer push to a pull request replaces its run. On main every commit's
+# images are finished, so any SHA can be deployed.
 concurrency:
-  group: images-${{ github.ref }}
-  cancel-in-progress: true
+  group: images-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pr' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -51,8 +53,10 @@ jobs:
     env:
       # The website's public settings are compiled in: set them as repository
       # variables (Settings, Secrets and variables, Actions, Variables). Until
-      # NEXT_PUBLIC_SITE_URL is set, the web image is built but not pushed.
-      PUSH: ${{ github.event_name == 'push' && (matrix.image != 'web' || vars.NEXT_PUBLIC_SITE_URL != '') }}
+      # NEXT_PUBLIC_SITE_URL and, in moyasar mode (the default),
+      # NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY are set, the web image is built
+      # but not pushed: without the key every card form would be refused.
+      PUSH: ${{ github.event_name == 'push' && (matrix.image != 'web' || (vars.NEXT_PUBLIC_SITE_URL != '' && (vars.NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY != '' || (vars.NEXT_PUBLIC_PAYMENTS_MODE || 'moyasar') != 'moyasar'))) }}
     steps:
       - uses: actions/checkout@v4
 

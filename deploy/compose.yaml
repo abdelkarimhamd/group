@@ -78,8 +78,8 @@ services:
     restart: unless-stopped
     logging: *logging
 
-  # Only for a single-server setup without managed services:
-  #   docker compose --profile local-data up -d
+  # Only for a single-server setup without managed services: put
+  # COMPOSE_PROFILES=local-data in deploy/.env so every command includes them.
   # Back the volume up (docs/runbook.md, Backups).
   postgres:
     image: postgres:16
@@ -89,8 +89,10 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+    # Over TCP: while the first start runs roles.sql, PostgreSQL listens only
+    # on its socket, so this stays unhealthy until the roles exist.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       retries: 10
     logging: *logging

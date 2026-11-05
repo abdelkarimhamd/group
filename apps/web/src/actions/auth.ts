@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isLocale, type Locale } from "@/i18n/config";
-import { createApi, unwrap } from "@/lib/api/server";
+import { requestApi, unwrap } from "@/lib/api/server";
 import { toActionFailure } from "@/lib/api/errors";
 import { normalizeSaudiMobile, digitsOnly } from "@/lib/phone";
 import { deviceNameFrom } from "@/lib/device";
@@ -19,7 +19,7 @@ export async function requestOtp(input: { locale: string; phone: string }) {
   const phone = normalizeSaudiMobile(input.phone);
   if (!phone) return { ok: false as const, status: 422, code: "phone_invalid" };
   try {
-    const { data } = await unwrap(createApi(locale).POST("/auth/otp", { body: { phone } }));
+    const { data } = await unwrap((await requestApi(locale)).POST("/auth/otp", { body: { phone } }));
     return { ok: true as const, phone, challenge: data };
   } catch (error) {
     return toActionFailure(error);
@@ -34,7 +34,7 @@ export async function verifyOtp(input: { locale: string; challengeId: string; co
   try {
     const userAgent = (await headers()).get("user-agent");
     const { data } = await unwrap(
-      createApi(locale).POST("/auth/otp/verify", {
+      (await requestApi(locale)).POST("/auth/otp/verify", {
         body: { challenge_id: input.challengeId, code, device_name: deviceNameFrom(userAgent) },
       }),
     );
@@ -50,7 +50,7 @@ export async function signOut(formData: FormData) {
   const token = await getToken();
   if (token) {
     try {
-      await unwrap(createApi(locale, token).POST("/auth/logout"));
+      await unwrap((await requestApi(locale, token)).POST("/auth/logout"));
     } catch {
       // The token may already be gone; the cookie is cleared either way.
     }

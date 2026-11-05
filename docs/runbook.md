@@ -14,7 +14,7 @@ How the system is deployed, released and looked after. The architecture is in `d
 | `realtime` | `groupbuy-realtime` | Laravel Reverb for live campaign progress (`apps/realtime/README.md`). |
 | `web` | `groupbuy-web` | The customer website (Next.js) on port 3000. |
 | `admin` | `groupbuy-admin` | The admin portal, static files behind nginx on port 8080. |
-| `postgres`, `redis` | optional | Only with `--profile local-data`. Managed PostgreSQL 16 and Redis 7 are better. |
+| `postgres`, `redis` | optional | Only with the `local-data` profile (First deploy, step 4). Managed PostgreSQL 16 and Redis 7 are better. |
 
 Public hosts (`deploy/env/edge.env`):
 
@@ -28,7 +28,7 @@ Redis holds the queue, cache, sessions and scheduler locks. Run it with persiste
 
 `.github/workflows/images.yml` builds the four images on every pull request that touches them. On `main` it pushes them to `ghcr.io/<owner>/groupbuy-<name>`, tagged with the commit SHA and `main`. Deploy a SHA, never `main`, so a release can be repeated and rolled back.
 
-The website's `NEXT_PUBLIC_*` settings are compiled into its image. Set them as repository variables under Settings, Secrets and variables, Actions, Variables: `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY`, `NEXT_PUBLIC_REVERB_APP_KEY`, `NEXT_PUBLIC_REVERB_HOST`, and optionally `NEXT_PUBLIC_PAYMENTS_MODE`, `NEXT_PUBLIC_APPLE_PAY_LABEL`, `NEXT_PUBLIC_REVERB_PORT` and `NEXT_PUBLIC_REVERB_SCHEME`. Until `NEXT_PUBLIC_SITE_URL` is set, the web image is built but not pushed. A staging site needs its own build with its own values.
+The website's `NEXT_PUBLIC_*` settings are compiled into its image. Set them as repository variables under Settings, Secrets and variables, Actions, Variables: `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY`, `NEXT_PUBLIC_REVERB_APP_KEY`, `NEXT_PUBLIC_REVERB_HOST`, and optionally `NEXT_PUBLIC_PAYMENTS_MODE`, `NEXT_PUBLIC_APPLE_PAY_LABEL`, `NEXT_PUBLIC_REVERB_PORT` and `NEXT_PUBLIC_REVERB_SCHEME`. Until `NEXT_PUBLIC_SITE_URL` and `NEXT_PUBLIC_MOYASAR_PUBLISHABLE_KEY` are set, the web image is built but not pushed, because without the key every card form is refused. A staging site needs its own build with its own values.
 
 To build by hand from the repository root:
 
@@ -49,7 +49,7 @@ docker build -t groupbuy-web --build-arg NEXT_PUBLIC_SITE_URL=https://example.sa
      psql "postgresql://admin@db-host:5432/groupbuy?sslmode=require" -f deploy/postgres/roles.sql
    ```
 
-   `groupbuy_owner` owns the schema and runs migrations. `groupbuy_app` is what the API connects as. It may read and write ordinary tables, but on history tables (audit log, status history, ledger, settlements, consents, shipment and campaign events) it may only `SELECT` and `INSERT`. It may not change the schema. With `--profile local-data` the postgres container runs the same file on its first start.
+   `groupbuy_owner` owns the schema and runs migrations. `groupbuy_app` is what the API connects as. It may read and write ordinary tables, but on history tables (audit log, status history, ledger, settlements, consents, shipment and campaign events) it may only `SELECT` and `INSERT`. It may not change the schema. With the bundled database (the `local-data` profile), the postgres container runs the same file on its first start, with the passwords from `postgres.env`.
 3. **Settings.** In `deploy/env/`, copy each `*.example` to `*.env` and fill it in. Never commit them; `deploy/env/.gitignore` keeps them out.
    - `api.env`: the app role's database password, `APP_KEY` (`docker run --rm -e ROLE=cli groupbuy-api php artisan key:generate --show`), and every line marked NEEDED.
    - `api-owner.env`: the owner's password.
@@ -57,12 +57,13 @@ docker build -t groupbuy-web --build-arg NEXT_PUBLIC_SITE_URL=https://example.sa
    - `edge.env`, `web.env`.
 
    Keep `APP_KEY` safe and never change it: it encrypts the ZATCA unit's private key and secrets in the database.
-4. **Migrate and start:**
+4. **Migrate and start.** With the bundled PostgreSQL and Redis instead of managed ones, first put `COMPOSE_PROFILES=local-data` in `deploy/.env`, so that every compose command includes them, and start them before migrating:
 
    ```bash
    cd deploy
    export TAG=<commit sha>
    docker compose pull
+   docker compose up -d --wait postgres redis    # only with the local-data profile
    docker compose run --rm migrate
    docker compose up -d
    docker compose exec api php artisan admin:create owner@example.sa --role=super_admin
@@ -97,11 +98,21 @@ Workers finish the job they hold before stopping. `stop_grace_period` is 60 seco
 
 **Rollback.** Deploy the previous SHA the same way. Roll back a migration only if it is safe to; otherwise fix forward.
 
+## Changing a setting
+
+A container reads `env/*.env` when it is created, and the API caches its configuration when it starts. After editing a file, run `docker compose up -d`: it recreates every container whose settings changed. `docker compose restart` and `docker compose exec` keep the old values.
+
+To run a command once with different settings, without changing the running containers, start a one-off container. `ROLE=cli` runs the command without the cached configuration:
+
+```bash
+docker compose run --rm -e ROLE=cli -e SOME_SETTING=value api php artisan <command>
+```
+
 ## Scheduled jobs and alerts
 
 The scheduler runs everything in `apps/api/routes/console.php`. A failing command exits non-zero and logs an error. The ones that move money or state are `onOneServer` and `withoutOverlapping`.
 
-Every situation that needs a person is logged at `critical`. To get them in Slack, set `LOG_SLACK_WEBHOOK_URL` and `LOG_STACK=stderr,slack` in `api.env`; otherwise alert on `"level_name":"CRITICAL"` in your log platform. With `SENTRY_LARAVEL_DSN` set, unexpected exceptions go to Sentry.
+Every situation that needs a person is logged at `critical`. To get them in Slack, set `LOG_SLACK_WEBHOOK_URL` and `LOG_STACK=stderr,slack` in `api.env`. Otherwise alert on `"level_name":"CRITICAL"` in your log platform: `api.env` writes one JSON object per log line (`LOG_STDERR_FORMATTER`). With `SENTRY_LARAVEL_DSN` set, unexpected exceptions go to Sentry.
 
 | Log | What to do |
 | --- | --- |
@@ -117,22 +128,28 @@ Every situation that needs a person is logged at `critical`. To get them in Slac
 
 Off until `ZATCA_ENABLED=true`. Until then, invoices carry the phase 1 QR code.
 
-1. Set the seller's CR number and national address in parts (`GROUPBUY_SELLER_*`), and the EGS details (`ZATCA_ORGANIZATION_UNIT`, `ZATCA_LOCATION`, `ZATCA_INDUSTRY`).
-2. Rehearse onboarding:
-   - With `ZATCA_ENV=developer-portal`: `docker compose exec api php artisan zatca:onboard --otp=123456` (any OTP works there).
-   - Then with `ZATCA_ENV=simulation` and an OTP from the simulation portal.
-   - Read the compliance checks' warnings: one sample line has VAT a halala off its net × 15%, and its result says whether ZATCA accepts that split.
-3. In production, set `ZATCA_ENV=core`, get an OTP from the Fatoora portal and run `php artisan zatca:onboard --otp=<OTP>`. If ZATCA refuses it because the seller's details or EGS settings were wrong, fix them and run it again with `--fresh` and a new OTP.
-4. Set `ZATCA_ENABLED=true` and restart. In production nothing is captured while phase 2 is on without an active unit for `core`.
+1. Set the seller's CR number and national address in parts (`GROUPBUY_SELLER_*`), and the EGS details (`ZATCA_ORGANIZATION_UNIT`, `ZATCA_LOCATION`, `ZATCA_INDUSTRY`), in `api.env`. Then run `docker compose up -d` (Changing a setting, above).
+2. Rehearse onboarding in one-off containers, which leave `ZATCA_ENV=core` in `api.env` untouched:
+
+   ```bash
+   # ZATCA's developer portal: any OTP works.
+   docker compose run --rm -e ROLE=cli -e ZATCA_ENV=developer-portal api php artisan zatca:onboard --otp=123456
+   # The simulation portal, with an OTP from it.
+   docker compose run --rm -e ROLE=cli -e ZATCA_ENV=simulation api php artisan zatca:onboard --otp=<OTP>
+   ```
+
+   Read the compliance checks' warnings: one sample line has VAT a halala off its net × 15%, and its result says whether ZATCA accepts that split.
+3. For production, get an OTP from the Fatoora portal and run `docker compose exec api php artisan zatca:onboard --otp=<OTP>` (`ZATCA_ENV=core`). If ZATCA refuses it because the seller's details or EGS settings were wrong, fix them in `api.env`, run `docker compose up -d`, and onboard again with `--fresh` and a new OTP.
+4. Set `ZATCA_ENABLED=true` in `api.env` and run `docker compose up -d`. In production nothing is captured while phase 2 is on without an active unit for `core`.
 5. Before the certificate expires (warning 30 days ahead), onboard again with a new OTP. The new unit takes over and the old one is retired.
 
-A rejected invoice is resent with `php artisan zatca:report --resend=INV-…` once its cause is fixed.
+A rejected invoice is resent with `docker compose exec api php artisan zatca:report --resend=INV-…` once its cause is fixed.
 
 ## Backups
 
 - **PostgreSQL** is the only state that cannot be rebuilt.
   - On a managed service: daily snapshots and point-in-time recovery for at least 14 days.
-  - With `--profile local-data`: `docker compose exec postgres pg_dump -U postgres -Fc groupbuy > groupbuy-$(date +%F).dump` every night, copied off the server. Test a restore every month.
+  - With the `local-data` profile: `docker compose exec postgres pg_dump -U postgres -Fc groupbuy > groupbuy-$(date +%F).dump` every night, copied off the server. Test a restore every month.
 - **Documents bucket** (invoices, supplier papers, receipt photos): turn on versioning. Invoices must be kept for the period ZATCA requires.
 - **Redis** can be lost. Queued jobs are re-queued by the sweeps (webhooks, approved refunds, PDFs, ZATCA, notifications), because PostgreSQL remembers what is still owed.
 - Keep `deploy/env/*.env` (above all `APP_KEY`) in a password manager. A database backup without its `APP_KEY` cannot sign e-invoices.
@@ -152,6 +169,7 @@ The app's settings come from EAS environment variables (expo.dev, project, Envir
 - `EXPO_PUBLIC_PRIVACY_POLICY_URL`.
 - `EXPO_PUBLIC_REVERB_APP_KEY`, `EXPO_PUBLIC_REVERB_HOST`, `EXPO_PUBLIC_REVERB_PORT`, `EXPO_PUBLIC_REVERB_SCHEME`.
 - The file variable `GOOGLE_SERVICES_JSON`, for Android push.
+- `EAS_PROJECT_ID` and `EXPO_OWNER`, once `eas init` has made the project. EAS evaluates `app.config.ts` again on its build servers, and without them there the app has no project ID and silently skips push registration.
 
 One-time setup:
 
@@ -159,7 +177,7 @@ One-time setup:
 cd apps/mobile
 npx eas-cli login
 npx eas-cli init                       # creates the EAS project; note its ID
-export EAS_PROJECT_ID=<id> EXPO_OWNER=<expo account>
+export EAS_PROJECT_ID=<id> EXPO_OWNER=<expo account>   # here, and as EAS variables (above)
 npx eas-cli credentials                # signing keys; EAS can make and keep them
 ```
 

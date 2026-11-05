@@ -1,5 +1,6 @@
 import "server-only";
 import createClient, { type Client } from "openapi-fetch";
+import { headers } from "next/headers";
 import { redirect, notFound, unstable_rethrow } from "next/navigation";
 import type { paths } from "./schema";
 import { ApiError, parseRetryAfter } from "./errors";
@@ -32,10 +33,11 @@ async function sendBuffered(request: Request): Promise<Response> {
 
 /**
  * A typed client for the API contract. Every call carries the page language,
- * and the customer's token when `token` is given. Responses are never cached:
- * quantities, prices and payment states change by the second.
+ * the customer's token when `token` is given, and the customer's address when
+ * `forwardedFor` is. Responses are never cached: quantities, prices and
+ * payment states change by the second.
  */
-export function createApi(locale: Locale, token?: string): ApiClient {
+export function createApi(locale: Locale, token?: string, forwardedFor?: string): ApiClient {
   const client = createClient<paths>({
     baseUrl: apiBaseUrl(),
     cache: "no-store",
@@ -44,15 +46,29 @@ export function createApi(locale: Locale, token?: string): ApiClient {
       Accept: "application/json",
       "Accept-Language": locale,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(forwardedFor ? { "X-Forwarded-For": forwardedFor } : {}),
     },
   });
   return client;
 }
 
+/**
+ * The API client for work done on a customer's behalf: server actions and
+ * pages behind sign-in. It passes on the customer's address as the edge proxy
+ * wrote it, because the website calls the API from its own server and the API
+ * limits sign-in attempts per address and records it in audit logs. Without
+ * it, every customer would share the web server's address and one limit.
+ * The API believes the header only from the private network (TRUSTED_PROXIES).
+ */
+export async function requestApi(locale: Locale, token?: string): Promise<ApiClient> {
+  const forwardedFor = (await headers()).get("x-forwarded-for") ?? undefined;
+  return createApi(locale, token, forwardedFor);
+}
+
 /** The API client with the signed-in customer's token, if there is one. */
 export async function sessionApi(locale: Locale): Promise<{ api: ApiClient; token?: string }> {
   const token = await getToken();
-  return { api: createApi(locale, token), token };
+  return { api: await requestApi(locale, token), token };
 }
 
 type FetchResult<T> = { data?: T; error?: unknown; response: Response };

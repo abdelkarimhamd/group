@@ -91,7 +91,7 @@ CI runs all of them on every pull request that touches `apps/mobile` or the cont
 
 ## Store builds
 
-`eas.json` has a `preview` profile (internal builds for testers, an APK on Android) and a `production` profile (store builds, version numbers kept by EAS). Each reads its `EXPO_PUBLIC_*` settings and the `GOOGLE_SERVICES_JSON` file from the EAS environment of the same name. `app.config.ts` takes the EAS project from `EAS_PROJECT_ID` and the Expo account from `EXPO_OWNER`. The steps, from `eas init` to store submission, are in [docs/runbook.md](../../docs/runbook.md#mobile-app-builds).
+`eas.json` has a `preview` profile (internal builds for testers, an APK on Android) and a `production` profile (store builds, version numbers kept by EAS). Each reads its `EXPO_PUBLIC_*` settings and the `GOOGLE_SERVICES_JSON` file from the EAS environment of the same name. `app.config.ts` takes the EAS project from `EAS_PROJECT_ID` and the Expo account from `EXPO_OWNER`. Set both in your shell and as variables in both EAS environments: EAS evaluates the config again on its build servers, and a build without the project ID skips push registration. The steps, from `eas init` to store submission, are in [docs/runbook.md](../../docs/runbook.md#mobile-app-builds).
 
 ## Not done yet
 

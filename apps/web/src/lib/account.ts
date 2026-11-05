@@ -1,6 +1,6 @@
 import "server-only";
 import type { Locale } from "@/i18n/config";
-import { createApi, handlePageError, requireToken, unwrap, type ApiClient } from "@/lib/api/server";
+import { handlePageError, requestApi, requireToken, unwrap, type ApiClient } from "@/lib/api/server";
 
 // Data loading for pages behind sign-in. A missing session goes to sign-in
 // before any request; an expired one comes back as 401 and goes there too,
@@ -8,7 +8,7 @@ import { createApi, handlePageError, requireToken, unwrap, type ApiClient } from
 
 export async function accountApi(locale: Locale, nextPath: string): Promise<ApiClient> {
   const token = await requireToken(locale, nextPath);
-  return createApi(locale, token);
+  return requestApi(locale, token);
 }
 
 export async function loadOrRedirect<T>(
