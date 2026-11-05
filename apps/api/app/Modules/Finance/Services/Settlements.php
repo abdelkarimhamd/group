@@ -36,13 +36,17 @@ final class Settlements
     ) {}
 
     /**
-     * Import the settlements not seen yet. Moyasar lists newest first, so
-     * reading stops at the first page with nothing new (or after
-     * $maxPages, for the very first import).
+     * Import the settlements not seen yet. Every page of Moyasar's list is
+     * read (up to $maxPages), not only until a page with nothing new: a
+     * run that stopped half way, or a settlement that could not be read,
+     * would otherwise hide older ones behind a page of known settlements.
+     * A known settlement costs nothing beyond its list page. One that
+     * cannot be imported is logged and skipped, so it never holds back the
+     * others, and counted in `failed`.
      *
-     * @return array{imported: int, seen: int}
+     * @return array{imported: int, seen: int, failed: int}
      *
-     * @throws GatewayException when Moyasar cannot be reached
+     * @throws GatewayException when Moyasar's list cannot be read
      */
     public function import(int $maxPages = 50): array
     {
@@ -52,6 +56,7 @@ final class Settlements
 
         $imported = 0;
         $seen = 0;
+        $failed = 0;
         $page = 1;
 
         while ($page !== null && $page <= $maxPages) {
@@ -60,17 +65,29 @@ final class Settlements
                 ->whereIn('provider_settlement_id', array_map(fn (ProviderSettlement $s) => $s->id, $list['items']))
                 ->pluck('provider_settlement_id')
                 ->all();
-            $new = array_values(array_filter($list['items'], fn (ProviderSettlement $s) => ! in_array($s->id, $known, true)));
             $seen += count($list['items']);
 
-            foreach ($new as $settlement) {
-                $imported += $this->importOne($settlement) ? 1 : 0;
+            foreach ($list['items'] as $settlement) {
+                if (in_array($settlement->id, $known, true)) {
+                    continue;
+                }
+
+                try {
+                    $imported += $this->importOne($settlement) ? 1 : 0;
+                } catch (GatewayException $e) {
+                    $failed++;
+                    Log::error('payments.settlement.import_failed', ['settlement' => $settlement->id, 'error' => $e->getMessage()]);
+                }
             }
 
-            $page = $new === [] ? null : $list['next_page'];
+            $page = $list['next_page'];
         }
 
-        return ['imported' => $imported, 'seen' => $seen];
+        if ($page !== null) {
+            Log::warning('payments.settlements.page_limit', ['pages' => $maxPages]);
+        }
+
+        return ['imported' => $imported, 'seen' => $seen, 'failed' => $failed];
     }
 
     /**

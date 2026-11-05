@@ -4,7600 +4,7445 @@
  */
 
 export interface paths {
-  '/health': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Readiness check
-     * @description 200 when PostgreSQL and Redis both respond, 503 otherwise.
-     */
-    get: operations['getHealth'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/auth/otp': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Send a sign-in code by SMS
-     * @description Starts sign-in or sign-up. Sends a 6-digit code that expires after
-     *     5 minutes. One code per number per minute, 5 per number per hour and
-     *     20 per IP per hour; a 429 says when to retry. An earlier code stays
-     *     valid until it expires, so a slow SMS still works after a resend.
-     */
-    post: operations['requestOtp'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/auth/otp/verify': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Exchange the SMS code for an access token
-     * @description Creates the account on first sign-in. Send the token as
-     *     `Authorization: Bearer <token>`. After 5 wrong codes the challenge is
-     *     spent and a new code is needed.
-     */
-    post: operations['verifyOtp'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/auth/logout': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Revoke the current token
-     * @description Other devices stay signed in. Tokens otherwise last 90 days.
-     */
-    post: operations['logout'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/me': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** The signed-in customer */
-    get: operations['getMe'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /** Update name, email or language */
-    patch: operations['updateMe'];
-    trace?: never;
-  };
-  '/me/privacy-consent': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Record consent to the privacy policy (PDPL)
-     * @description Required before the first join. Stores the policy version and the time.
-     *     Call again when `User.privacy_consent.policy_version` is older than
-     *     `current_privacy_policy_version`. Accepting the same version twice is
-     *     harmless.
-     */
-    post: operations['acceptPrivacyPolicy'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/me/addresses': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Saved delivery addresses */
-    get: operations['listAddresses'];
-    put?: never;
-    /**
-     * Add a delivery address
-     * @description The first address becomes the default. Sending `is_default` true makes the new address the default instead of the old one. Up to 20 addresses.
-     */
-    post: operations['createAddress'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/me/addresses/{address_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        address_id: components['parameters']['AddressId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    /**
-     * Remove a delivery address
-     * @description If it was the default, the most recently added remaining address becomes the default.
-     */
-    delete: operations['deleteAddress'];
-    options?: never;
-    head?: never;
-    /**
-     * Change a delivery address
-     * @description Send the whole address: optional fields left out are cleared.
-     *     `is_default: true` makes this the default address. The default only
-     *     moves to another address, so `false` (or leaving it out) never unsets
-     *     it. Orders keep a copy of the address they were shipped to, so editing
-     *     never changes past orders.
-     */
-    patch: operations['updateAddress'];
-    trace?: never;
-  };
-  '/me/device-tokens': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Register a push token
-     * @description Mobile app only. Send the Expo push token (`ExponentPushToken[...]`,
-     *     from expo-notifications getExpoPushTokenAsync): the API sends through
-     *     Expo's push service, and other kinds of token get no messages. Call it
-     *     after sign-in and whenever the token changes. Registering the same token again just refreshes it; a
-     *     token registered from another account moves to that account. Signing
-     *     out (`POST /auth/logout`) removes it, so the device stops getting the
-     *     account's messages. The customer's 10 most recently seen devices are
-     *     kept. Push messages carry `notification_id` and `template` in their data.
-     */
-    post: operations['registerDeviceToken'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/categories': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Browsing categories */
-    get: operations['listCategories'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/campaigns': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Campaigns customers can see
-     * @description `open` (the default) lists `active` campaigns, soonest deadline first.
-     *     `upcoming` lists `scheduled` ones. `ended` lists everything after
-     *     `active`, most recent first. Drafts and campaigns awaiting approval
-     *     are never listed.
-     */
-    get: operations['listCampaigns'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/campaigns/{campaign_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    /** Campaign page */
-    get: operations['getCampaign'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/campaigns/{campaign_id}/progress': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    /**
-     * Live progress for polling
-     * @description Same payload as the Reverb `progress.updated` event. Cached for at most 2 seconds.
-     */
-    get: operations['getCampaignProgress'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/campaigns/{campaign_id}/participations': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Join a campaign
-     * @description Reserves the units for 15 minutes and fixes the hold price, then
-     *     returns a payment whose `checkout` opens the Moyasar form.
-     *
-     *     The server computes every amount. `shown_unit_price_halalas` is only
-     *     compared with the current price: if they differ the API answers 409
-     *     `price_changed` with the new price, and the customer confirms again.
-     *
-     *     Retrying with the same `client_request_id` returns the original
-     *     participation, again with 201, instead of joining twice.
-     */
-    post: operations['joinCampaign'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/me/participations': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * My joins
-     * @description Newest first. Includes joins whose payment failed, so the customer can see what happened.
-     */
-    get: operations['listMyParticipations'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/me/participations/{participation_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        participation_id: components['parameters']['ParticipationId'];
-      };
-      cookie?: never;
-    };
-    /** One join */
-    get: operations['getMyParticipation'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/me/participations/{participation_id}/cancel': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        participation_id: components['parameters']['ParticipationId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Cancel a join before close
-     * @description Allowed while `can_cancel` is true: the campaign is `active`, its
-     *     deadline has not passed and the deal is not yet confirmed (proposed
-     *     rule, open question Q16). The hold is released and the units go back
-     *     on sale.
-     */
-    post: operations['cancelMyParticipation'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/me/participations/{participation_id}/payments': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        participation_id: components['parameters']['ParticipationId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Try another card after a decline
-     * @description Starts a new payment attempt for the same reserved units and hold
-     *     amount. Allowed while the participation is `pending_payment`, its
-     *     reservation has not expired, and the last attempt failed or its hold
-     *     was refused (`rejection_reason` set; that hold is voided). The
-     *     reservation keeps its original expiry.
-     */
-    post: operations['retryParticipationPayment'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/payments/{payment_id}/sync': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        payment_id: components['parameters']['PaymentId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Check a payment with Moyasar after the form
-     * @description Call as soon as Moyasar's form reports the payment it created (before
-     *     any 3-D Secure step: the payment is then still `initiated`, and the
-     *     participation stays `pending_payment` while its Moyasar ID is kept, so
-     *     the hold is found even if the customer never comes back), and again
-     *     when Moyasar redirects back, with the Moyasar payment ID from the
-     *     redirect. The API fetches the payment from Moyasar and accepts the hold
-     *     only if it is `authorized` for exactly the hold amount in SAR, by an
-     *     allowed method, while the reservation is valid. Anything else is voided
-     *     and `rejection_reason` says why. Safe to call more than once.
-     *
-     *     A hold that arrives after the join can no longer count it (the
-     *     reservation expired or the campaign moved past settling its joins)
-     *     is voided too. If the form was submitted twice and both holds went
-     *     through, the second is recorded with `duplicate_hold` and voided; it
-     *     never replaces the participation's `payment`.
-     */
-    post: operations['syncPayment'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/me/orders': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * My orders
-     * @description An order exists once its hold is captured. Newest first.
-     */
-    get: operations['listMyOrders'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/me/orders/{order_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    /** One order with tracking and invoices */
-    get: operations['getMyOrder'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/webhooks/moyasar': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Moyasar payment events
-     * @description Called by Moyasar, not by clients. The event's `secret_token` must
-     *     match the token set on the webhook in the Moyasar dashboard (open
-     *     question Q5). Every event is stored, with the token redacted; a
-     *     verified event is processed once per event ID and resends are
-     *     ignored, unless the stored event was never processed, which queues
-     *     it again. The answer is immediate: a queued job fetches the payment
-     *     from Moyasar and applies it exactly as the sync endpoint does, never
-     *     trusting the event body. Bodies over 64 KB are refused (413) and not
-     *     stored.
-     */
-    post: operations['receiveMoyasarWebhook'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/auth/login': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Admin sign-in, step 1 of 2
-     * @description Checks email and password, then sends a code to the admin's phone.
-     *     Limited to 5 attempts per email and IP, and 20 per IP, every 15 minutes.
-     */
-    post: operations['adminLogin'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/auth/verify': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Admin sign-in, step 2 of 2
-     * @description Returns a token that lasts 12 hours. After 5 wrong codes, start again from step 1.
-     */
-    post: operations['adminVerify'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/auth/logout': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Revoke the admin token */
-    post: operations['adminLogout'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/me': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * The signed-in admin, with roles and permissions
-     * @description The portal hides actions the admin lacks permission for; the API enforces them anyway.
-     */
-    get: operations['getAdminMe'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/me/password': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Change your own password
-     * @description Needs the current password. Signs out the admin's other sessions; the
-     *     token used for this call keeps working. Limited to 5 tries every 15 minutes.
-     */
-    post: operations['changeAdminPassword'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/roles': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Roles, the permissions each grants, and whether you can grant it
-     * @description For the admins screen. You can grant a role only when you hold every
-     *     one of its permissions (`grantable`); otherwise the API answers 403
-     *     `cannot_grant_role`.
-     */
-    get: operations['adminListRoles'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/admins': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Admins */
-    get: operations['adminListAdmins'];
-    put?: never;
-    /**
-     * Add an admin
-     * @description The new admin signs in with this email and password, then a code
-     *     texted to `phone`. Each admin needs their own phone number.
-     *
-     *     You can only grant roles whose permissions you hold yourself
-     *     (403 `cannot_grant_role`). A super admin therefore cannot create a
-     *     finance admin here; that is done on the server with `admin:create`.
-     */
-    post: operations['adminCreateAdmin'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/admins/{admin_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        admin_id: components['parameters']['AdminId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Change an admin's details, roles or status, or reset their password
-     * @description Send only the fields to change. Blocking an admin, setting a new
-     *     password or changing their phone signs them out everywhere and cancels
-     *     any sign-in in progress. Nobody can change their own roles, status or
-     *     password here (`cannot_change_own_access`); use
-     *     `POST /admin/me/password` for your own password.
-     *
-     *     You can only grant roles whose permissions you hold yourself
-     *     (403 `cannot_grant_role`). An admin who holds a permission you lack,
-     *     such as a finance admin for a super admin, can only be blocked here;
-     *     any other change answers 403 `cannot_manage_admin` and is done on the
-     *     server with `admin:update`.
-     */
-    patch: operations['adminUpdateAdmin'];
-    trace?: never;
-  };
-  '/admin/categories': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Categories */
-    get: operations['adminListCategories'];
-    put?: never;
-    /** Create a category */
-    post: operations['adminCreateCategory'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/categories/{category_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        category_id: components['parameters']['CategoryId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Update a category
-     * @description Send the whole category; a missing `sort_order` goes back to 0. A
-     *     category cannot be moved under itself or one of its own subcategories
-     *     (422 `category_cycle`).
-     */
-    patch: operations['adminUpdateCategory'];
-    trace?: never;
-  };
-  '/admin/products': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Products */
-    get: operations['adminListProducts'];
-    put?: never;
-    /**
-     * Create a product from an Alibaba listing
-     * @description Every product needs at least one variant; send them here or add them after.
-     */
-    post: operations['adminCreateProduct'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/products/{product_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        product_id: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    /** One product with variants and images */
-    get: operations['adminGetProduct'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Update a product
-     * @description Send the whole product; optional fields left out are cleared. New products start as `draft`; making one
-     *     `active` needs an active variant (422 `product_needs_variant`).
-     */
-    patch: operations['adminUpdateProduct'];
-    trace?: never;
-  };
-  '/admin/products/{product_id}/variants': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        product_id: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Add a variant */
-    post: operations['adminCreateVariant'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/variants/{variant_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        variant_id: components['parameters']['VariantId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Update a variant
-     * @description Send the whole variant; optional fields left out are cleared. The last active variant of an active product
-     *     cannot be archived (422 `last_active_variant`); archive the product first.
-     */
-    patch: operations['adminUpdateVariant'];
-    trace?: never;
-  };
-  '/admin/products/{product_id}/images': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        product_id: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Upload a product photo */
-    post: operations['adminUploadProductImage'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/product-images/{image_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        image_id: string;
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    /** Remove a product photo */
-    delete: operations['adminDeleteProductImage'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/suppliers': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Suppliers */
-    get: operations['adminListSuppliers'];
-    put?: never;
-    /** Add a supplier */
-    post: operations['adminCreateSupplier'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/suppliers/{supplier_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        supplier_id: components['parameters']['SupplierId'];
-      };
-      cookie?: never;
-    };
-    /** One supplier */
-    get: operations['adminGetSupplier'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Update a supplier's details
-     * @description Send the whole supplier; optional fields left out are cleared. Approving
-     *     or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
-     *     Changing the store URL or country of an approved supplier sends it back
-     *     to `prospect`, because the review was of the old store. A blocked
-     *     supplier stays blocked.
-     */
-    patch: operations['adminUpdateSupplier'];
-    trace?: never;
-  };
-  '/admin/suppliers/{supplier_id}/review': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        supplier_id: components['parameters']['SupplierId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Approve, block or reopen a supplier
-     * @description Records the decision, the reviewer and the time. Only approved
-     *     suppliers can back a campaign. Kept apart from editing so that the
-     *     people who add suppliers (`suppliers.edit`) and the people who approve
-     *     them (`suppliers.approve`) can be different.
-     */
-    post: operations['adminReviewSupplier'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/quotations': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Supplier quotations with landed cost */
-    get: operations['adminListQuotations'];
-    put?: never;
-    /**
-     * Record a quotation and its landed cost
-     * @description The server works out the landed cost per unit as the sum of the
-     *     breakdown. A SAR quote takes `fx_rate_to_sar` 1. A blocked supplier's quotes
-     *     are refused (422 `supplier_blocked`).
-     */
-    post: operations['adminCreateQuotation'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/quotations/{quotation_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        quotation_id: components['parameters']['QuotationId'];
-      };
-      cookie?: never;
-    };
-    /** One quotation */
-    get: operations['adminGetQuotation'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Update a quotation
-     * @description Send the whole quotation. Accepting needs a `valid_until` of today or
-     *     later in Riyadh (422 `quotation_expired`) and a supplier that is not
-     *     blocked (422 `supplier_blocked`). Quotes past their date become `expired`
-     *     overnight; to revive one, send a new date with a status. Refused with 409
-     *     `quotation_frozen` once a campaign beyond `draft` uses it.
-     */
-    patch: operations['adminUpdateQuotation'];
-    trace?: never;
-  };
-  '/admin/quotations/{quotation_id}/attachment': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        quotation_id: components['parameters']['QuotationId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Attach the quote PDF or screenshot
-     * @description Replaces any earlier file. The file is private: `attachment_url` is a
-     *     signed link that works for 30 minutes. Refused with 409 `quotation_frozen`
-     *     once a campaign beyond `draft` uses the quote.
-     */
-    post: operations['adminUploadQuotationAttachment'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Campaigns in every status */
-    get: operations['adminListCampaigns'];
-    put?: never;
-    /**
-     * Create a draft campaign
-     * @description The quotation must belong to the product, not be rejected or expired,
-     *     and its supplier must not be blocked. A quotation for one variant can
-     *     only price a campaign for that variant. Errors are 422 with codes
-     *     `quotation_not_for_product`, `quotation_not_usable`, `supplier_blocked`,
-     *     `variant_not_in_product`, `variant_not_active` (an archived variant)
-     *     or `quotation_not_for_variants`.
-     */
-    post: operations['adminCreateCampaign'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    /** One campaign with tiers and closing progress */
-    get: operations['adminGetCampaign'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Edit a draft
-     * @description Only in `draft`, otherwise 409 `invalid_transition`. Send the
-     *     `lock_version` you read; a stale one returns 409 `stale_campaign`.
-     *     The body replaces the editable fields: an omitted optional field goes
-     *     back to its default. The same 422 checks as create apply.
-     */
-    patch: operations['adminUpdateCampaign'];
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/tiers': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    /**
-     * Save a new tier set
-     * @description Only in `draft`. Send the campaign's `lock_version`; a stale one
-     *     returns 409 `stale_campaign`. Each save stores a new full version; old
-     *     versions are kept. Tiers must cover 1 to `max_qty` with no gaps or
-     *     overlaps, and the price must never rise with quantity. `reason` is
-     *     required from version 2.
-     */
-    put: operations['adminReplaceCampaignTiers'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/margin': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    /**
-     * Margin per tier against the 15% floor
-     * @description What the approval screen shows. Approval is blocked when any tier
-     *     fails, unless an admin with `campaigns.override_margin` approves with a
-     *     reason. Before approval the landed cost comes from the quotation; from
-     *     approval on it is the snapshot taken then.
-     */
-    get: operations['adminGetCampaignMargin'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/submit': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Send a draft for approval */
-    post: operations['adminSubmitCampaign'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/approve': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Approve and lock the terms
-     * @description Needs `campaigns.approve`. Re-runs the submit checks, then locks tiers,
-     *     target and maximum, snapshots the landed cost, sets
-     *     `deadline_at = starts_at + 7 days` (moving `starts_at` to now if it has
-     *     passed), and schedules the campaign. A failing margin check returns 422
-     *     `margin_below_floor` unless `override_reason` is sent, which needs
-     *     `campaigns.override_margin` (403 without it). When every tier passes,
-     *     `override_reason` is ignored.
-     */
-    post: operations['adminApproveCampaign'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/reject': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Send back to draft */
-    post: operations['adminRejectCampaign'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/extension-window': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    /** Whether the deadline can be extended, and how far */
-    get: operations['adminGetExtensionWindow'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/extend': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Use the one deadline extension
-     * @description Allowed once, while `active`, before the deal is confirmed, and only to
-     *     a date at least 3 days before the earliest hold expires (holds still
-     *     waiting for authorization count). A blocked request returns 422
-     *     `extension_not_allowed` with the current `window` in the body.
-     */
-    post: operations['adminExtendCampaign'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/cancel': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Cancel a campaign
-     * @description From `draft`, `pending_approval`, `scheduled`, `active`, and
-     *     `closing` at `settling_joins` or `awaiting_supplier`, it cancels at
-     *     once (200): every join is released and every hold voided. Once
-     *     captures have started (`closing` at `capturing` or `needs_admin`, or
-     *     `purchasing`), money may have to go back, so it opens a
-     *     `campaign_cancellation` approval request for a second admin with the
-     *     finance role instead (202) and changes nothing else; asking again
-     *     returns the request already waiting, or the approved one not yet
-     *     carried out. Approving it refunds captured joins and cancels the
-     *     orders (`POST /admin/approval-requests/{id}/approve`). `fulfilling`
-     *     and ended campaigns answer 409 `invalid_transition`.
-     */
-    post: operations['adminCancelCampaign'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/supplier-decision': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Record the supplier's reconfirmation before capture
-     * @description Only while `closing_step` is `awaiting_supplier` and before
-     *     `supplier_decision_due_at` (409 `supplier_decision_overdue` after it;
-     *     the closing sweep then fails the campaign). `confirmed` records the
-     *     unit cost (in `currency`, the quotation's currency when left out),
-     *     stock and quotation reference in a `supplier_confirmed` event, moves
-     *     `closing_step` to `capturing` and starts captures. `available_qty`
-     *     below `final_qty` is 422 `supplier_stock_short`: a supplier that
-     *     cannot supply every unit is recorded as `rejected`. `rejected` fails
-     *     the campaign (`end_reason` `supplier_rejected`) and voids every hold.
-     *     Captures run in the background, so the campaign returned may already
-     *     have moved on.
-     */
-    post: operations['adminRecordSupplierDecision'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/below-target-decision': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Proceed or cancel when captures fell short
-     * @description Only while `closing_step` is `needs_admin` (captured units below the
-     *     target or the supplier's MOQ). `proceed` buys the captured units: the
-     *     campaign moves to `purchasing`. `cancel` opens a
-     *     `campaign_cancellation` approval request for a second admin with the
-     *     finance role (202) and changes nothing else until it is approved.
-     */
-    post: operations['adminDecideBelowTarget'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/participations': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    /** Everyone who joined */
-    get: operations['adminListCampaignParticipations'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/campaigns/{campaign_id}/events': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    /** Campaign history, including every price change */
-    get: operations['adminListCampaignEvents'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/payments': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Payment holds and charges
-     * @description Newest first. `expiring_within_days=3` gives the hold-expiry alert
-     *     list: `authorized` holds only, soonest expiry first.
-     */
-    get: operations['adminListPayments'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/payments/{payment_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        payment_id: components['parameters']['PaymentId'];
-      };
-      cookie?: never;
-    };
-    /** One payment with every provider call */
-    get: operations['adminGetPayment'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/payments/{payment_id}/void': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        payment_id: components['parameters']['PaymentId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Ask to release a hold Moyasar still keeps
-     * @description For a hold that no longer counts here but that Moyasar still keeps
-     *     (reconciliation's `orphan_hold` and `stuck_void`): the payment is
-     *     `failed`, `capture_failed`, `expired` or `voided`, or `authorized`
-     *     with a rejection reason, and no capture is under way. Opens a
-     *     `manual_void` approval request; once a second admin with the finance
-     *     role approves it, the void is sent after the commit with the key
-     *     `void:{payment id}:{approval id}`. Every try asks Moyasar first and
-     *     voids only while Moyasar shows the payment authorized. A hold that
-     *     still counts for a campaign is released by cancelling the
-     *     participation or the campaign, never this way. There is no manual
-     *     capture: captures go through closing the campaign, which issues the
-     *     order and the invoice.
-     */
-    post: operations['adminRequestManualVoid'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/refunds': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Refunds */
-    get: operations['adminListRefunds'];
-    put?: never;
-    /**
-     * Request a refund
-     * @description For returns within 7 days of delivery, shortages, damage or late
-     *     delivery. Never more than captured minus what is already refunded or
-     *     waiting to be. Starts as `pending_approval` with a `manual_refund`
-     *     approval request, until a second admin with the finance role approves.
-     *     `method` is `void` for a full refund within 2 hours of capture
-     *     (`groupbuy.payments.void_after_capture_minutes`), otherwise `refund`.
-     *     Without `customer_order_id` the refund is linked to the payment's order.
-     *     Refunding everything left on an order that is `ready_to_ship` closes
-     *     the order, so it is refused while a shipment the courier has not
-     *     collected is open: cancel the shipment first.
-     */
-    post: operations['adminRequestRefund'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/approval-requests': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Actions waiting for a second admin */
-    get: operations['adminListApprovalRequests'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/approval-requests/{approval_request_id}/approve': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        approval_request_id: components['parameters']['ApprovalRequestId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Approve, then carry out the action
-     * @description The approver must hold the finance role and must not be the requester (403 `same_admin`). A `manual_refund` is then carried out after commit: Moyasar voids the hold while the payment can still be voided, otherwise refunds it; a credit note and ledger entries follow when it lands, and the refund shows `failed` if Moyasar refuses. An approved `campaign_cancellation` holds the campaign (no new capture, no closing step, no purchase order change) until it is carried out: it withdraws refund requests of its captured joins still pending (the refund becomes `rejected` and its approval request `cancelled`, both with the reason `campaign_cancelled`), sends no capture that has not already reached Moyasar, refunds everything left on every captured join, voids the remaining holds and cancels the orders and the purchase order. Other request types cannot be decided yet (409 `invalid_transition`), nor can a request that is no longer pending, or a campaign cancellation whose campaign can no longer be cancelled.
-     */
-    post: operations['adminApproveRequest'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/approval-requests/{approval_request_id}/reject': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        approval_request_id: components['parameters']['ApprovalRequestId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Reject with a reason */
-    post: operations['adminRejectRequest'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/orders': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Customer orders */
-    get: operations['adminListOrders'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/orders/{order_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    /** One order */
-    get: operations['adminGetOrder'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/orders/{order_id}/shipment': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Ship an order from the warehouse by hand
-     * @description Hands a `ready_to_ship` order to the courier: the shipment starts
-     *     `picked_up` with its first tracking event, and the order becomes
-     *     `shipped`. One open shipment per order (409 `shipment_exists`); a
-     *     parcel the courier brought back or a booking called off leaves room
-     *     for another. Without `tracking_url`, the link is built from the
-     *     courier's name when a pattern is configured
-     *     (`groupbuy.couriers.tracking_urls`).
-     */
-    post: operations['adminCreateShipment'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/shipments/{shipment_id}/events': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        shipment_id: components['parameters']['ShipmentId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Record a tracking update by hand
-     * @description For couriers without a tracking API, or to correct one. Updates may
-     *     arrive out of order: the newest sets the shipment's status, and
-     *     `delivered` and `returned` always do. The first update of a booked
-     *     parcel means the courier has it: the order becomes `shipped`.
-     *     `delivered` marks the order delivered and starts its 7-day return
-     *     window (`groupbuy.orders.return_window_days`); once every order of
-     *     the campaign is settled, the campaign is `completed`. `returned` is
-     *     the courier bringing the parcel back: the order is `ready_to_ship`
-     *     again, for another shipment or a refund, and the customer is told.
-     *     No update is dated before the pickup (`event_before_shipment`, 422).
-     *     A delivered, returned or cancelled shipment takes no more updates
-     *     (409 `invalid_transition`), and neither does a booking still waiting
-     *     for the courier's answer (409 `booking_in_progress`).
-     */
-    post: operations['adminAddShipmentEvent'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/courier': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * The courier API that is set up
-     * @description `COURIER_DRIVER`: with `manual` (the default until a courier is
-     *     chosen, open question Q11) there is no API, `name` is null and
-     *     parcels are handed over and tracked by hand.
-     */
-    get: operations['adminGetCourier'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/orders/{order_id}/shipment/booking': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Book an order with the courier's API
-     * @description The shipment starts `pending` with its booking `requested`; the
-     *     booking goes to the courier on the queue, with the booking's
-     *     `reference` as ours. The courier's tracking number and label (a
-     *     30-minute signed link) follow once it answers. The order stays
-     *     `ready_to_ship` until the courier collects the parcel, which tracking
-     *     read from the courier reports. A refusal, or no clear answer, cancels
-     *     the shipment with the reason in `booking.error`: the courier
-     *     documents no idempotency, so a booking is never sent twice on its
-     *     own. 409 `courier_api_off` without a courier API, `shipment_exists`,
-     *     or `invalid_transition` if the order is not `ready_to_ship`.
-     */
-    post: operations['adminBookShipment'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/shipments/{shipment_id}/cancel': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        shipment_id: components['parameters']['ShipmentId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Call off a shipment the courier has not collected
-     * @description Only a `pending` shipment (a booking the courier has not collected);
-     *     the order stays `ready_to_ship` for another shipment. Call off a
-     *     booked parcel in the courier's portal too. 409 `booking_in_progress`
-     *     while the courier has not answered the booking, `invalid_transition`
-     *     once it is collected.
-     */
-    post: operations['adminCancelShipment'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/returns': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Customer returns
-     * @description Newest first.
-     */
-    get: operations['adminListReturns'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/orders/{order_id}/return': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Record a customer's return
-     * @description The customer asked support to return a `delivered` order within its
-     *     return window. The order becomes `return_requested` and is not
-     *     completed when the window ends, until the return is decided. One
-     *     return per order. 409 `return_window_ended`, `return_exists`, or
-     *     `invalid_transition` if the order is not `delivered`.
-     */
-    post: operations['adminRecordReturn'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/returns/{return_id}/approve': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        return_id: components['parameters']['ReturnId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Accept a return and ask for its refund
-     * @description Asks for a refund of `amount_halalas` (reason `customer_return`),
-     *     which waits for a second admin with the finance role like any refund
-     *     (see `adminRequestRefund` for its 422 codes). Once it goes through,
-     *     the order is `returned` and the return `completed`, even if the
-     *     delivery fee was kept. The customer is told the return was accepted.
-     *     A return whose refund was rejected or failed can be approved again
-     *     with another amount, or rejected.
-     */
-    post: operations['adminApproveReturn'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/returns/{return_id}/reject': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        return_id: components['parameters']['ReturnId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Decline a return
-     * @description The order is `delivered` again, and completed by the hourly sweep if
-     *     its return window has ended. The customer is told; the note stays
-     *     with staff.
-     */
-    post: operations['adminRejectReturn'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/purchase-orders': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Supplier purchase orders
-     * @description Newest first. The closing job creates one, as a draft, when a campaign moves to purchasing.
-     */
-    get: operations['adminListPurchaseOrders'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/purchase-orders/{purchase_order_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-      };
-      cookie?: never;
-    };
-    /** One purchase order with receipts */
-    get: operations['adminGetPurchaseOrder'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Record Alibaba order details and freight
-     * @description Fields sent change; the rest keep their value. Changing the currency
-     *     needs `total_minor` in the new currency and clears a rate that no
-     *     longer applies (a SAR order's rate is 1, `sar_rate_must_be_one`);
-     *     `total_sar` follows the total and the rate. Line costs stay in the
-     *     currency the supplier confirmed. Past `draft` the Alibaba order number
-     *     and the rate cannot be cleared, nor the freight tracking reference once
-     *     shipped (`purchase_order_incomplete`). `paid_at` can be set once the
-     *     order is paid (`purchase_order_not_paid`), and step dates never go
-     *     backwards (`step_date_out_of_order`). A received or cancelled order
-     *     cannot change (409).
-     */
-    patch: operations['adminUpdatePurchaseOrder'];
-    trace?: never;
-  };
-  '/admin/purchase-orders/{purchase_order_id}/status': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Move a purchase order forward
-     * @description `placed`, `supplier_confirmed`, `paid`, then `shipped`, which needs a
-     *     freight tracking reference and moves the campaign to `fulfilling`.
-     *     `received` is set by recording an inbound receipt. Steps may be
-     *     skipped but never undone, and only while the campaign is purchasing
-     *     (409 otherwise). Past `draft` the order needs its Alibaba order number
-     *     and a SAR value (`purchase_order_incomplete`, 422). Leaving `draft`
-     *     moves the campaign's confirmed customer orders to `processing`.
-     *     `occurred_at` (default now, never in the future) sets the step's time;
-     *     it is never earlier than a step already recorded (`step_date_out_of_order`, 422).
-     */
-    post: operations['adminAdvancePurchaseOrder'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/purchase-orders/{purchase_order_id}/documents': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Keep a paper with a purchase order
-     * @description The Alibaba invoice, a payment receipt, shipping or customs papers.
-     *     Private: each document's `url` is a signed link that works for 30
-     *     minutes. At most 50 per order (409 `document_limit_reached`).
-     */
-    post: operations['adminAttachPurchaseOrderDocument'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/purchase-orders/{purchase_order_id}/documents/{document_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-        document_id: components['parameters']['DocumentId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    /**
-     * Remove a paper uploaded by mistake
-     * @description The file is deleted and the removal is audited. Only within 24 hours
-     *     of the upload (the document's `removable`); after that the paper is
-     *     kept as a record of what was ordered and paid (409 `document_locked`).
-     */
-    delete: operations['adminRemovePurchaseOrderDocument'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/purchase-orders/{purchase_order_id}/receipts': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Record goods counted at the warehouse
-     * @description Only for a `shipped` purchase order (409 otherwise); marks it
-     *     `received`. Count every variant on the order once
-     *     (`receipt_lines_mismatch` otherwise); damaged units are counted among
-     *     those received. Customer orders the good units cover become
-     *     `ready_to_ship`, oldest first; any left uncovered by missing or
-     *     damaged units stay `processing` for the admin to refund.
-     */
-    post: operations['adminRecordInboundReceipt'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/inbound-receipts/{receipt_id}/photos': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        receipt_id: components['parameters']['ReceiptId'];
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Add a photo of the goods as they arrived
-     * @description Evidence of damage or shortfalls: photos are added, never removed.
-     *     Private: `photo_urls` are signed links that work for 30 minutes. At
-     *     most 30 per receipt (409 `photo_limit_reached`).
-     */
-    post: operations['adminAddReceiptPhoto'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/reconciliation-runs': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Daily reconciliation runs against Moyasar */
-    get: operations['adminListReconciliationRuns'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/reconciliation-runs/{run_id}/items': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        run_id: string;
-      };
-      cookie?: never;
-    };
-    /** Mismatches found by one run */
-    get: operations['adminListReconciliationItems'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/reconciliation-items/{item_id}/resolve': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        item_id: string;
-      };
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Close a mismatch with a note
-     * @description Any fix that moves money goes through an approval request; this only records the resolution. A mismatch already resolved gives 409 `already_resolved`.
-     */
-    post: operations['adminResolveReconciliationItem'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/audit-logs': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Who did what
-     * @description Newest first. `subject_id` is the subject's public ID and needs `subject_type` (one whose records have public IDs). Entries name their subject by its public ID, or by its row ID when it has none.
-     */
-    get: operations['adminListAuditLogs'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/ledger/accounts': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Ledger accounts with their balances
-     * @description Every account of the chart, with debits, credits and the balance (debits minus credits).
-     */
-    get: operations['adminListLedgerAccounts'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/ledger/transactions': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Ledger postings
-     * @description Newest first, each with its balanced lines. Filter by type, or by an account one of its lines touches.
-     */
-    get: operations['adminListLedgerTransactions'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/ledger/adjustments': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Hand-made postings and reversals */
-    get: operations['adminListLedgerAdjustments'];
-    put?: never;
-    /**
-     * Ask for a ledger adjustment or reversal
-     * @description Either balanced `lines` to post (debits equal credits), or the ID of
-     *     a posting to reverse in full. Opens a `ledger_adjustment` approval
-     *     request; nothing reaches the ledger until a second admin with the
-     *     finance role approves it, and then it is posted in that decision.
-     *     Postings are never changed: a wrong adjustment is fixed by reversing
-     *     it. A posting is reversed at most once, and reversals are not
-     *     reversed.
-     */
-    post: operations['adminRequestLedgerAdjustment'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/settlements': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Moyasar payouts to the bank
-     * @description Imported daily by `payments:settlements`, each posted to the ledger
-     *     (bank, payment fees and recoverable VAT against Moyasar clearing).
-     *     `unmatched_count` counts lines for payments we do not know.
-     */
-    get: operations['adminListSettlements'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/admin/settlements/{settlement_id}/lines': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        settlement_id: string;
-      };
-      cookie?: never;
-    };
-    /** What one settlement paid out */
-    get: operations['adminListSettlementLines'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness check
+         * @description 200 when PostgreSQL and Redis both respond, 503 otherwise.
+         */
+        get: operations["getHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/otp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a sign-in code by SMS
+         * @description Starts sign-in or sign-up. Sends a 6-digit code that expires after
+         *     5 minutes. One code per number per minute, 5 per number per hour and
+         *     20 per IP per hour; a 429 says when to retry. An earlier code stays
+         *     valid until it expires, so a slow SMS still works after a resend.
+         */
+        post: operations["requestOtp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/otp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange the SMS code for an access token
+         * @description Creates the account on first sign-in. Send the token as
+         *     `Authorization: Bearer <token>`. After 5 wrong codes the challenge is
+         *     spent and a new code is needed.
+         */
+        post: operations["verifyOtp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke the current token
+         * @description Other devices stay signed in. Tokens otherwise last 90 days.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in customer */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update name, email or language */
+        patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/me/privacy-consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record consent to the privacy policy (PDPL)
+         * @description Required before the first join. Stores the policy version and the time.
+         *     Call again when `User.privacy_consent.policy_version` is older than
+         *     `current_privacy_policy_version`. Accepting the same version twice is
+         *     harmless.
+         */
+        post: operations["acceptPrivacyPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved delivery addresses */
+        get: operations["listAddresses"];
+        put?: never;
+        /**
+         * Add a delivery address
+         * @description The first address becomes the default. Sending `is_default` true makes the new address the default instead of the old one. Up to 20 addresses.
+         */
+        post: operations["createAddress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/addresses/{address_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: components["parameters"]["AddressId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a delivery address
+         * @description If it was the default, the most recently added remaining address becomes the default.
+         */
+        delete: operations["deleteAddress"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a delivery address
+         * @description Send the whole address: optional fields left out are cleared.
+         *     `is_default: true` makes this the default address. The default only
+         *     moves to another address, so `false` (or leaving it out) never unsets
+         *     it. Orders keep a copy of the address they were shipped to, so editing
+         *     never changes past orders.
+         */
+        patch: operations["updateAddress"];
+        trace?: never;
+    };
+    "/me/device-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a push token
+         * @description Mobile app only. Send the Expo push token (`ExponentPushToken[...]`,
+         *     from expo-notifications getExpoPushTokenAsync): the API sends through
+         *     Expo's push service, and other kinds of token get no messages. Call it
+         *     after sign-in and whenever the token changes. Registering the same token again just refreshes it; a
+         *     token registered from another account moves to that account. Signing
+         *     out (`POST /auth/logout`) removes it, so the device stops getting the
+         *     account's messages. The customer's 10 most recently seen devices are
+         *     kept. Push messages carry `notification_id` and `template` in their data.
+         */
+        post: operations["registerDeviceToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Browsing categories */
+        get: operations["listCategories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Campaigns customers can see
+         * @description `open` (the default) lists `active` campaigns, soonest deadline first.
+         *     `upcoming` lists `scheduled` ones. `ended` lists everything after
+         *     `active`, most recent first. Drafts and campaigns awaiting approval
+         *     are never listed.
+         */
+        get: operations["listCampaigns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/campaigns/{campaign_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        /** Campaign page */
+        get: operations["getCampaign"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/campaigns/{campaign_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Live progress for polling
+         * @description Same payload as the Reverb `progress.updated` event. Cached for at most 2 seconds.
+         */
+        get: operations["getCampaignProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/campaigns/{campaign_id}/participations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join a campaign
+         * @description Reserves the units for 15 minutes and fixes the hold price, then
+         *     returns a payment whose `checkout` opens the Moyasar form.
+         *
+         *     The server computes every amount. `shown_unit_price_halalas` is only
+         *     compared with the current price: if they differ the API answers 409
+         *     `price_changed` with the new price, and the customer confirms again.
+         *
+         *     Retrying with the same `client_request_id` returns the original
+         *     participation, again with 201, instead of joining twice.
+         */
+        post: operations["joinCampaign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/participations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My joins
+         * @description Newest first. Includes joins whose payment failed, so the customer can see what happened.
+         */
+        get: operations["listMyParticipations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/participations/{participation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                participation_id: components["parameters"]["ParticipationId"];
+            };
+            cookie?: never;
+        };
+        /** One join */
+        get: operations["getMyParticipation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/participations/{participation_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                participation_id: components["parameters"]["ParticipationId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a join before close
+         * @description Allowed while `can_cancel` is true: the campaign is `active`, its
+         *     deadline has not passed and the deal is not yet confirmed (proposed
+         *     rule, open question Q16). The hold is released and the units go back
+         *     on sale.
+         */
+        post: operations["cancelMyParticipation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/participations/{participation_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                participation_id: components["parameters"]["ParticipationId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Try another card after a decline
+         * @description Starts a new payment attempt for the same reserved units and hold
+         *     amount. Allowed while the participation is `pending_payment`, its
+         *     reservation has not expired, and the last attempt failed or its hold
+         *     was refused (`rejection_reason` set; that hold is voided). The
+         *     reservation keeps its original expiry.
+         */
+        post: operations["retryParticipationPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/payments/{payment_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payment_id: components["parameters"]["PaymentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a payment with Moyasar after the form
+         * @description Call as soon as Moyasar's form reports the payment it created (before
+         *     any 3-D Secure step: the payment is then still `initiated`, and the
+         *     participation stays `pending_payment` while its Moyasar ID is kept, so
+         *     the hold is found even if the customer never comes back), and again
+         *     when Moyasar redirects back, with the Moyasar payment ID from the
+         *     redirect. The API fetches the payment from Moyasar and accepts the hold
+         *     only if it is `authorized` for exactly the hold amount in SAR, by an
+         *     allowed method, while the reservation is valid. Anything else is voided
+         *     and `rejection_reason` says why. Safe to call more than once.
+         *
+         *     A hold that arrives after the join can no longer count it (the
+         *     reservation expired or the campaign moved past settling its joins)
+         *     is voided too. If the form was submitted twice and both holds went
+         *     through, the second is recorded with `duplicate_hold` and voided; it
+         *     never replaces the participation's `payment`.
+         */
+        post: operations["syncPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My orders
+         * @description An order exists once its hold is captured. Newest first.
+         */
+        get: operations["listMyOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        /** One order with tracking and invoices */
+        get: operations["getMyOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhooks/moyasar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Moyasar payment events
+         * @description Called by Moyasar, not by clients. The event's `secret_token` must
+         *     match the token set on the webhook in the Moyasar dashboard (open
+         *     question Q5). Every event is stored, with the token redacted; a
+         *     verified event is processed once per event ID and resends are
+         *     ignored, unless the stored event was never processed, which queues
+         *     it again. The answer is immediate: a queued job fetches the payment
+         *     from Moyasar and applies it exactly as the sync endpoint does, never
+         *     trusting the event body. Bodies over 64 KB are refused (413) and not
+         *     stored.
+         */
+        post: operations["receiveMoyasarWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin sign-in, step 1 of 2
+         * @description Checks email and password, then sends a code to the admin's phone.
+         *     Limited to 5 attempts per email and IP, and 20 per IP, every 15 minutes.
+         */
+        post: operations["adminLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin sign-in, step 2 of 2
+         * @description Returns a token that lasts 12 hours. After 5 wrong codes, start again from step 1.
+         */
+        post: operations["adminVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the admin token */
+        post: operations["adminLogout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in admin, with roles and permissions
+         * @description The portal hides actions the admin lacks permission for; the API enforces them anyway.
+         */
+        get: operations["getAdminMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change your own password
+         * @description Needs the current password. Signs out the admin's other sessions; the
+         *     token used for this call keeps working. Limited to 5 tries every 15 minutes.
+         */
+        post: operations["changeAdminPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Roles, the permissions each grants, and whether you can grant it
+         * @description For the admins screen. You can grant a role only when you hold every
+         *     one of its permissions (`grantable`); otherwise the API answers 403
+         *     `cannot_grant_role`.
+         */
+        get: operations["adminListRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admins */
+        get: operations["adminListAdmins"];
+        put?: never;
+        /**
+         * Add an admin
+         * @description The new admin signs in with this email and password, then a code
+         *     texted to `phone`. Each admin needs their own phone number.
+         *
+         *     You can only grant roles whose permissions you hold yourself
+         *     (403 `cannot_grant_role`). A super admin therefore cannot create a
+         *     finance admin here; that is done on the server with `admin:create`.
+         */
+        post: operations["adminCreateAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/admins/{admin_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admin_id: components["parameters"]["AdminId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change an admin's details, roles or status, or reset their password
+         * @description Send only the fields to change. Blocking an admin, setting a new
+         *     password or changing their phone signs them out everywhere and cancels
+         *     any sign-in in progress. Nobody can change their own roles, status or
+         *     password here (`cannot_change_own_access`); use
+         *     `POST /admin/me/password` for your own password.
+         *
+         *     You can only grant roles whose permissions you hold yourself
+         *     (403 `cannot_grant_role`). An admin who holds a permission you lack,
+         *     such as a finance admin for a super admin, can only be blocked here;
+         *     any other change answers 403 `cannot_manage_admin` and is done on the
+         *     server with `admin:update`.
+         */
+        patch: operations["adminUpdateAdmin"];
+        trace?: never;
+    };
+    "/admin/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Categories */
+        get: operations["adminListCategories"];
+        put?: never;
+        /** Create a category */
+        post: operations["adminCreateCategory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: components["parameters"]["CategoryId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a category
+         * @description Send the whole category; a missing `sort_order` goes back to 0. A
+         *     category cannot be moved under itself or one of its own subcategories
+         *     (422 `category_cycle`).
+         */
+        patch: operations["adminUpdateCategory"];
+        trace?: never;
+    };
+    "/admin/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Products */
+        get: operations["adminListProducts"];
+        put?: never;
+        /**
+         * Create a product from an Alibaba listing
+         * @description Every product needs at least one variant; send them here or add them after.
+         */
+        post: operations["adminCreateProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{product_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        /** One product with variants and images */
+        get: operations["adminGetProduct"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a product
+         * @description Send the whole product; optional fields left out are cleared. New products start as `draft`; making one
+         *     `active` needs an active variant (422 `product_needs_variant`).
+         */
+        patch: operations["adminUpdateProduct"];
+        trace?: never;
+    };
+    "/admin/products/{product_id}/variants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a variant */
+        post: operations["adminCreateVariant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/variants/{variant_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                variant_id: components["parameters"]["VariantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a variant
+         * @description Send the whole variant; optional fields left out are cleared. The last active variant of an active product
+         *     cannot be archived (422 `last_active_variant`); archive the product first.
+         */
+        patch: operations["adminUpdateVariant"];
+        trace?: never;
+    };
+    "/admin/products/{product_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload a product photo */
+        post: operations["adminUploadProductImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/product-images/{image_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a product photo */
+        delete: operations["adminDeleteProductImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/suppliers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Suppliers */
+        get: operations["adminListSuppliers"];
+        put?: never;
+        /** Add a supplier */
+        post: operations["adminCreateSupplier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/suppliers/{supplier_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplier_id: components["parameters"]["SupplierId"];
+            };
+            cookie?: never;
+        };
+        /** One supplier */
+        get: operations["adminGetSupplier"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a supplier's details
+         * @description Send the whole supplier; optional fields left out are cleared. Approving
+         *     or blocking is a separate step, `POST /admin/suppliers/{supplier_id}/review`.
+         *     Changing the store URL or country of an approved supplier sends it back
+         *     to `prospect`, because the review was of the old store. A blocked
+         *     supplier stays blocked.
+         */
+        patch: operations["adminUpdateSupplier"];
+        trace?: never;
+    };
+    "/admin/suppliers/{supplier_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplier_id: components["parameters"]["SupplierId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve, block or reopen a supplier
+         * @description Records the decision, the reviewer and the time. Only approved
+         *     suppliers can back a campaign. Kept apart from editing so that the
+         *     people who add suppliers (`suppliers.edit`) and the people who approve
+         *     them (`suppliers.approve`) can be different.
+         */
+        post: operations["adminReviewSupplier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/quotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Supplier quotations with landed cost */
+        get: operations["adminListQuotations"];
+        put?: never;
+        /**
+         * Record a quotation and its landed cost
+         * @description The server works out the landed cost per unit as the sum of the
+         *     breakdown. A SAR quote takes `fx_rate_to_sar` 1. A blocked supplier's quotes
+         *     are refused (422 `supplier_blocked`).
+         */
+        post: operations["adminCreateQuotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/quotations/{quotation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quotation_id: components["parameters"]["QuotationId"];
+            };
+            cookie?: never;
+        };
+        /** One quotation */
+        get: operations["adminGetQuotation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a quotation
+         * @description Send the whole quotation. Accepting needs a `valid_until` of today or
+         *     later in Riyadh (422 `quotation_expired`) and a supplier that is not
+         *     blocked (422 `supplier_blocked`). Quotes past their date become `expired`
+         *     overnight; to revive one, send a new date with a status. Refused with 409
+         *     `quotation_frozen` once a campaign beyond `draft` uses it.
+         */
+        patch: operations["adminUpdateQuotation"];
+        trace?: never;
+    };
+    "/admin/quotations/{quotation_id}/attachment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quotation_id: components["parameters"]["QuotationId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach the quote PDF or screenshot
+         * @description Replaces any earlier file. The file is private: `attachment_url` is a
+         *     signed link that works for 30 minutes. Refused with 409 `quotation_frozen`
+         *     once a campaign beyond `draft` uses the quote.
+         */
+        post: operations["adminUploadQuotationAttachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Campaigns in every status */
+        get: operations["adminListCampaigns"];
+        put?: never;
+        /**
+         * Create a draft campaign
+         * @description The quotation must belong to the product, not be rejected or expired,
+         *     and its supplier must not be blocked. A quotation for one variant can
+         *     only price a campaign for that variant. Errors are 422 with codes
+         *     `quotation_not_for_product`, `quotation_not_usable`, `supplier_blocked`,
+         *     `variant_not_in_product`, `variant_not_active` (an archived variant)
+         *     or `quotation_not_for_variants`.
+         */
+        post: operations["adminCreateCampaign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        /** One campaign with tiers and closing progress */
+        get: operations["adminGetCampaign"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit a draft
+         * @description Only in `draft`, otherwise 409 `invalid_transition`. Send the
+         *     `lock_version` you read; a stale one returns 409 `stale_campaign`.
+         *     The body replaces the editable fields: an omitted optional field goes
+         *     back to its default. The same 422 checks as create apply.
+         */
+        patch: operations["adminUpdateCampaign"];
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/tiers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save a new tier set
+         * @description Only in `draft`. Send the campaign's `lock_version`; a stale one
+         *     returns 409 `stale_campaign`. Each save stores a new full version; old
+         *     versions are kept. Tiers must cover 1 to `max_qty` with no gaps or
+         *     overlaps, and the price must never rise with quantity. `reason` is
+         *     required from version 2.
+         */
+        put: operations["adminReplaceCampaignTiers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/margin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Margin per tier against the 15% floor
+         * @description What the approval screen shows. Approval is blocked when any tier
+         *     fails, unless an admin with `campaigns.override_margin` approves with a
+         *     reason. Before approval the landed cost comes from the quotation; from
+         *     approval on it is the snapshot taken then.
+         */
+        get: operations["adminGetCampaignMargin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a draft for approval */
+        post: operations["adminSubmitCampaign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve and lock the terms
+         * @description Needs `campaigns.approve`. Re-runs the submit checks, then locks tiers,
+         *     target and maximum, snapshots the landed cost, sets
+         *     `deadline_at = starts_at + 7 days` (moving `starts_at` to now if it has
+         *     passed), and schedules the campaign. A failing margin check returns 422
+         *     `margin_below_floor` unless `override_reason` is sent, which needs
+         *     `campaigns.override_margin` (403 without it). When every tier passes,
+         *     `override_reason` is ignored.
+         */
+        post: operations["adminApproveCampaign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send back to draft */
+        post: operations["adminRejectCampaign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/extension-window": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        /** Whether the deadline can be extended, and how far */
+        get: operations["adminGetExtensionWindow"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Use the one deadline extension
+         * @description Allowed once, while `active`, before the deal is confirmed, and only to
+         *     a date at least 3 days before the earliest hold expires (holds still
+         *     waiting for authorization count). A blocked request returns 422
+         *     `extension_not_allowed` with the current `window` in the body.
+         */
+        post: operations["adminExtendCampaign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a campaign
+         * @description From `draft`, `pending_approval`, `scheduled`, `active`, and
+         *     `closing` at `settling_joins` or `awaiting_supplier`, it cancels at
+         *     once (200): every join is released and every hold voided. Once
+         *     captures have started (`closing` at `capturing` or `needs_admin`, or
+         *     `purchasing`), money may have to go back, so it opens a
+         *     `campaign_cancellation` approval request for a second admin with the
+         *     finance role instead (202) and changes nothing else; asking again
+         *     returns the request already waiting, or the approved one not yet
+         *     carried out. Approving it refunds captured joins and cancels the
+         *     orders (`POST /admin/approval-requests/{id}/approve`). `fulfilling`
+         *     and ended campaigns answer 409 `invalid_transition`.
+         */
+        post: operations["adminCancelCampaign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/supplier-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the supplier's reconfirmation before capture
+         * @description Only while `closing_step` is `awaiting_supplier` and before
+         *     `supplier_decision_due_at` (409 `supplier_decision_overdue` after it;
+         *     the closing sweep then fails the campaign). `confirmed` records the
+         *     unit cost (in `currency`, the quotation's currency when left out),
+         *     stock and quotation reference in a `supplier_confirmed` event, moves
+         *     `closing_step` to `capturing` and starts captures. `available_qty`
+         *     below `final_qty` is 422 `supplier_stock_short`: a supplier that
+         *     cannot supply every unit is recorded as `rejected`. `rejected` fails
+         *     the campaign (`end_reason` `supplier_rejected`) and voids every hold.
+         *     Captures run in the background, so the campaign returned may already
+         *     have moved on.
+         */
+        post: operations["adminRecordSupplierDecision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/below-target-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Proceed or cancel when captures fell short
+         * @description Only while `closing_step` is `needs_admin` (captured units below the
+         *     target or the supplier's MOQ). `proceed` buys the captured units: the
+         *     campaign moves to `purchasing`. `cancel` opens a
+         *     `campaign_cancellation` approval request for a second admin with the
+         *     finance role (202) and changes nothing else until it is approved.
+         */
+        post: operations["adminDecideBelowTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/participations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        /** Everyone who joined */
+        get: operations["adminListCampaignParticipations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/campaigns/{campaign_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        /** Campaign history, including every price change */
+        get: operations["adminListCampaignEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Payment holds and charges
+         * @description Newest first. `expiring_within_days=3` gives the hold-expiry alert
+         *     list: `authorized` holds only, soonest expiry first.
+         */
+        get: operations["adminListPayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/payments/{payment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payment_id: components["parameters"]["PaymentId"];
+            };
+            cookie?: never;
+        };
+        /** One payment with every provider call */
+        get: operations["adminGetPayment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/payments/{payment_id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payment_id: components["parameters"]["PaymentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask to release a hold Moyasar still keeps
+         * @description For a hold that no longer counts here but that Moyasar still keeps
+         *     (reconciliation's `orphan_hold` and `stuck_void`): the payment is
+         *     `failed`, `capture_failed` or `expired`, `voided` with an open
+         *     `stuck_void` mismatch, or `authorized` with a rejection reason; no
+         *     capture is under way, and no release approved earlier is still to
+         *     run. Opens a
+         *     `manual_void` approval request; once a second admin with the finance
+         *     role approves it, the void is sent after the commit with the key
+         *     `void:{payment id}:{approval id}`. Every try asks Moyasar first and
+         *     voids only while Moyasar shows the payment authorized; a payment
+         *     Moyasar does not know is recorded as failed (`not_found`). A hold that
+         *     still counts for a campaign is released by cancelling the
+         *     participation or the campaign, never this way. There is no manual
+         *     capture: captures go through closing the campaign, which issues the
+         *     order and the invoice.
+         */
+        post: operations["adminRequestManualVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Refunds */
+        get: operations["adminListRefunds"];
+        put?: never;
+        /**
+         * Request a refund
+         * @description For returns within 7 days of delivery, shortages, damage or late
+         *     delivery. Never more than captured minus what is already refunded or
+         *     waiting to be. Starts as `pending_approval` with a `manual_refund`
+         *     approval request, until a second admin with the finance role approves.
+         *     `method` is `void` for a full refund within 2 hours of capture
+         *     (`groupbuy.payments.void_after_capture_minutes`), otherwise `refund`.
+         *     Without `customer_order_id` the refund is linked to the payment's order.
+         *     Refunding everything left on an order that is `ready_to_ship` closes
+         *     the order, so it is refused while a shipment the courier has not
+         *     collected is open: cancel the shipment first.
+         */
+        post: operations["adminRequestRefund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/approval-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Actions waiting for a second admin */
+        get: operations["adminListApprovalRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/approval-requests/{approval_request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_request_id: components["parameters"]["ApprovalRequestId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve, then carry out the action
+         * @description The approver must hold the finance role and must not be the requester (403 `same_admin`). A `manual_refund` is then carried out after commit: Moyasar voids the hold while the payment can still be voided, otherwise refunds it; a credit note and ledger entries follow when it lands, and the refund shows `failed` if Moyasar refuses. An approved `campaign_cancellation` holds the campaign (no new capture, no closing step, no purchase order change) until it is carried out: it withdraws refund requests of its captured joins still pending (the refund becomes `rejected` and its approval request `cancelled`, both with the reason `campaign_cancelled`), sends no capture that has not already reached Moyasar, refunds everything left on every captured join, voids the remaining holds and cancels the orders and the purchase order. Other request types cannot be decided yet (409 `invalid_transition`), nor can a request that is no longer pending, or a campaign cancellation whose campaign can no longer be cancelled.
+         */
+        post: operations["adminApproveRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/approval-requests/{approval_request_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_request_id: components["parameters"]["ApprovalRequestId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject with a reason */
+        post: operations["adminRejectRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Customer orders */
+        get: operations["adminListOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        /** One order */
+        get: operations["adminGetOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/orders/{order_id}/shipment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ship an order from the warehouse by hand
+         * @description Hands a `ready_to_ship` order to the courier: the shipment starts
+         *     `picked_up` with its first tracking event, and the order becomes
+         *     `shipped`. One open shipment per order (409 `shipment_exists`); a
+         *     parcel the courier brought back or a booking called off leaves room
+         *     for another. Without `tracking_url`, the link is built from the
+         *     courier's name when a pattern is configured
+         *     (`groupbuy.couriers.tracking_urls`).
+         */
+        post: operations["adminCreateShipment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/shipments/{shipment_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: components["parameters"]["ShipmentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a tracking update by hand
+         * @description For couriers without a tracking API, or to correct one. Updates may
+         *     arrive out of order: the newest sets the shipment's status, and
+         *     `delivered` and `returned` always do. The first update of a booked
+         *     parcel means the courier has it: the order becomes `shipped`.
+         *     `delivered` marks the order delivered and starts its 7-day return
+         *     window (`groupbuy.orders.return_window_days`); once every order of
+         *     the campaign is settled, the campaign is `completed`. `returned` is
+         *     the courier bringing the parcel back: the order is `ready_to_ship`
+         *     again, for another shipment or a refund, and the customer is told.
+         *     No update is dated before the pickup (`event_before_shipment`, 422).
+         *     A delivered, returned or cancelled shipment takes no more updates
+         *     (409 `invalid_transition`), and neither does a booking still waiting
+         *     for the courier's answer (409 `booking_in_progress`).
+         */
+        post: operations["adminAddShipmentEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/courier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The courier API that is set up
+         * @description `COURIER_DRIVER`: with `manual` (the default until a courier is
+         *     chosen, open question Q11) there is no API, `name` is null and
+         *     parcels are handed over and tracked by hand.
+         */
+        get: operations["adminGetCourier"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/orders/{order_id}/shipment/booking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Book an order with the courier's API
+         * @description The shipment starts `pending` with its booking `requested`; the
+         *     booking goes to the courier on the queue, with the booking's
+         *     `reference` as ours. The courier's tracking number and label (a
+         *     30-minute signed link) follow once it answers. The order stays
+         *     `ready_to_ship` until the courier collects the parcel, which tracking
+         *     read from the courier reports. A refusal, or no clear answer, cancels
+         *     the shipment with the reason in `booking.error`: the courier
+         *     documents no idempotency, so a booking is never sent twice on its
+         *     own. 409 `courier_api_off` without a courier API, `shipment_exists`,
+         *     or `invalid_transition` if the order is not `ready_to_ship`.
+         */
+        post: operations["adminBookShipment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/shipments/{shipment_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: components["parameters"]["ShipmentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call off a shipment the courier has not collected
+         * @description Only a `pending` shipment (a booking the courier has not collected);
+         *     the order stays `ready_to_ship` for another shipment. Call off a
+         *     booked parcel in the courier's portal too. 409 `booking_in_progress`
+         *     while the courier has not answered the booking, `invalid_transition`
+         *     once it is collected.
+         */
+        post: operations["adminCancelShipment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Customer returns
+         * @description Newest first.
+         */
+        get: operations["adminListReturns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/orders/{order_id}/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a customer's return
+         * @description The customer asked support to return a `delivered` order within its
+         *     return window. The order becomes `return_requested` and is not
+         *     completed when the window ends, until the return is decided. One
+         *     return per order. 409 `return_window_ended`, `return_exists`, or
+         *     `invalid_transition` if the order is not `delivered`.
+         */
+        post: operations["adminRecordReturn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/returns/{return_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                return_id: components["parameters"]["ReturnId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a return and ask for its refund
+         * @description Asks for a refund of `amount_halalas` (reason `customer_return`),
+         *     which waits for a second admin with the finance role like any refund
+         *     (see `adminRequestRefund` for its 422 codes). Once it goes through,
+         *     the order is `returned` and the return `completed`, even if the
+         *     delivery fee was kept. The customer is told the return was accepted.
+         *     A return whose refund was rejected or failed can be approved again
+         *     with another amount, or rejected.
+         */
+        post: operations["adminApproveReturn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/returns/{return_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                return_id: components["parameters"]["ReturnId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline a return
+         * @description The order is `delivered` again, and completed by the hourly sweep if
+         *     its return window has ended. The customer is told; the note stays
+         *     with staff.
+         */
+        post: operations["adminRejectReturn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/purchase-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Supplier purchase orders
+         * @description Newest first. The closing job creates one, as a draft, when a campaign moves to purchasing.
+         */
+        get: operations["adminListPurchaseOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/purchase-orders/{purchase_order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        /** One purchase order with receipts */
+        get: operations["adminGetPurchaseOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Record Alibaba order details and freight
+         * @description Fields sent change; the rest keep their value. Changing the currency
+         *     needs `total_minor` in the new currency and clears a rate that no
+         *     longer applies (a SAR order's rate is 1, `sar_rate_must_be_one`);
+         *     `total_sar` follows the total and the rate. Line costs stay in the
+         *     currency the supplier confirmed. Past `draft` the Alibaba order number
+         *     and the rate cannot be cleared, nor the freight tracking reference once
+         *     shipped (`purchase_order_incomplete`). `paid_at` can be set once the
+         *     order is paid (`purchase_order_not_paid`), and step dates never go
+         *     backwards (`step_date_out_of_order`). A received or cancelled order
+         *     cannot change (409).
+         */
+        patch: operations["adminUpdatePurchaseOrder"];
+        trace?: never;
+    };
+    "/admin/purchase-orders/{purchase_order_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a purchase order forward
+         * @description `placed`, `supplier_confirmed`, `paid`, then `shipped`, which needs a
+         *     freight tracking reference and moves the campaign to `fulfilling`.
+         *     `received` is set by recording an inbound receipt. Steps may be
+         *     skipped but never undone, and only while the campaign is purchasing
+         *     (409 otherwise). Past `draft` the order needs its Alibaba order number
+         *     and a SAR value (`purchase_order_incomplete`, 422). Leaving `draft`
+         *     moves the campaign's confirmed customer orders to `processing`.
+         *     `occurred_at` (default now, never in the future) sets the step's time;
+         *     it is never earlier than a step already recorded (`step_date_out_of_order`, 422).
+         */
+        post: operations["adminAdvancePurchaseOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/purchase-orders/{purchase_order_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep a paper with a purchase order
+         * @description The Alibaba invoice, a payment receipt, shipping or customs papers.
+         *     Private: each document's `url` is a signed link that works for 30
+         *     minutes. At most 50 per order (409 `document_limit_reached`).
+         */
+        post: operations["adminAttachPurchaseOrderDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/purchase-orders/{purchase_order_id}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+                document_id: components["parameters"]["DocumentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a paper uploaded by mistake
+         * @description The file is deleted and the removal is audited. Only within 24 hours
+         *     of the upload (the document's `removable`); after that the paper is
+         *     kept as a record of what was ordered and paid (409 `document_locked`).
+         */
+        delete: operations["adminRemovePurchaseOrderDocument"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/purchase-orders/{purchase_order_id}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record goods counted at the warehouse
+         * @description Only for a `shipped` purchase order (409 otherwise); marks it
+         *     `received`. Count every variant on the order once
+         *     (`receipt_lines_mismatch` otherwise); damaged units are counted among
+         *     those received. Customer orders the good units cover become
+         *     `ready_to_ship`, oldest first; any left uncovered by missing or
+         *     damaged units stay `processing` for the admin to refund.
+         */
+        post: operations["adminRecordInboundReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/inbound-receipts/{receipt_id}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receipt_id: components["parameters"]["ReceiptId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a photo of the goods as they arrived
+         * @description Evidence of damage or shortfalls: photos are added, never removed.
+         *     Private: `photo_urls` are signed links that work for 30 minutes. At
+         *     most 30 per receipt (409 `photo_limit_reached`).
+         */
+        post: operations["adminAddReceiptPhoto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/reconciliation-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daily reconciliation runs against Moyasar */
+        get: operations["adminListReconciliationRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/reconciliation-runs/{run_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        /** Mismatches found by one run */
+        get: operations["adminListReconciliationItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/reconciliation-items/{item_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close a mismatch with a note
+         * @description Any fix that moves money goes through an approval request; this only records the resolution. A mismatch already resolved gives 409 `already_resolved`.
+         */
+        post: operations["adminResolveReconciliationItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who did what
+         * @description Newest first. `subject_id` is the subject's public ID and needs `subject_type` (one whose records have public IDs). Entries name their subject by its public ID, or by its row ID when it has none.
+         */
+        get: operations["adminListAuditLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/ledger/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ledger accounts with their balances
+         * @description Every account of the chart, with debits, credits and the balance (debits minus credits).
+         */
+        get: operations["adminListLedgerAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/ledger/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ledger postings
+         * @description Newest first, each with its balanced lines. Filter by type, or by an account one of its lines touches.
+         */
+        get: operations["adminListLedgerTransactions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/ledger/adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Hand-made postings and reversals */
+        get: operations["adminListLedgerAdjustments"];
+        put?: never;
+        /**
+         * Ask for a ledger adjustment or reversal
+         * @description Either balanced `lines` to post (debits equal credits), or the ID of
+         *     a posting to reverse in full. Opens a `ledger_adjustment` approval
+         *     request; nothing reaches the ledger until a second admin with the
+         *     finance role approves it, and then it is posted in that decision.
+         *     Postings are never changed: a wrong adjustment is fixed by reversing
+         *     it. A posting is reversed at most once, and reversals are not
+         *     reversed.
+         */
+        post: operations["adminRequestLedgerAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Moyasar payouts to the bank
+         * @description Imported daily by `payments:settlements`, each posted to the ledger
+         *     (bank, payment fees and recoverable VAT against Moyasar clearing).
+         *     `unmatched_count` counts lines for payments we do not know.
+         */
+        get: operations["adminListSettlements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/settlements/{settlement_id}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                settlement_id: string;
+            };
+            cookie?: never;
+        };
+        /** What one settlement paid out */
+        get: operations["adminListSettlementLines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    Health: {
-      /** @enum {string} */
-      status: 'ok' | 'degraded';
-      /** @example جميع الأنظمة تعمل. */
-      message: string;
-      checks: {
-        /** @enum {string} */
-        database: 'ok' | 'failing';
-        /** @enum {string} */
-        redis: 'ok' | 'failing';
-      };
-      /**
-       * Format: date-time
-       * @example 2026-11-02T09:00:00Z
-       */
-      time: string;
-    };
-    Error: {
-      /** @description Localized, for display. */
-      message: string;
-      /** @description Stable machine-readable reason. */
-      code?: string;
-    };
-    ValidationError: components['schemas']['Error'] & {
-      /** @description Field name to messages. */
-      errors?: {
-        [key: string]: string[];
-      };
-    };
-    CursorMeta: {
-      /** @description Null on the last page. */
-      next_cursor: string | null;
-      /** @example 20 */
-      per_page: number;
-    };
-    /** @description An exact amount in minor units. 4900 SAR minor units is 49.00 SAR. */
-    Money: {
-      /**
-       * Format: int64
-       * @example 6900
-       */
-      amount_minor: number;
-      /**
-       * @example SAR
-       * @enum {string}
-       */
-      currency: 'SAR' | 'USD' | 'CNY';
-      /**
-       * @description Plain display string; clients may format in Arabic numerals.
-       * @example 69.00 SAR
-       */
-      formatted: string;
-    };
-    /** @enum {string} */
-    Locale: 'ar' | 'en';
-    /**
-     * @description Saudi mobile number in E.164.
-     * @example +966512345678
-     */
-    SaudiMobile: string;
-    Actor: {
-      /** @enum {string} */
-      type: 'system' | 'admin' | 'user';
-      /** Format: uuid */
-      id: string | null;
-      /** @example Sara (Campaigns) */
-      name: string | null;
-    };
-    ReasonInput: {
-      reason: string;
-    };
-    OtpChallenge: {
-      /** Format: uuid */
-      challenge_id: string;
-      /** Format: date-time */
-      expires_at: string;
-      /** Format: date-time */
-      resend_available_at: string;
-    };
-    CustomerSession: {
-      /** @example 1|k9Jx... */
-      token: string;
-      /** @enum {string} */
-      token_type: 'Bearer';
-      user: components['schemas']['User'];
-      is_new_user: boolean;
-    };
-    User: {
-      /** Format: uuid */
-      id: string;
-      phone: components['schemas']['SaudiMobile'];
-      /** @example نورة */
-      name: string | null;
-      /** Format: email */
-      email: string | null;
-      locale: components['schemas']['Locale'];
-      privacy_consent: {
-        /** @example 2026-11 */
-        policy_version: string;
-        /** Format: date-time */
-        accepted_at: string;
-      } | null;
-      /** @example 2026-11 */
-      current_privacy_policy_version: string;
-      /** Format: date-time */
-      created_at: string;
-    };
-    /** @description Saudi National Address fields. */
-    AddressInput: {
-      recipient_name: string;
-      recipient_phone: components['schemas']['SaudiMobile'];
-      /** @example الرياض */
-      city: string;
-      /** @example العليا */
-      district: string;
-      street: string;
-      /** @example 2401 */
-      building_no: string;
-      /** @example 12211 */
-      postal_code: string;
-      /** @example 3344 */
-      additional_no?: string | null;
-      /** @example RRRD2929 */
-      short_address?: string | null;
-      /** Format: double */
-      lat?: number | null;
-      /** Format: double */
-      lng?: number | null;
-      /** @description True makes this the default address. The first address is always the default. */
-      is_default?: boolean;
-    };
-    Address: {
-      /** Format: uuid */
-      id: string;
-    } & components['schemas']['AddressInput'];
-    Category: {
-      /** Format: uuid */
-      id: string;
-      /** @example home-kitchen */
-      slug: string;
-      /** @example المنزل والمطبخ */
-      name: string;
-      /** Format: uuid */
-      parent_id: string | null;
-    };
-    Image: {
-      /**
-       * Format: uri
-       * @example https://cdn.example.sa/products/kettle-1.webp
-       */
-      url: string;
-      alt: string | null;
-      /** Format: uuid */
-      product_variant_id: string | null;
-    };
-    Variant: {
-      /** Format: uuid */
-      id: string;
-      /** @example KET-17-BLK */
-      sku: string;
-      /** @example أسود */
-      name: string;
-      /**
-       * @example {
-       *       "color": "black"
-       *     }
-       */
-      option_values: {
-        [key: string]: string;
-      };
-    };
-    PriceTier: {
-      /** @example 1 */
-      min_qty: number;
-      /** @example 49 */
-      max_qty: number;
-      unit_price: components['schemas']['Money'];
-      /** @description The tier the next unit sold falls in. */
-      is_current: boolean;
-    };
-    /**
-     * @description Customers never see `draft` or `pending_approval`. Show `purchasing`,
-     *     `fulfilling` and `completed` as a successful deal.
-     * @example active
-     * @enum {string}
-     */
-    CustomerCampaignStatus:
-      | 'scheduled'
-      | 'active'
-      | 'closing'
-      | 'purchasing'
-      | 'fulfilling'
-      | 'completed'
-      | 'failed'
-      | 'cancelled';
-    CampaignProgress: {
-      /** Format: uuid */
-      campaign_id: string;
-      status: components['schemas']['CustomerCampaignStatus'];
-      /**
-       * @description Units with an authorized hold. Pending payments do not count.
-       * @example 53
-       */
-      committed_qty: number;
-      /** @example 100 */
-      min_target_qty: number;
-      /** @example 150 */
-      max_qty: number;
-      /**
-       * @description Units still on sale (max minus committed minus reserved).
-       * @example 95
-       */
-      remaining_qty: number;
-      /**
-       * @description 0 once the deal is confirmed.
-       * @example 47
-       */
-      units_to_target: number;
-      /**
-       * Format: date-time
-       * @description Set once the target is reached; show "Deal confirmed". It does not mean the order is placed.
-       */
-      deal_confirmed_at: string | null;
-      current_unit_price: components['schemas']['Money'];
-      /**
-       * Format: date-time
-       * @example 2026-11-08T07:00:00Z
-       */
-      deadline_at: string;
-      /**
-       * Format: date-time
-       * @example 2026-11-02T09:00:00Z
-       */
-      updated_at: string;
-      /**
-       * Format: int64
-       * @description Grows with every change to the campaign. Of two payloads for one campaign (a push and a read, say), show the one with the higher version; the same version is the same state. Compare this, not `updated_at`, which has whole seconds only.
-       * @example 1287
-       */
-      version: number;
-    };
-    CampaignSummary: {
-      /** Format: uuid */
-      id: string;
-      /** @example GB-2611-0007 */
-      code: string;
-      /** @example غلاية كهربائية 1.7 لتر */
-      title: string;
-      image: components['schemas']['Image'] | null;
-      status: components['schemas']['CustomerCampaignStatus'];
-      /**
-       * Format: date-time
-       * @example 2026-11-01T07:00:00Z
-       */
-      starts_at: string;
-      /**
-       * Format: date-time
-       * @example 2026-11-08T07:00:00Z
-       */
-      deadline_at: string;
-      current_unit_price: components['schemas']['Money'];
-      lowest_unit_price: components['schemas']['Money'];
-      progress: components['schemas']['CampaignProgress'];
-    };
-    CampaignDetail: components['schemas']['CampaignSummary'] & {
-      description: string;
-      category: components['schemas']['Category'] | null;
-      variants: components['schemas']['Variant'][];
-      images: components['schemas']['Image'][];
-      /** @description Lowest quantity first. Prices never rise with quantity. */
-      tiers: components['schemas']['PriceTier'][];
-      /** @description Total units one customer may hold across joins. */
-      per_customer_max_qty: number | null;
-      /**
-       * Format: date-time
-       * @description Set when the deadline was extended.
-       */
-      original_deadline_at: string | null;
-      /** @description Set once the campaign has succeeded (purchasing, fulfilling or completed); everyone pays this. Null while closing and for a failed or cancelled campaign. */
-      final_unit_price: components['schemas']['Money'] | null;
-      /**
-       * @description When a customer may cancel a join (proposed rule, open question Q16). Show it before payment.
-       * @enum {string}
-       */
-      cancellation_rule: 'before_deal_confirmed';
-    };
-    JoinRequest: {
-      /**
-       * Format: uuid
-       * @description Generated by the client once per join attempt; reuse it on retries.
-       */
-      client_request_id: string;
-      /** Format: uuid */
-      product_variant_id: string;
-      /** @example 2 */
-      quantity: number;
-      /**
-       * @description The unit price the customer saw. Compared only; never charged.
-       * @example 6900
-       */
-      shown_unit_price_halalas: number;
-      /** Format: uuid */
-      delivery_address_id: string;
-    };
-    JoinConflict: components['schemas']['Error'] & {
-      /** @enum {string} */
-      code?: 'price_changed' | 'sold_out' | 'campaign_not_joinable';
-      /** @description Present with `price_changed`. */
-      current_unit_price?: components['schemas']['Money'];
-      /** @description Present with `sold_out`. */
-      remaining_qty?: number;
-    };
-    /**
-     * @example authorized
-     * @enum {string}
-     */
-    ParticipationStatus:
-      | 'pending_payment'
-      | 'authorized'
-      | 'payment_failed'
-      | 'reservation_expired'
-      | 'cancelled'
-      | 'released'
-      | 'captured'
-      | 'capture_failed';
-    Participation: {
-      /** Format: uuid */
-      id: string;
-      campaign: components['schemas']['CampaignSummary'];
-      product_variant: components['schemas']['Variant'];
-      /** @example 2 */
-      quantity: number;
-      status: components['schemas']['ParticipationStatus'];
-      hold_unit_price: components['schemas']['Money'];
-      /** @description The most the customer can be charged. Show that the final charge may be lower. */
-      hold_amount: components['schemas']['Money'];
-      /** @description The price every participant paid. Null until this join's hold is captured. */
-      final_unit_price: components['schemas']['Money'] | null;
-      /** @description What was charged. Null until this join's hold is captured, and for a join released or left out at close. The rest of the hold is released, never charged. */
-      capture_amount: components['schemas']['Money'] | null;
-      /** Format: date-time */
-      reservation_expires_at: string;
-      can_cancel: boolean;
-      /** @description The latest payment attempt. */
-      payment: components['schemas']['Payment'] | null;
-      /**
-       * Format: uuid
-       * @description Set once the hold is captured.
-       */
-      order_id: string | null;
-      /** Format: date-time */
-      created_at: string;
-    };
-    /**
-     * @example authorized
-     * @enum {string}
-     */
-    PaymentStatus:
-      | 'pending_authorization'
-      | 'authorized'
-      | 'failed'
-      | 'voided'
-      | 'expired'
-      | 'captured'
-      | 'capture_failed'
-      | 'partially_refunded'
-      | 'refunded';
-    /**
-     * @description Why a payment was voided or failed on our side. `capture_declined` and `capture_cutoff_passed` are holds that could not be captured when the campaign closed (the join was left out and the hold voided).
-     * @enum {string}
-     */
-    PaymentRejectionReason:
-      | 'declined'
-      | 'amount_mismatch'
-      | 'currency_mismatch'
-      | 'method_not_allowed'
-      | 'not_authorize_only'
-      | 'reservation_expired'
-      | 'campaign_closed'
-      | 'participation_cancelled'
-      | 'duplicate_hold'
-      | 'capture_declined'
-      | 'capture_cutoff_passed';
-    Payment: {
-      /** Format: uuid */
-      id: string;
-      status: components['schemas']['PaymentStatus'];
-      amount: components['schemas']['Money'];
-      captured_amount: components['schemas']['Money'];
-      refunded_amount: components['schemas']['Money'];
-      /** @enum {string|null} */
-      scheme: 'mada' | 'visa' | 'mastercard' | null;
-      /** @example 4242 */
-      card_last4: string | null;
-      /**
-       * Format: date-time
-       * @description When the hold lapses (created + 14 days).
-       */
-      expires_at: string;
-      rejection_reason: (string & components['schemas']['PaymentRejectionReason']) | null;
-      /** @description Present only while `pending_authorization`. */
-      checkout: components['schemas']['MoyasarCheckout'] | null;
-    };
-    /** @description Settings for the Moyasar payment form. Card details are typed only into Moyasar's form. */
-    MoyasarCheckout: {
-      /** @example pk_test_xxxxxxxx */
-      publishable_api_key: string;
-      /**
-       * @description Halalas; equals the hold amount.
-       * @example 13800
-       */
-      amount: number;
-      /** @enum {string} */
-      currency: 'SAR';
-      /** @example GB-2611-0007 x2 */
-      description: string;
-      /**
-       * Format: uri
-       * @example https://example.sa/payments/return
-       */
-      callback_url: string;
-      methods: ('creditcard' | 'applepay')[];
-      supported_networks: ('mada' | 'visa' | 'mastercard')[];
-      /**
-       * @description Authorize only. A payment captured at once is voided and rejected.
-       * @enum {boolean}
-       */
-      manual: true;
-      metadata: {
-        /** Format: uuid */
-        payment_id: string;
-      };
-    };
-    /** @enum {string} */
-    OrderStatus:
-      | 'confirmed'
-      | 'processing'
-      | 'ready_to_ship'
-      | 'shipped'
-      | 'delivered'
-      | 'completed'
-      | 'cancelled'
-      | 'return_requested'
-      | 'returned';
-    Order: {
-      /** Format: uuid */
-      id: string;
-      /** @example ORD-2611-000123 */
-      order_number: string;
-      campaign: components['schemas']['CampaignSummary'];
-      product_variant: components['schemas']['Variant'];
-      quantity: number;
-      unit_price: components['schemas']['Money'];
-      goods_total: components['schemas']['Money'];
-      delivery_fee: components['schemas']['Money'];
-      /** @description Equals the amount captured. */
-      total: components['schemas']['Money'];
-      /** @description The 15% VAT contained in the total. */
-      vat: components['schemas']['Money'];
-      status: components['schemas']['OrderStatus'];
-      shipping_address: components['schemas']['AddressInput'];
-      payment: {
-        status: components['schemas']['PaymentStatus'];
-        captured_amount: components['schemas']['Money'];
-        refunded_amount: components['schemas']['Money'];
-      };
-      /** @description The newest parcel the courier has collected; a booking not yet collected is not shown. */
-      shipment: components['schemas']['Shipment'] | null;
-      invoices: components['schemas']['InvoiceRef'][];
-      /** Format: date-time */
-      delivered_at: string | null;
-      /** Format: date-time */
-      return_window_ends_at: string | null;
-      /** Format: date-time */
-      created_at: string;
-    };
-    InvoiceRef: {
-      /** Format: uuid */
-      id: string;
-      /** @enum {string} */
-      type: 'simplified_tax_invoice' | 'credit_note';
-      /** @example INV-2026-000123 */
-      invoice_number: string;
-      /** Format: date-time */
-      issued_at: string;
-      total: components['schemas']['Money'];
-      /**
-       * Format: uri
-       * @description The Arabic and English PDF, with the ZATCA QR code: a signed link that works for 30 minutes. Null for the moment between issue and the queued render.
-       */
-      pdf_url: string | null;
-    };
-    /** @enum {string} */
-    ShipmentStatus:
-      | 'pending'
-      | 'picked_up'
-      | 'in_transit'
-      | 'out_for_delivery'
-      | 'delivered'
-      | 'failed_attempt'
-      | 'returned'
-      | 'cancelled';
-    Shipment: {
-      /** Format: uuid */
-      id: string;
-      /** @example SMSA */
-      courier: string;
-      tracking_number: string;
-      /** Format: uri */
-      tracking_url: string | null;
-      status: components['schemas']['ShipmentStatus'];
-      /** Format: date-time */
-      shipped_at: string | null;
-      /** Format: date-time */
-      delivered_at: string | null;
-      /** @description Oldest first. */
-      events: {
-        status: components['schemas']['ShipmentStatus'];
-        description: string | null;
-        location: string | null;
-        /** Format: date-time */
-        occurred_at: string;
-      }[];
-    };
-    AdminSession: {
-      token: string;
-      /** @enum {string} */
-      token_type: 'Bearer';
-      admin: components['schemas']['AdminUser'];
-    };
-    /** @enum {string} */
-    AdminRoleName:
-      'super_admin' | 'sourcing' | 'campaign_manager' | 'finance' | 'operations' | 'support';
-    AdminRole: {
-      name: components['schemas']['AdminRoleName'];
-      permissions: components['schemas']['AdminPermission'][];
-      /** @description Whether the signed-in admin holds every permission of this role, and so can grant it. */
-      grantable: boolean;
-    };
-    /**
-     * @description What an admin may do. Each admin operation names the one it needs in
-     *     `x-permission`. `approvals.decide` belongs to finance only, not to
-     *     super_admin, so releasing money always takes finance; nobody can grant
-     *     a role with permissions they lack, so a super admin cannot make
-     *     themselves finance.
-     * @enum {string}
-     */
-    AdminPermission:
-      | 'catalog.view'
-      | 'catalog.edit'
-      | 'suppliers.view'
-      | 'suppliers.edit'
-      | 'suppliers.approve'
-      | 'campaigns.view'
-      | 'campaigns.edit'
-      | 'pricing.edit'
-      | 'campaigns.approve'
-      | 'campaigns.override_margin'
-      | 'campaigns.extend'
-      | 'campaigns.cancel'
-      | 'campaigns.close'
-      | 'payments.view'
-      | 'refunds.request'
-      | 'payments.void'
-      | 'approvals.view'
-      | 'approvals.decide'
-      | 'orders.view'
-      | 'fulfilment.edit'
-      | 'purchasing.view'
-      | 'purchasing.edit'
-      | 'reconciliation.view'
-      | 'reconciliation.resolve'
-      | 'audit.view'
-      | 'ledger.view'
-      | 'ledger.adjust'
-      | 'admins.manage';
-    AdminUser: {
-      /** Format: uuid */
-      id: string;
-      /** Format: email */
-      email: string;
-      /** @example Sara Alqahtani */
-      name: string;
-      /** @description Receives the sign-in codes. */
-      phone: components['schemas']['SaudiMobile'];
-      /** @enum {string} */
-      status: 'active' | 'blocked';
-      /**
-       * @example [
-       *       "finance"
-       *     ]
-       */
-      roles: components['schemas']['AdminRoleName'][];
-      /**
-       * @description Everything the admin's roles allow. Use this, not role names, to decide what to show.
-       * @example [
-       *       "approvals.decide",
-       *       "approvals.view",
-       *       "campaigns.approve",
-       *       "campaigns.view",
-       *       "payments.view"
-       *     ]
-       */
-      permissions: components['schemas']['AdminPermission'][];
-      /** Format: date-time */
-      last_login_at: string | null;
-      /** Format: date-time */
-      created_at: string;
-    };
-    AdminCreateInput: {
-      /** Format: email */
-      email: string;
-      /** @example Sara Alqahtani */
-      name: string;
-      phone: components['schemas']['SaudiMobile'];
-      roles: components['schemas']['AdminRoleName'][];
-      /**
-       * Format: password
-       * @description Share it with the new admin privately. They can change it with `POST /admin/me/password`.
-       */
-      password: string;
-    };
-    AdminUpdateInput: {
-      name?: string;
-      phone?: components['schemas']['SaudiMobile'];
-      roles?: components['schemas']['AdminRoleName'][];
-      /** @enum {string} */
-      status?: 'active' | 'blocked';
-      /**
-       * Format: password
-       * @description Sets a new password, for an admin who forgot theirs.
-       */
-      password?: string;
-    };
-    AdminCategoryInput: {
-      slug: string;
-      name_ar: string;
-      name_en: string;
-      /** Format: uuid */
-      parent_id?: string | null;
-      /** @default 0 */
-      sort_order: number;
-    };
-    AdminCategory: {
-      /** Format: uuid */
-      id: string;
-    } & components['schemas']['AdminCategoryInput'];
-    AdminProductInput: {
-      /** Format: uuid */
-      category_id: string;
-      name_ar: string;
-      name_en: string;
-      description_ar?: string | null;
-      description_en?: string | null;
-      /** Format: uri */
-      alibaba_url: string;
-      /** @example 851610 */
-      hs_code?: string | null;
-      /** @enum {string} */
-      status?: 'draft' | 'active' | 'archived';
-    };
-    AdminProduct: components['schemas']['AdminProductInput'] & {
-      /** Format: uuid */
-      id: string;
-      variants: components['schemas']['AdminVariant'][];
-      images: components['schemas']['AdminImage'][];
-      /** Format: date-time */
-      created_at: string;
-      /** Format: date-time */
-      updated_at: string;
-    };
-    AdminVariantInput: {
-      sku: string;
-      name_ar: string;
-      name_en: string;
-      /** @description Keys are lowercase identifiers matching `^[a-z][a-z0-9_]{0,49}$`, such as `color`. */
-      option_values?: {
-        [key: string]: string;
-      };
-      weight_grams?: number | null;
-      length_mm?: number | null;
-      width_mm?: number | null;
-      height_mm?: number | null;
-      /**
-       * @description Defaults to `active` on create; left out on update, it keeps its current value.
-       * @enum {string}
-       */
-      status?: 'active' | 'archived';
-    };
-    AdminVariant: {
-      /** Format: uuid */
-      id: string;
-    } & components['schemas']['AdminVariantInput'];
-    AdminImage: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uri */
-      url: string;
-      /** Format: uuid */
-      product_variant_id: string | null;
-      alt_ar: string | null;
-      alt_en: string | null;
-      sort_order: number;
-    };
-    SupplierInput: {
-      name: string;
-      /** Format: uri */
-      alibaba_store_url: string;
-      /** @example CN */
-      country: string;
-      contact_name?: string | null;
-      /** @example Alibaba chat */
-      contact_channel?: string | null;
-      quality_rating?: number | null;
-      review_notes?: string | null;
-    };
-    SupplierReviewInput: {
-      /** @enum {string} */
-      status: 'prospect' | 'approved' | 'blocked';
-      quality_rating?: number | null;
-      review_notes?: string | null;
-    };
-    Supplier: components['schemas']['SupplierInput'] & {
-      /** Format: uuid */
-      id: string;
-      /** @enum {string} */
-      status: 'prospect' | 'approved' | 'blocked';
-      reviewed_by: components['schemas']['Actor'] | null;
-      /** Format: date-time */
-      reviewed_at: string | null;
-    };
-    /** @description Per unit, in halalas. */
-    LandedCostBreakdownInput: {
-      product_halalas: number;
-      freight_halalas: number;
-      customs_duty_halalas: number;
-      /** @description Whether this belongs here is open with the tax adviser. */
-      import_vat_halalas: number;
-      clearance_halalas: number;
-      last_mile_halalas: number;
-    };
-    QuotationInput: {
-      /** Format: uuid */
-      supplier_id: string;
-      /** Format: uuid */
-      product_id: string;
-      /**
-       * Format: uuid
-       * @description Null when the quote covers every variant.
-       */
-      product_variant_id?: string | null;
-      moq: number;
-      /** @description In the supplier's currency (USD cents, for example). */
-      unit_cost_minor: number;
-      /** @enum {string} */
-      currency: 'USD' | 'CNY' | 'SAR';
-      /** @example FOB */
-      shipping_terms: string;
-      lead_time_days: number;
-      /** Format: date */
-      valid_until: string;
-      /**
-       * @description Decimal string, never a float. SAR per unit of `currency`.
-       * @example 3.75000000
-       */
-      fx_rate_to_sar: string;
-      landed_cost_basis_qty: number;
-      landed_cost_breakdown: components['schemas']['LandedCostBreakdownInput'];
-    };
-    Quotation: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      supplier_id: string;
-      /** Format: uuid */
-      product_id: string;
-      /** Format: uuid */
-      product_variant_id: string | null;
-      moq: number;
-      unit_cost: components['schemas']['Money'];
-      shipping_terms: string;
-      lead_time_days: number;
-      /** Format: date */
-      valid_until: string;
-      /** @example 3.75000000 */
-      fx_rate_to_sar: string;
-      landed_cost_basis_qty: number;
-      landed_cost_breakdown: {
-        product: components['schemas']['Money'];
-        freight: components['schemas']['Money'];
-        customs_duty: components['schemas']['Money'];
-        import_vat: components['schemas']['Money'];
-        clearance: components['schemas']['Money'];
-        last_mile: components['schemas']['Money'];
-      };
-      landed_cost_per_unit: components['schemas']['Money'];
-      /** Format: uri */
-      attachment_url: string | null;
-      /** @enum {string} */
-      status: 'draft' | 'accepted' | 'rejected' | 'expired';
-      used_by_campaign_ids: string[];
-    };
-    /**
-     * @example active
-     * @enum {string}
-     */
-    CampaignStatus:
-      | 'draft'
-      | 'pending_approval'
-      | 'scheduled'
-      | 'active'
-      | 'closing'
-      | 'purchasing'
-      | 'fulfilling'
-      | 'completed'
-      | 'failed'
-      | 'cancelled';
-    /** @enum {string} */
-    ClosingStep:
-      'settling_joins' | 'awaiting_supplier' | 'capturing' | 'needs_admin' | 'notifying' | 'done';
-    AdminCampaignInput: {
-      /** Format: uuid */
-      product_id: string;
-      /** Format: uuid */
-      supplier_quotation_id: string;
-      title_ar: string;
-      title_en: string;
-      /** @description Every variant counts toward one shared target and maximum. */
-      product_variant_ids: string[];
-      min_target_qty: number;
-      /** @description Must be at least `min_target_qty`. */
-      max_qty: number;
-      /** @description At most `max_qty`. */
-      per_customer_max_qty?: number | null;
-      /**
-       * Format: date-time
-       * @description The deadline is set at approval, 7 days after the start.
-       */
-      starts_at: string;
-      /**
-       * @description `direct` comes after the pilot.
-       * @default warehouse
-       * @enum {string}
-       */
-      delivery_mode: 'warehouse';
-    };
-    AdminTier: {
-      min_qty: number;
-      max_qty: number;
-      unit_price: components['schemas']['Money'];
-    };
-    TierSetInput: {
-      lock_version: number;
-      /** @description Required from version 2. */
-      reason?: string | null;
-      tiers: {
-        min_qty: number;
-        max_qty: number;
-        /** @description VAT-inclusive. */
-        unit_price_halalas: number;
-      }[];
-    };
-    AdminCampaign: {
-      /** Format: uuid */
-      id: string;
-      /** @example GB-2611-0007 */
-      code: string;
-      status: components['schemas']['CampaignStatus'];
-      product: {
-        /** Format: uuid */
-        id: string;
-        name_ar: string;
-        name_en: string;
-      };
-      supplier: {
-        /** Format: uuid */
-        id: string;
-        name: string;
-        /** @description From the campaign's quotation. */
-        moq: number;
-      };
-      /** Format: uuid */
-      supplier_quotation_id: string;
-      title_ar: string;
-      title_en: string;
-      variants: components['schemas']['AdminVariant'][];
-      min_target_qty: number;
-      max_qty: number;
-      committed_qty: number;
-      reserved_qty: number;
-      per_customer_max_qty: number | null;
-      /** Format: date-time */
-      starts_at: string;
-      /**
-       * Format: date-time
-       * @description Null until approval.
-       */
-      deadline_at: string | null;
-      /** Format: date-time */
-      original_deadline_at: string | null;
-      /** Format: date-time */
-      extended_at: string | null;
-      extension_reason: string | null;
-      /** Format: date-time */
-      deal_confirmed_at: string | null;
-      /** @enum {string|null} */
-      close_reason: 'deadline' | 'max_reached' | null;
-      closing_step: (string & components['schemas']['ClosingStep']) | null;
-      /** Format: date-time */
-      closed_at: string | null;
-      final_qty: number | null;
-      final_unit_price: components['schemas']['Money'] | null;
-      /**
-       * Format: date-time
-       * @description Earliest capture cutoff among the holds.
-       */
-      capture_by: string | null;
-      /**
-       * Format: date-time
-       * @description `capture_by` minus 24 hours, while awaiting the supplier.
-       */
-      supplier_decision_due_at: string | null;
-      captured_qty: number | null;
-      /** @description The admin's reason for a cancellation; for a failure, one of target_missed, supplier_rejected, no_supplier_decision or captures_failed. */
-      end_reason: string | null;
-      /** @description Null until the first tier set is saved. */
-      tier_version: number | null;
-      tiers: components['schemas']['AdminTier'][];
-      landed_cost_per_unit: components['schemas']['Money'];
-      /** @enum {string} */
-      delivery_mode: 'warehouse' | 'direct';
-      created_by: components['schemas']['Actor'];
-      approved_by: components['schemas']['Actor'] | null;
-      /** Format: date-time */
-      approved_at: string | null;
-      lock_version: number;
-      /** @description Actions this admin may take now, given status and permissions. */
-      available_actions: (
-        | 'edit'
-        | 'edit_tiers'
-        | 'submit'
-        | 'approve'
-        | 'reject'
-        | 'extend'
-        | 'cancel'
-        | 'record_supplier_decision'
-        | 'decide_below_target'
-      )[];
-    };
-    MarginReport: {
-      /**
-       * @description 1500 is 15%.
-       * @example 1500
-       */
-      min_margin_bp: number;
-      passes: boolean;
-      landed_cost_per_unit: components['schemas']['Money'];
-      /** @description Per unit, worked out on the highest tier price so it is never understated. */
-      payment_fee_estimate: components['schemas']['Money'];
-      delivery_cost_estimate: components['schemas']['Money'];
-      tiers: {
-        min_qty: number;
-        max_qty: number;
-        unit_price: components['schemas']['Money'];
-        /** @description Price without VAT. */
-        net_price: components['schemas']['Money'];
-        margin: components['schemas']['Money'];
-        /** @description Margin as a share of the net price, in basis points. */
-        margin_bp: number;
-        passes: boolean;
-      }[];
-      warnings: (
-        | 'min_target_below_supplier_moq'
-        | 'target_at_lowest_tier_boundary'
-        | 'quotation_expires_before_capture'
-      )[];
-    };
-    MarginBlockedError: components['schemas']['ValidationError'] & {
-      margin?: components['schemas']['MarginReport'];
-    };
-    ExtensionWindow: {
-      allowed: boolean;
-      /** @enum {string|null} */
-      blocked_reason:
-        | 'not_active'
-        | 'already_extended'
-        | 'deal_confirmed'
-        | 'deadline_passed'
-        | 'no_room_before_hold_expiry'
-        | null;
-      /** Format: date-time */
-      latest_allowed_deadline_at: string | null;
-      /** Format: date-time */
-      earliest_hold_expires_at: string | null;
-    };
-    ExtensionBlockedError: components['schemas']['ValidationError'] & {
-      window?: components['schemas']['ExtensionWindow'];
-    };
-    SupplierDecisionInput: {
-      /** @enum {string} */
-      decision: 'confirmed' | 'rejected';
-      /** @description Required when confirmed. In the minor unit of `currency`. */
-      unit_cost_minor?: number;
-      /**
-       * @description The supplier's currency; the quotation's when left out.
-       * @enum {string|null}
-       */
-      currency?: 'USD' | 'CNY' | 'SAR' | null;
-      /** @description Required when confirmed; must cover the final quantity. */
-      available_qty?: number;
-      quotation_reference?: string | null;
-      note?: string | null;
-    };
-    CampaignEvent: {
-      /** Format: uuid */
-      id: string;
-      /**
-       * @description For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, supplier_shipped, goods_received, completed, failed, cancelled.
-       * @example price_changed
-       */
-      event_type: string;
-      from_status: (string & components['schemas']['CampaignStatus']) | null;
-      to_status: (string & components['schemas']['CampaignStatus']) | null;
-      committed_qty_after: number;
-      payload: {
-        [key: string]: unknown;
-      };
-      actor: components['schemas']['Actor'];
-      /** Format: date-time */
-      occurred_at: string;
-    };
-    AdminParticipation: {
-      /** Format: uuid */
-      id: string;
-      customer: {
-        /** Format: uuid */
-        id: string;
-        name: string | null;
-        /** @description Masked, for example +9665******78. */
-        phone: string;
-      };
-      product_variant: components['schemas']['AdminVariant'];
-      quantity: number;
-      status: components['schemas']['ParticipationStatus'];
-      hold_unit_price: components['schemas']['Money'];
-      hold_amount: components['schemas']['Money'];
-      final_unit_price: components['schemas']['Money'] | null;
-      capture_amount: components['schemas']['Money'] | null;
-      payment: components['schemas']['AdminPayment'] | null;
-      /** Format: date-time */
-      created_at: string;
-    };
-    AdminPayment: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      participation_id: string;
-      campaign: {
-        /** Format: uuid */
-        id: string;
-        code: string;
-      };
-      provider_payment_id: string | null;
-      /**
-       * @description Null until Moyasar reports the payment.
-       * @enum {string|null}
-       */
-      source_type: 'creditcard' | 'applepay' | null;
-      /** @enum {string|null} */
-      scheme: 'mada' | 'visa' | 'mastercard' | null;
-      card_last4: string | null;
-      status: components['schemas']['PaymentStatus'];
-      rejection_reason: (string & components['schemas']['PaymentRejectionReason']) | null;
-      authorized_amount: components['schemas']['Money'];
-      captured_amount: components['schemas']['Money'];
-      refunded_amount: components['schemas']['Money'];
-      /** Format: date-time */
-      expires_at: string;
-      /**
-       * Format: date-time
-       * @description `expires_at` minus 24 hours. No capture after this.
-       */
-      capture_cutoff_at: string;
-      /** Format: date-time */
-      authorized_at: string | null;
-      /** Format: date-time */
-      captured_at: string | null;
-      /** Format: date-time */
-      voided_at: string | null;
-      /** @description Last status seen at Moyasar. */
-      provider_status: string | null;
-      /** Format: date-time */
-      last_synced_at: string | null;
-      /** @description Whether a hold Moyasar still keeps may be released (`POST /admin/payments/{id}/void`). Null in lists. */
-      void_requestable: boolean | null;
-      /** @description Every call to Moyasar, oldest first. Empty in list responses. */
-      transactions: components['schemas']['PaymentTransaction'][];
-    };
-    PaymentTransaction: {
-      /** Format: uuid */
-      id: string;
-      /** @enum {string} */
-      type: 'authorize' | 'capture' | 'void' | 'refund';
-      amount: components['schemas']['Money'];
-      /** @example capture:0f8f3c3e-6d1b-4c55-9d0f-4d6c3e2b1a90 */
-      idempotency_key: string;
-      /** @enum {string} */
-      status: 'pending' | 'succeeded' | 'failed';
-      provider_reference: string | null;
-      error_code: string | null;
-      error_message: string | null;
-      requested_by: components['schemas']['Actor'];
-      /** Format: date-time */
-      created_at: string;
-      /** Format: date-time */
-      completed_at: string | null;
-    };
-    /** @enum {string} */
-    RefundStatus:
-      'pending_approval' | 'approved' | 'processing' | 'succeeded' | 'failed' | 'rejected';
-    /** @enum {string} */
-    RefundReason:
-      | 'customer_cancellation'
-      | 'delivery_delay'
-      | 'defective'
-      | 'shortage'
-      | 'campaign_cancelled_after_capture'
-      | 'customer_return'
-      | 'other';
-    RefundInput: {
-      /** Format: uuid */
-      payment_id: string;
-      /** Format: uuid */
-      customer_order_id?: string | null;
-      amount_halalas: number;
-      reason: components['schemas']['RefundReason'];
-      note?: string | null;
-    };
-    Refund: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      payment_id: string;
-      /** Format: uuid */
-      customer_order_id: string | null;
-      amount: components['schemas']['Money'];
-      /**
-       * @description `void` only for a full refund within about 2 hours of capture.
-       * @enum {string}
-       */
-      method: 'void' | 'refund';
-      reason: components['schemas']['RefundReason'];
-      status: components['schemas']['RefundStatus'];
-      provider_refund_id: string | null;
-      /** Format: uuid */
-      approval_request_id: string | null;
-      /** Format: uuid */
-      credit_note_id: string | null;
-      requested_by: components['schemas']['Actor'];
-      /** Format: date-time */
-      created_at: string;
-      /** Format: date-time */
-      processed_at: string | null;
-    };
-    ApprovalRequest: {
-      /** Format: uuid */
-      id: string;
-      /** @enum {string} */
-      type:
-        | 'manual_refund'
-        | 'manual_capture'
-        | 'manual_void'
-        | 'ledger_adjustment'
-        | 'campaign_cancellation';
-      /** @example refund */
-      subject_type: string;
-      /** Format: uuid */
-      subject_id: string;
-      payload: {
-        [key: string]: unknown;
-      };
-      /** @enum {string} */
-      status: 'pending' | 'approved' | 'rejected' | 'cancelled';
-      requested_by: components['schemas']['Actor'];
-      decided_by: components['schemas']['Actor'] | null;
-      reason: string | null;
-      /** Format: date-time */
-      created_at: string;
-      /** Format: date-time */
-      decided_at: string | null;
-    };
-    AdminOrder: components['schemas']['Order'] & {
-      customer: {
-        /** Format: uuid */
-        id: string;
-        name: string | null;
-        phone: components['schemas']['SaudiMobile'];
-      };
-      /** Format: uuid */
-      participation_id: string;
-      /** Format: uuid */
-      payment_id: string;
-      refunds: components['schemas']['Refund'][];
-      /** @description Every shipment, newest first, including parcels brought back and bookings called off. */
-      shipments: components['schemas']['AdminShipment'][];
-      return: components['schemas']['OrderReturn'] | null;
-    };
-    AdminShipment: {
-      /** Format: uuid */
-      id: string;
-      /** @example Aramex */
-      courier: string;
-      /** @description Null only while a booking waits for the courier's answer. */
-      tracking_number: string | null;
-      /** Format: uri */
-      tracking_url: string | null;
-      status: components['schemas']['ShipmentStatus'];
-      /**
-       * Format: date-time
-       * @description When the courier collected it.
-       */
-      shipped_at: string | null;
-      /** Format: date-time */
-      delivered_at: string | null;
-      /** @description Null when the parcel was handed over by hand. */
-      booking: {
-        /** @enum {string} */
-        status: 'requested' | 'booked' | 'failed';
-        /**
-         * Format: uuid
-         * @description Our reference sent to the courier with the booking.
-         */
-        reference: string;
-        /** Format: date-time */
-        requested_at: string;
-        /** @description Why the booking failed; the shipment is then cancelled. */
-        error: string | null;
-        /**
-         * Format: uri
-         * @description The courier's label as PDF: a signed link that works for 30 minutes.
-         */
-        label_url: string | null;
-      } | null;
-      /** Format: date-time */
-      created_at: string;
-      /** @description Oldest first. */
-      events: {
-        status: components['schemas']['ShipmentStatus'];
-        description: string | null;
-        location: string | null;
-        /** @enum {string} */
-        source: 'admin' | 'courier_api';
-        /** Format: date-time */
-        occurred_at: string;
-      }[];
-    };
-    CourierSettings: {
-      /**
-       * @description Null without a courier API.
-       * @example Aramex
-       */
-      name: string | null;
-      /** @description Parcels can be booked through the API. */
-      books: boolean;
-      /** @description Tracking is read from the API every 30 minutes. */
-      tracks: boolean;
-    };
-    ShipmentBookingInput: {
-      shipping_cost_halalas?: number | null;
-    };
-    ShipmentCancelInput: {
-      reason?: string | null;
-    };
-    /** @enum {string} */
-    ReturnStatus: 'requested' | 'approved' | 'rejected' | 'completed';
-    /** @enum {string} */
-    ReturnReason:
-      | 'defective'
-      | 'damaged_in_transit'
-      | 'wrong_item'
-      | 'not_as_described'
-      | 'changed_mind'
-      | 'other';
-    OrderReturn: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      customer_order_id: string;
-      order_number: string;
-      customer: {
-        name: string | null;
-        phone: components['schemas']['SaudiMobile'];
-      };
-      status: components['schemas']['ReturnStatus'];
-      reason: components['schemas']['ReturnReason'];
-      note: string | null;
-      recorded_by: components['schemas']['Actor'];
-      /** Format: date-time */
-      recorded_at: string;
-      decided_by: components['schemas']['Actor'] | null;
-      /** Format: date-time */
-      decided_at: string | null;
-      decision_note: string | null;
-      /** @description The refund asked for when the return was approved. */
-      refund: components['schemas']['Refund'] | null;
-      refundable: components['schemas']['Money'];
-      /** @description Can be approved or rejected now: never decided, or its refund was rejected or failed. */
-      open: boolean;
-    };
-    ReturnInput: {
-      reason: components['schemas']['ReturnReason'];
-      note?: string | null;
-    };
-    ReturnApprovalInput: {
-      /** @description What goes back to the card; at most what is still refundable. */
-      amount_halalas: number;
-      note?: string | null;
-    };
-    ReturnRejectionInput: {
-      note: string;
-    };
-    ShipmentInput: {
-      courier: string;
-      tracking_number: string;
-      /** Format: uri */
-      tracking_url?: string | null;
-      shipping_cost_halalas?: number | null;
-    };
-    ShipmentEventInput: {
-      /**
-       * @description `returned`: the courier brought the parcel back. A shipment not yet collected is called off instead.
-       * @enum {string}
-       */
-      status:
-        | 'picked_up'
-        | 'in_transit'
-        | 'out_for_delivery'
-        | 'failed_attempt'
-        | 'delivered'
-        | 'returned';
-      description?: string | null;
-      location?: string | null;
-      /** Format: date-time */
-      occurred_at: string;
-    };
-    /** @enum {string} */
-    PurchaseOrderStatus:
-      'draft' | 'placed' | 'supplier_confirmed' | 'paid' | 'shipped' | 'received' | 'cancelled';
-    PurchaseOrderInput: {
-      alibaba_order_ref?: string | null;
-      total_minor?: number;
-      /** @enum {string} */
-      currency?: 'USD' | 'CNY' | 'SAR';
-      fx_rate_to_sar?: string;
-      freight_forwarder?: string | null;
-      freight_tracking_ref?: string | null;
-      /** Format: date */
-      eta?: string | null;
-      /**
-       * Format: date-time
-       * @description Once the order is paid, records or corrects the payment date.
-       */
-      paid_at?: string;
-    };
-    PurchaseOrder: {
-      /** Format: uuid */
-      id: string;
-      /** @example PO-2611-0007 */
-      po_number: string;
-      campaign: {
-        /** Format: uuid */
-        id: string;
-        code: string;
-      };
-      supplier: {
-        /** Format: uuid */
-        id: string;
-        name: string;
-      };
-      /** Format: uuid */
-      supplier_quotation_id: string;
-      alibaba_order_ref: string | null;
-      /** @description In the supplier's currency. Starts as the captured units at the unit cost the supplier reconfirmed. */
-      total: components['schemas']['Money'];
-      /** @description Exact decimal. The quote's rate when the order is in the quote's currency, 1 for SAR; otherwise null until recorded. */
-      fx_rate_to_sar: string | null;
-      /** @description The total at the recorded rate, rounded to the halala; null while the rate is unknown. */
-      total_sar: components['schemas']['Money'] | null;
-      status: components['schemas']['PurchaseOrderStatus'];
-      lines: {
-        product_variant: components['schemas']['AdminVariant'];
-        /** @description Captured units for this variant. */
-        qty: number;
-        unit_cost: components['schemas']['Money'];
-      }[];
-      /** Format: date-time */
-      placed_at: string | null;
-      /** Format: date-time */
-      supplier_confirmed_at: string | null;
-      /** Format: date-time */
-      paid_at: string | null;
-      /** Format: date-time */
-      shipped_at: string | null;
-      freight_forwarder: string | null;
-      freight_tracking_ref: string | null;
-      /** Format: date */
-      eta: string | null;
-      /** @description Warehouse receipts (fulfilment, E13); empty until then. */
-      receipts: components['schemas']['InboundReceipt'][];
-      /** @description Papers kept with the order, oldest first. */
-      documents: components['schemas']['PurchaseOrderDocument'][];
-    };
-    /** @enum {string} */
-    PurchaseOrderDocumentKind:
-      'alibaba_invoice' | 'payment_receipt' | 'shipping_document' | 'customs_document' | 'other';
-    PurchaseOrderDocument: {
-      /** Format: uuid */
-      id: string;
-      kind: components['schemas']['PurchaseOrderDocumentKind'];
-      /** @description The name the file had when it was uploaded. */
-      file_name: string;
-      size_bytes: number;
-      /**
-       * Format: uri
-       * @description Signed link that works for 30 minutes.
-       */
-      url: string;
-      uploaded_by: components['schemas']['Actor'];
-      /** Format: date-time */
-      uploaded_at: string;
-      /** @description True within 24 hours of the upload; after that the paper is kept as a record. */
-      removable: boolean;
-    };
-    InboundReceiptInput: {
-      warehouse_name: string;
-      /** Format: date-time */
-      received_at: string;
-      notes?: string | null;
-      lines: {
-        /** Format: uuid */
-        product_variant_id: string;
-        qty_received: number;
-        qty_damaged: number;
-      }[];
-    };
-    InboundReceipt: {
-      /** Format: uuid */
-      id: string;
-      warehouse_name: string;
-      /** Format: date-time */
-      received_at: string;
-      received_by: components['schemas']['Actor'];
-      notes: string | null;
-      lines: {
-        /** Format: uuid */
-        product_variant_id: string;
-        qty_expected: number;
-        qty_received: number;
-        qty_damaged: number;
-        /** @description Expected but not received. */
-        qty_missing: number;
-      }[];
-      /** @description Photos of the goods as they arrived, oldest first; signed links that work for 30 minutes. */
-      photo_urls: string[];
-    };
-    ReconciliationRun: {
-      /** Format: uuid */
-      id: string;
-      /** Format: date */
-      run_date: string;
-      /** @enum {string} */
-      provider: 'moyasar';
-      /** @enum {string} */
-      status: 'running' | 'matched' | 'mismatches' | 'failed';
-      payments_checked: number;
-      mismatch_count: number;
-      /** Format: date-time */
-      started_at: string;
-      /** Format: date-time */
-      finished_at: string | null;
-    };
-    ReconciliationItem: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      run_id: string;
-      /** Format: uuid */
-      payment_id: string | null;
-      /** @enum {string} */
-      mismatch_type:
-        | 'status'
-        | 'amount'
-        | 'missing_locally'
-        | 'missing_at_provider'
-        | 'orphan_hold'
-        | 'stuck_void';
-      our_value: {
-        [key: string]: unknown;
-      } | null;
-      provider_value: {
-        [key: string]: unknown;
-      } | null;
-      resolved_by: components['schemas']['Actor'] | null;
-      /** Format: date-time */
-      resolved_at: string | null;
-      resolution_note: string | null;
-    };
-    /** @enum {string} */
-    LedgerAccountCode:
-      | 'moyasar_clearing'
-      | 'bank'
-      | 'inventory_in_transit'
-      | 'customer_prepayments'
-      | 'vat_output_payable'
-      | 'supplier_payable'
-      | 'sales_revenue'
-      | 'payment_fees'
-      | 'vat_input_recoverable';
-    /** @enum {string} */
-    LedgerTransactionType:
-      'capture' | 'refund' | 'revenue_recognition' | 'adjustment' | 'reversal' | 'settlement';
-    LedgerAccountBalance: {
-      code: components['schemas']['LedgerAccountCode'];
-      /** @example Moyasar clearing */
-      name: string;
-      /** @enum {string} */
-      type: 'asset' | 'liability' | 'revenue' | 'expense' | 'equity';
-      debits: components['schemas']['Money'];
-      credits: components['schemas']['Money'];
-      /** @description Debits minus credits; negative for a credit balance. */
-      balance: components['schemas']['Money'];
-    };
-    LedgerLine: {
-      account: components['schemas']['LedgerAccountCode'];
-      account_name: string;
-      /** @enum {string} */
-      direction: 'D' | 'C';
-      amount: components['schemas']['Money'];
-    };
-    LedgerTransaction: {
-      /** Format: uuid */
-      id: string;
-      type: components['schemas']['LedgerTransactionType'];
-      /**
-       * @description Unique per type: what the posting is for.
-       * @example capture:9b1c…
-       */
-      reference: string;
-      description: string;
-      order: {
-        /** Format: uuid */
-        id: string;
-        number: string;
-      } | null;
-      /** Format: uuid */
-      approval_request_id: string | null;
-      /** Format: uuid */
-      reverses_transaction_id: string | null;
-      entries: components['schemas']['LedgerLine'][];
-      actor: components['schemas']['Actor'];
-      /** Format: date-time */
-      occurred_at: string;
-    };
-    /** @description Either `lines` or `reverses_transaction_id`. */
-    LedgerAdjustmentInput: {
-      description: string;
-      lines?:
-        | {
-            account: components['schemas']['LedgerAccountCode'];
+    schemas: {
+        Health: {
             /** @enum {string} */
-            direction: 'D' | 'C';
-            /** Format: int64 */
-            amount_halalas: number;
-          }[]
-        | null;
-      /** Format: uuid */
-      reverses_transaction_id?: string | null;
-    };
-    LedgerAdjustment: {
-      /** Format: uuid */
-      id: string;
-      description: string;
-      /** @description Null for a reversal. */
-      lines: components['schemas']['LedgerLine'][] | null;
-      /** @description The posting it reverses; null for lines. */
-      reverses: {
-        /** Format: uuid */
-        id: string;
-        type: components['schemas']['LedgerTransactionType'];
-        reference: string;
-        description: string;
-      } | null;
-      /** @enum {string} */
-      status: 'pending' | 'posted' | 'rejected';
-      /** Format: uuid */
-      approval_request_id: string | null;
-      /**
-       * Format: uuid
-       * @description The posting once approved.
-       */
-      ledger_transaction_id: string | null;
-      requested_by: components['schemas']['Actor'] | null;
-      /** Format: date-time */
-      created_at: string;
-    };
-    MoyasarSettlement: {
-      /** Format: uuid */
-      id: string;
-      provider_settlement_id: string;
-      /** @description Net plus fee. */
-      gross: components['schemas']['Money'];
-      /** @description Moyasar's fee, VAT included. */
-      fee: components['schemas']['Money'];
-      fee_vat: components['schemas']['Money'];
-      /** @description Paid into the bank. */
-      net: components['schemas']['Money'];
-      /** Format: date-time */
-      settled_at: string | null;
-      line_count: number;
-      /** @description Lines for payments we do not know. */
-      unmatched_count: number;
-      /**
-       * Format: uuid
-       * @description Null only when every amount is zero.
-       */
-      ledger_transaction_id: string | null;
-      /** Format: date-time */
-      imported_at: string;
-    };
-    MoyasarSettlementLine: {
-      /**
-       * @description Moyasar's line type: payment, refund, void, fee, chargeback, …
-       * @example payment
-       */
-      type: string;
-      provider_payment_id: string | null;
-      /**
-       * Format: uuid
-       * @description Null when we have no such payment.
-       */
-      payment_id: string | null;
-      /** @description Net of the fee; negative for money going back. */
-      amount: components['schemas']['Money'];
-      fee: components['schemas']['Money'];
-      fee_vat: components['schemas']['Money'];
-      payment_amount: components['schemas']['Money'] | null;
-      /** Format: date-time */
-      transacted_at: string | null;
-    };
-    AuditLogEntry: {
-      /** Format: int64 */
-      id: number;
-      actor: components['schemas']['Actor'];
-      /** @example campaign.approve */
-      action: string;
-      subject_type: string | null;
-      subject_id: string | null;
-      before: {
-        [key: string]: unknown;
-      } | null;
-      after: {
-        [key: string]: unknown;
-      } | null;
-      ip: string | null;
-      user_agent: string | null;
-      request_id: string | null;
-      /** Format: date-time */
-      occurred_at: string;
-    };
-  };
-  responses: {
-    /** @description Missing or expired token. */
-    Unauthenticated: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['Error'];
-      };
-    };
-    /** @description Signed in, but not allowed (for example a missing admin permission). */
-    Forbidden: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['Error'];
-      };
-    };
-    /** @description No such resource, or not visible to this caller. */
-    NotFound: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['Error'];
-      };
-    };
-    /** @description The resource changed or is locked; reload and try again. */
-    Conflict: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['Error'];
-      };
-    };
-    /** @description `invalid_transition`: not allowed from the current status. */
-    InvalidTransition: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['Error'];
-      };
-    };
-    /** @description Invalid input. */
-    ValidationFailed: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ValidationError'];
-      };
-    };
-    /** @description Rate limited. */
-    TooManyRequests: {
-      headers: {
-        'Retry-After': components['headers']['RetryAfter'];
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['Error'];
-      };
-    };
-    /** @description The campaign after the action. */
-    AdminCampaignResult: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': {
-          data: components['schemas']['AdminCampaign'];
+            status: "ok" | "degraded";
+            /** @example جميع الأنظمة تعمل. */
+            message: string;
+            checks: {
+                /** @enum {string} */
+                database: "ok" | "failing";
+                /** @enum {string} */
+                redis: "ok" | "failing";
+            };
+            /**
+             * Format: date-time
+             * @example 2026-11-02T09:00:00Z
+             */
+            time: string;
         };
-      };
+        Error: {
+            /** @description Localized, for display. */
+            message: string;
+            /** @description Stable machine-readable reason. */
+            code?: string;
+        };
+        ValidationError: components["schemas"]["Error"] & {
+            /** @description Field name to messages. */
+            errors?: {
+                [key: string]: string[];
+            };
+        };
+        CursorMeta: {
+            /** @description Null on the last page. */
+            next_cursor: string | null;
+            /** @example 20 */
+            per_page: number;
+        };
+        /** @description An exact amount in minor units. 4900 SAR minor units is 49.00 SAR. */
+        Money: {
+            /**
+             * Format: int64
+             * @example 6900
+             */
+            amount_minor: number;
+            /**
+             * @example SAR
+             * @enum {string}
+             */
+            currency: "SAR" | "USD" | "CNY";
+            /**
+             * @description Plain display string; clients may format in Arabic numerals.
+             * @example 69.00 SAR
+             */
+            formatted: string;
+        };
+        /** @enum {string} */
+        Locale: "ar" | "en";
+        /**
+         * @description Saudi mobile number in E.164.
+         * @example +966512345678
+         */
+        SaudiMobile: string;
+        Actor: {
+            /** @enum {string} */
+            type: "system" | "admin" | "user";
+            /** Format: uuid */
+            id: string | null;
+            /** @example Sara (Campaigns) */
+            name: string | null;
+        };
+        ReasonInput: {
+            reason: string;
+        };
+        OtpChallenge: {
+            /** Format: uuid */
+            challenge_id: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            resend_available_at: string;
+        };
+        CustomerSession: {
+            /** @example 1|k9Jx... */
+            token: string;
+            /** @enum {string} */
+            token_type: "Bearer";
+            user: components["schemas"]["User"];
+            is_new_user: boolean;
+        };
+        User: {
+            /** Format: uuid */
+            id: string;
+            phone: components["schemas"]["SaudiMobile"];
+            /** @example نورة */
+            name: string | null;
+            /** Format: email */
+            email: string | null;
+            locale: components["schemas"]["Locale"];
+            privacy_consent: {
+                /** @example 2026-11 */
+                policy_version: string;
+                /** Format: date-time */
+                accepted_at: string;
+            } | null;
+            /** @example 2026-11 */
+            current_privacy_policy_version: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Saudi National Address fields. */
+        AddressInput: {
+            recipient_name: string;
+            recipient_phone: components["schemas"]["SaudiMobile"];
+            /** @example الرياض */
+            city: string;
+            /** @example العليا */
+            district: string;
+            street: string;
+            /** @example 2401 */
+            building_no: string;
+            /** @example 12211 */
+            postal_code: string;
+            /** @example 3344 */
+            additional_no?: string | null;
+            /** @example RRRD2929 */
+            short_address?: string | null;
+            /** Format: double */
+            lat?: number | null;
+            /** Format: double */
+            lng?: number | null;
+            /** @description True makes this the default address. The first address is always the default. */
+            is_default?: boolean;
+        };
+        Address: {
+            /** Format: uuid */
+            id: string;
+        } & components["schemas"]["AddressInput"];
+        Category: {
+            /** Format: uuid */
+            id: string;
+            /** @example home-kitchen */
+            slug: string;
+            /** @example المنزل والمطبخ */
+            name: string;
+            /** Format: uuid */
+            parent_id: string | null;
+        };
+        Image: {
+            /**
+             * Format: uri
+             * @example https://cdn.example.sa/products/kettle-1.webp
+             */
+            url: string;
+            alt: string | null;
+            /** Format: uuid */
+            product_variant_id: string | null;
+        };
+        Variant: {
+            /** Format: uuid */
+            id: string;
+            /** @example KET-17-BLK */
+            sku: string;
+            /** @example أسود */
+            name: string;
+            /**
+             * @example {
+             *       "color": "black"
+             *     }
+             */
+            option_values: {
+                [key: string]: string;
+            };
+        };
+        PriceTier: {
+            /** @example 1 */
+            min_qty: number;
+            /** @example 49 */
+            max_qty: number;
+            unit_price: components["schemas"]["Money"];
+            /** @description The tier the next unit sold falls in. */
+            is_current: boolean;
+        };
+        /**
+         * @description Customers never see `draft` or `pending_approval`. Show `purchasing`,
+         *     `fulfilling` and `completed` as a successful deal.
+         * @example active
+         * @enum {string}
+         */
+        CustomerCampaignStatus: "scheduled" | "active" | "closing" | "purchasing" | "fulfilling" | "completed" | "failed" | "cancelled";
+        CampaignProgress: {
+            /** Format: uuid */
+            campaign_id: string;
+            status: components["schemas"]["CustomerCampaignStatus"];
+            /**
+             * @description Units with an authorized hold. Pending payments do not count.
+             * @example 53
+             */
+            committed_qty: number;
+            /** @example 100 */
+            min_target_qty: number;
+            /** @example 150 */
+            max_qty: number;
+            /**
+             * @description Units still on sale (max minus committed minus reserved).
+             * @example 95
+             */
+            remaining_qty: number;
+            /**
+             * @description 0 once the deal is confirmed.
+             * @example 47
+             */
+            units_to_target: number;
+            /**
+             * Format: date-time
+             * @description Set once the target is reached; show "Deal confirmed". It does not mean the order is placed.
+             */
+            deal_confirmed_at: string | null;
+            current_unit_price: components["schemas"]["Money"];
+            /**
+             * Format: date-time
+             * @example 2026-11-08T07:00:00Z
+             */
+            deadline_at: string;
+            /**
+             * Format: date-time
+             * @example 2026-11-02T09:00:00Z
+             */
+            updated_at: string;
+            /**
+             * Format: int64
+             * @description Grows with every change to the campaign. Of two payloads for one campaign (a push and a read, say), show the one with the higher version; the same version is the same state. Compare this, not `updated_at`, which has whole seconds only.
+             * @example 1287
+             */
+            version: number;
+        };
+        CampaignSummary: {
+            /** Format: uuid */
+            id: string;
+            /** @example GB-2611-0007 */
+            code: string;
+            /** @example غلاية كهربائية 1.7 لتر */
+            title: string;
+            image: components["schemas"]["Image"] | null;
+            status: components["schemas"]["CustomerCampaignStatus"];
+            /**
+             * Format: date-time
+             * @example 2026-11-01T07:00:00Z
+             */
+            starts_at: string;
+            /**
+             * Format: date-time
+             * @example 2026-11-08T07:00:00Z
+             */
+            deadline_at: string;
+            current_unit_price: components["schemas"]["Money"];
+            lowest_unit_price: components["schemas"]["Money"];
+            progress: components["schemas"]["CampaignProgress"];
+        };
+        CampaignDetail: components["schemas"]["CampaignSummary"] & {
+            description: string;
+            category: components["schemas"]["Category"] | null;
+            variants: components["schemas"]["Variant"][];
+            images: components["schemas"]["Image"][];
+            /** @description Lowest quantity first. Prices never rise with quantity. */
+            tiers: components["schemas"]["PriceTier"][];
+            /** @description Total units one customer may hold across joins. */
+            per_customer_max_qty: number | null;
+            /**
+             * Format: date-time
+             * @description Set when the deadline was extended.
+             */
+            original_deadline_at: string | null;
+            /** @description Set once the campaign has succeeded (purchasing, fulfilling or completed); everyone pays this. Null while closing and for a failed or cancelled campaign. */
+            final_unit_price: components["schemas"]["Money"] | null;
+            /**
+             * @description When a customer may cancel a join (proposed rule, open question Q16). Show it before payment.
+             * @enum {string}
+             */
+            cancellation_rule: "before_deal_confirmed";
+        };
+        JoinRequest: {
+            /**
+             * Format: uuid
+             * @description Generated by the client once per join attempt; reuse it on retries.
+             */
+            client_request_id: string;
+            /** Format: uuid */
+            product_variant_id: string;
+            /** @example 2 */
+            quantity: number;
+            /**
+             * @description The unit price the customer saw. Compared only; never charged.
+             * @example 6900
+             */
+            shown_unit_price_halalas: number;
+            /** Format: uuid */
+            delivery_address_id: string;
+        };
+        JoinConflict: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code?: "price_changed" | "sold_out" | "campaign_not_joinable";
+            /** @description Present with `price_changed`. */
+            current_unit_price?: components["schemas"]["Money"];
+            /** @description Present with `sold_out`. */
+            remaining_qty?: number;
+        };
+        /**
+         * @example authorized
+         * @enum {string}
+         */
+        ParticipationStatus: "pending_payment" | "authorized" | "payment_failed" | "reservation_expired" | "cancelled" | "released" | "captured" | "capture_failed";
+        Participation: {
+            /** Format: uuid */
+            id: string;
+            campaign: components["schemas"]["CampaignSummary"];
+            product_variant: components["schemas"]["Variant"];
+            /** @example 2 */
+            quantity: number;
+            status: components["schemas"]["ParticipationStatus"];
+            hold_unit_price: components["schemas"]["Money"];
+            /** @description The most the customer can be charged. Show that the final charge may be lower. */
+            hold_amount: components["schemas"]["Money"];
+            /** @description The price every participant paid. Null until this join's hold is captured. */
+            final_unit_price: components["schemas"]["Money"] | null;
+            /** @description What was charged. Null until this join's hold is captured, and for a join released or left out at close. The rest of the hold is released, never charged. */
+            capture_amount: components["schemas"]["Money"] | null;
+            /** Format: date-time */
+            reservation_expires_at: string;
+            can_cancel: boolean;
+            /** @description The latest payment attempt. */
+            payment: components["schemas"]["Payment"] | null;
+            /**
+             * Format: uuid
+             * @description Set once the hold is captured.
+             */
+            order_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /**
+         * @example authorized
+         * @enum {string}
+         */
+        PaymentStatus: "pending_authorization" | "authorized" | "failed" | "voided" | "expired" | "captured" | "capture_failed" | "partially_refunded" | "refunded";
+        /**
+         * @description Why a payment was voided or failed on our side. `capture_declined` and `capture_cutoff_passed` are holds that could not be captured when the campaign closed (the join was left out and the hold voided).
+         * @enum {string}
+         */
+        PaymentRejectionReason: "declined" | "amount_mismatch" | "currency_mismatch" | "method_not_allowed" | "not_authorize_only" | "reservation_expired" | "campaign_closed" | "participation_cancelled" | "duplicate_hold" | "capture_declined" | "capture_cutoff_passed";
+        Payment: {
+            /** Format: uuid */
+            id: string;
+            status: components["schemas"]["PaymentStatus"];
+            amount: components["schemas"]["Money"];
+            captured_amount: components["schemas"]["Money"];
+            refunded_amount: components["schemas"]["Money"];
+            /** @enum {string|null} */
+            scheme: "mada" | "visa" | "mastercard" | null;
+            /** @example 4242 */
+            card_last4: string | null;
+            /**
+             * Format: date-time
+             * @description When the hold lapses (created + 14 days).
+             */
+            expires_at: string;
+            rejection_reason: (string & components["schemas"]["PaymentRejectionReason"]) | null;
+            /** @description Present only while `pending_authorization`. */
+            checkout: components["schemas"]["MoyasarCheckout"] | null;
+        };
+        /** @description Settings for the Moyasar payment form. Card details are typed only into Moyasar's form. */
+        MoyasarCheckout: {
+            /** @example pk_test_xxxxxxxx */
+            publishable_api_key: string;
+            /**
+             * @description Halalas; equals the hold amount.
+             * @example 13800
+             */
+            amount: number;
+            /** @enum {string} */
+            currency: "SAR";
+            /** @example GB-2611-0007 x2 */
+            description: string;
+            /**
+             * Format: uri
+             * @example https://example.sa/payments/return
+             */
+            callback_url: string;
+            methods: ("creditcard" | "applepay")[];
+            supported_networks: ("mada" | "visa" | "mastercard")[];
+            /**
+             * @description Authorize only. A payment captured at once is voided and rejected.
+             * @enum {boolean}
+             */
+            manual: true;
+            metadata: {
+                /** Format: uuid */
+                payment_id: string;
+            };
+        };
+        /** @enum {string} */
+        OrderStatus: "confirmed" | "processing" | "ready_to_ship" | "shipped" | "delivered" | "completed" | "cancelled" | "return_requested" | "returned";
+        Order: {
+            /** Format: uuid */
+            id: string;
+            /** @example ORD-2611-000123 */
+            order_number: string;
+            campaign: components["schemas"]["CampaignSummary"];
+            product_variant: components["schemas"]["Variant"];
+            quantity: number;
+            unit_price: components["schemas"]["Money"];
+            goods_total: components["schemas"]["Money"];
+            delivery_fee: components["schemas"]["Money"];
+            /** @description Equals the amount captured. */
+            total: components["schemas"]["Money"];
+            /** @description The 15% VAT contained in the total. */
+            vat: components["schemas"]["Money"];
+            status: components["schemas"]["OrderStatus"];
+            shipping_address: components["schemas"]["AddressInput"];
+            payment: {
+                status: components["schemas"]["PaymentStatus"];
+                captured_amount: components["schemas"]["Money"];
+                refunded_amount: components["schemas"]["Money"];
+            };
+            /** @description The newest parcel the courier has collected; a booking not yet collected is not shown. */
+            shipment: components["schemas"]["Shipment"] | null;
+            invoices: components["schemas"]["InvoiceRef"][];
+            /** Format: date-time */
+            delivered_at: string | null;
+            /** Format: date-time */
+            return_window_ends_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        InvoiceRef: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "simplified_tax_invoice" | "credit_note";
+            /** @example INV-2026-000123 */
+            invoice_number: string;
+            /** Format: date-time */
+            issued_at: string;
+            total: components["schemas"]["Money"];
+            /**
+             * Format: uri
+             * @description The Arabic and English PDF, with the ZATCA QR code: a signed link that works for 30 minutes. Null for the moment between issue and the queued render.
+             */
+            pdf_url: string | null;
+        };
+        /** @enum {string} */
+        ShipmentStatus: "pending" | "picked_up" | "in_transit" | "out_for_delivery" | "delivered" | "failed_attempt" | "returned" | "cancelled";
+        Shipment: {
+            /** Format: uuid */
+            id: string;
+            /** @example SMSA */
+            courier: string;
+            tracking_number: string;
+            /** Format: uri */
+            tracking_url: string | null;
+            status: components["schemas"]["ShipmentStatus"];
+            /** Format: date-time */
+            shipped_at: string | null;
+            /** Format: date-time */
+            delivered_at: string | null;
+            /** @description Oldest first. */
+            events: {
+                status: components["schemas"]["ShipmentStatus"];
+                description: string | null;
+                location: string | null;
+                /** Format: date-time */
+                occurred_at: string;
+            }[];
+        };
+        AdminSession: {
+            token: string;
+            /** @enum {string} */
+            token_type: "Bearer";
+            admin: components["schemas"]["AdminUser"];
+        };
+        /** @enum {string} */
+        AdminRoleName: "super_admin" | "sourcing" | "campaign_manager" | "finance" | "operations" | "support";
+        AdminRole: {
+            name: components["schemas"]["AdminRoleName"];
+            permissions: components["schemas"]["AdminPermission"][];
+            /** @description Whether the signed-in admin holds every permission of this role, and so can grant it. */
+            grantable: boolean;
+        };
+        /**
+         * @description What an admin may do. Each admin operation names the one it needs in
+         *     `x-permission`. `approvals.decide` belongs to finance only, not to
+         *     super_admin, so releasing money always takes finance; nobody can grant
+         *     a role with permissions they lack, so a super admin cannot make
+         *     themselves finance.
+         * @enum {string}
+         */
+        AdminPermission: "catalog.view" | "catalog.edit" | "suppliers.view" | "suppliers.edit" | "suppliers.approve" | "campaigns.view" | "campaigns.edit" | "pricing.edit" | "campaigns.approve" | "campaigns.override_margin" | "campaigns.extend" | "campaigns.cancel" | "campaigns.close" | "payments.view" | "refunds.request" | "payments.void" | "approvals.view" | "approvals.decide" | "orders.view" | "fulfilment.edit" | "purchasing.view" | "purchasing.edit" | "reconciliation.view" | "reconciliation.resolve" | "audit.view" | "ledger.view" | "ledger.adjust" | "admins.manage";
+        AdminUser: {
+            /** Format: uuid */
+            id: string;
+            /** Format: email */
+            email: string;
+            /** @example Sara Alqahtani */
+            name: string;
+            /** @description Receives the sign-in codes. */
+            phone: components["schemas"]["SaudiMobile"];
+            /** @enum {string} */
+            status: "active" | "blocked";
+            /**
+             * @example [
+             *       "finance"
+             *     ]
+             */
+            roles: components["schemas"]["AdminRoleName"][];
+            /**
+             * @description Everything the admin's roles allow. Use this, not role names, to decide what to show.
+             * @example [
+             *       "approvals.decide",
+             *       "approvals.view",
+             *       "campaigns.approve",
+             *       "campaigns.view",
+             *       "payments.view"
+             *     ]
+             */
+            permissions: components["schemas"]["AdminPermission"][];
+            /** Format: date-time */
+            last_login_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AdminCreateInput: {
+            /** Format: email */
+            email: string;
+            /** @example Sara Alqahtani */
+            name: string;
+            phone: components["schemas"]["SaudiMobile"];
+            roles: components["schemas"]["AdminRoleName"][];
+            /**
+             * Format: password
+             * @description Share it with the new admin privately. They can change it with `POST /admin/me/password`.
+             */
+            password: string;
+        };
+        AdminUpdateInput: {
+            name?: string;
+            phone?: components["schemas"]["SaudiMobile"];
+            roles?: components["schemas"]["AdminRoleName"][];
+            /** @enum {string} */
+            status?: "active" | "blocked";
+            /**
+             * Format: password
+             * @description Sets a new password, for an admin who forgot theirs.
+             */
+            password?: string;
+        };
+        AdminCategoryInput: {
+            slug: string;
+            name_ar: string;
+            name_en: string;
+            /** Format: uuid */
+            parent_id?: string | null;
+            /** @default 0 */
+            sort_order: number;
+        };
+        AdminCategory: {
+            /** Format: uuid */
+            id: string;
+        } & components["schemas"]["AdminCategoryInput"];
+        AdminProductInput: {
+            /** Format: uuid */
+            category_id: string;
+            name_ar: string;
+            name_en: string;
+            description_ar?: string | null;
+            description_en?: string | null;
+            /** Format: uri */
+            alibaba_url: string;
+            /** @example 851610 */
+            hs_code?: string | null;
+            /** @enum {string} */
+            status?: "draft" | "active" | "archived";
+        };
+        AdminProduct: components["schemas"]["AdminProductInput"] & {
+            /** Format: uuid */
+            id: string;
+            variants: components["schemas"]["AdminVariant"][];
+            images: components["schemas"]["AdminImage"][];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AdminVariantInput: {
+            sku: string;
+            name_ar: string;
+            name_en: string;
+            /** @description Keys are lowercase identifiers matching `^[a-z][a-z0-9_]{0,49}$`, such as `color`. */
+            option_values?: {
+                [key: string]: string;
+            };
+            weight_grams?: number | null;
+            length_mm?: number | null;
+            width_mm?: number | null;
+            height_mm?: number | null;
+            /**
+             * @description Defaults to `active` on create; left out on update, it keeps its current value.
+             * @enum {string}
+             */
+            status?: "active" | "archived";
+        };
+        AdminVariant: {
+            /** Format: uuid */
+            id: string;
+        } & components["schemas"]["AdminVariantInput"];
+        AdminImage: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uri */
+            url: string;
+            /** Format: uuid */
+            product_variant_id: string | null;
+            alt_ar: string | null;
+            alt_en: string | null;
+            sort_order: number;
+        };
+        SupplierInput: {
+            name: string;
+            /** Format: uri */
+            alibaba_store_url: string;
+            /** @example CN */
+            country: string;
+            contact_name?: string | null;
+            /** @example Alibaba chat */
+            contact_channel?: string | null;
+            quality_rating?: number | null;
+            review_notes?: string | null;
+        };
+        SupplierReviewInput: {
+            /** @enum {string} */
+            status: "prospect" | "approved" | "blocked";
+            quality_rating?: number | null;
+            review_notes?: string | null;
+        };
+        Supplier: components["schemas"]["SupplierInput"] & {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "prospect" | "approved" | "blocked";
+            reviewed_by: components["schemas"]["Actor"] | null;
+            /** Format: date-time */
+            reviewed_at: string | null;
+        };
+        /** @description Per unit, in halalas. */
+        LandedCostBreakdownInput: {
+            product_halalas: number;
+            freight_halalas: number;
+            customs_duty_halalas: number;
+            /** @description Whether this belongs here is open with the tax adviser. */
+            import_vat_halalas: number;
+            clearance_halalas: number;
+            last_mile_halalas: number;
+        };
+        QuotationInput: {
+            /** Format: uuid */
+            supplier_id: string;
+            /** Format: uuid */
+            product_id: string;
+            /**
+             * Format: uuid
+             * @description Null when the quote covers every variant.
+             */
+            product_variant_id?: string | null;
+            moq: number;
+            /** @description In the supplier's currency (USD cents, for example). */
+            unit_cost_minor: number;
+            /** @enum {string} */
+            currency: "USD" | "CNY" | "SAR";
+            /** @example FOB */
+            shipping_terms: string;
+            lead_time_days: number;
+            /** Format: date */
+            valid_until: string;
+            /**
+             * @description Decimal string, never a float. SAR per unit of `currency`.
+             * @example 3.75000000
+             */
+            fx_rate_to_sar: string;
+            landed_cost_basis_qty: number;
+            landed_cost_breakdown: components["schemas"]["LandedCostBreakdownInput"];
+        };
+        Quotation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            supplier_id: string;
+            /** Format: uuid */
+            product_id: string;
+            /** Format: uuid */
+            product_variant_id: string | null;
+            moq: number;
+            unit_cost: components["schemas"]["Money"];
+            shipping_terms: string;
+            lead_time_days: number;
+            /** Format: date */
+            valid_until: string;
+            /** @example 3.75000000 */
+            fx_rate_to_sar: string;
+            landed_cost_basis_qty: number;
+            landed_cost_breakdown: {
+                product: components["schemas"]["Money"];
+                freight: components["schemas"]["Money"];
+                customs_duty: components["schemas"]["Money"];
+                import_vat: components["schemas"]["Money"];
+                clearance: components["schemas"]["Money"];
+                last_mile: components["schemas"]["Money"];
+            };
+            landed_cost_per_unit: components["schemas"]["Money"];
+            /** Format: uri */
+            attachment_url: string | null;
+            /** @enum {string} */
+            status: "draft" | "accepted" | "rejected" | "expired";
+            used_by_campaign_ids: string[];
+        };
+        /**
+         * @example active
+         * @enum {string}
+         */
+        CampaignStatus: "draft" | "pending_approval" | "scheduled" | "active" | "closing" | "purchasing" | "fulfilling" | "completed" | "failed" | "cancelled";
+        /** @enum {string} */
+        ClosingStep: "settling_joins" | "awaiting_supplier" | "capturing" | "needs_admin" | "notifying" | "done";
+        AdminCampaignInput: {
+            /** Format: uuid */
+            product_id: string;
+            /** Format: uuid */
+            supplier_quotation_id: string;
+            title_ar: string;
+            title_en: string;
+            /** @description Every variant counts toward one shared target and maximum. */
+            product_variant_ids: string[];
+            min_target_qty: number;
+            /** @description Must be at least `min_target_qty`. */
+            max_qty: number;
+            /** @description At most `max_qty`. */
+            per_customer_max_qty?: number | null;
+            /**
+             * Format: date-time
+             * @description The deadline is set at approval, 7 days after the start.
+             */
+            starts_at: string;
+            /**
+             * @description `direct` comes after the pilot.
+             * @default warehouse
+             * @enum {string}
+             */
+            delivery_mode: "warehouse";
+        };
+        AdminTier: {
+            min_qty: number;
+            max_qty: number;
+            unit_price: components["schemas"]["Money"];
+        };
+        TierSetInput: {
+            lock_version: number;
+            /** @description Required from version 2. */
+            reason?: string | null;
+            tiers: {
+                min_qty: number;
+                max_qty: number;
+                /** @description VAT-inclusive. */
+                unit_price_halalas: number;
+            }[];
+        };
+        AdminCampaign: {
+            /** Format: uuid */
+            id: string;
+            /** @example GB-2611-0007 */
+            code: string;
+            status: components["schemas"]["CampaignStatus"];
+            product: {
+                /** Format: uuid */
+                id: string;
+                name_ar: string;
+                name_en: string;
+            };
+            supplier: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                /** @description From the campaign's quotation. */
+                moq: number;
+            };
+            /** Format: uuid */
+            supplier_quotation_id: string;
+            title_ar: string;
+            title_en: string;
+            variants: components["schemas"]["AdminVariant"][];
+            min_target_qty: number;
+            max_qty: number;
+            committed_qty: number;
+            reserved_qty: number;
+            per_customer_max_qty: number | null;
+            /** Format: date-time */
+            starts_at: string;
+            /**
+             * Format: date-time
+             * @description Null until approval.
+             */
+            deadline_at: string | null;
+            /** Format: date-time */
+            original_deadline_at: string | null;
+            /** Format: date-time */
+            extended_at: string | null;
+            extension_reason: string | null;
+            /** Format: date-time */
+            deal_confirmed_at: string | null;
+            /** @enum {string|null} */
+            close_reason: "deadline" | "max_reached" | null;
+            closing_step: (string & components["schemas"]["ClosingStep"]) | null;
+            /** Format: date-time */
+            closed_at: string | null;
+            final_qty: number | null;
+            final_unit_price: components["schemas"]["Money"] | null;
+            /**
+             * Format: date-time
+             * @description Earliest capture cutoff among the holds.
+             */
+            capture_by: string | null;
+            /**
+             * Format: date-time
+             * @description `capture_by` minus 24 hours, while awaiting the supplier.
+             */
+            supplier_decision_due_at: string | null;
+            captured_qty: number | null;
+            /** @description The admin's reason for a cancellation; for a failure, one of target_missed, supplier_rejected, no_supplier_decision or captures_failed. */
+            end_reason: string | null;
+            /** @description Null until the first tier set is saved. */
+            tier_version: number | null;
+            tiers: components["schemas"]["AdminTier"][];
+            landed_cost_per_unit: components["schemas"]["Money"];
+            /** @enum {string} */
+            delivery_mode: "warehouse" | "direct";
+            created_by: components["schemas"]["Actor"];
+            approved_by: components["schemas"]["Actor"] | null;
+            /** Format: date-time */
+            approved_at: string | null;
+            lock_version: number;
+            /** @description Actions this admin may take now, given status and permissions. */
+            available_actions: ("edit" | "edit_tiers" | "submit" | "approve" | "reject" | "extend" | "cancel" | "record_supplier_decision" | "decide_below_target")[];
+        };
+        MarginReport: {
+            /**
+             * @description 1500 is 15%.
+             * @example 1500
+             */
+            min_margin_bp: number;
+            passes: boolean;
+            landed_cost_per_unit: components["schemas"]["Money"];
+            /** @description Per unit, worked out on the highest tier price so it is never understated. */
+            payment_fee_estimate: components["schemas"]["Money"];
+            delivery_cost_estimate: components["schemas"]["Money"];
+            tiers: {
+                min_qty: number;
+                max_qty: number;
+                unit_price: components["schemas"]["Money"];
+                /** @description Price without VAT. */
+                net_price: components["schemas"]["Money"];
+                margin: components["schemas"]["Money"];
+                /** @description Margin as a share of the net price, in basis points. */
+                margin_bp: number;
+                passes: boolean;
+            }[];
+            warnings: ("min_target_below_supplier_moq" | "target_at_lowest_tier_boundary" | "quotation_expires_before_capture")[];
+        };
+        MarginBlockedError: components["schemas"]["ValidationError"] & {
+            margin?: components["schemas"]["MarginReport"];
+        };
+        ExtensionWindow: {
+            allowed: boolean;
+            /** @enum {string|null} */
+            blocked_reason: "not_active" | "already_extended" | "deal_confirmed" | "deadline_passed" | "no_room_before_hold_expiry" | null;
+            /** Format: date-time */
+            latest_allowed_deadline_at: string | null;
+            /** Format: date-time */
+            earliest_hold_expires_at: string | null;
+        };
+        ExtensionBlockedError: components["schemas"]["ValidationError"] & {
+            window?: components["schemas"]["ExtensionWindow"];
+        };
+        SupplierDecisionInput: {
+            /** @enum {string} */
+            decision: "confirmed" | "rejected";
+            /** @description Required when confirmed. In the minor unit of `currency`. */
+            unit_cost_minor?: number;
+            /**
+             * @description The supplier's currency; the quotation's when left out.
+             * @enum {string|null}
+             */
+            currency?: "USD" | "CNY" | "SAR" | null;
+            /** @description Required when confirmed; must cover the final quantity. */
+            available_qty?: number;
+            quotation_reference?: string | null;
+            note?: string | null;
+        };
+        CampaignEvent: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description For example submitted, approved, published, joined, join_cancelled, deal_confirmed, price_changed (the final price has `final` true), max_reached, tiers_changed, extended, closed, awaiting_supplier, supplier_confirmed, supplier_rejected, needs_admin, below_target_decision, cancellation_requested, captures_completed, supplier_shipped, goods_received, completed, failed, cancelled.
+             * @example price_changed
+             */
+            event_type: string;
+            from_status: (string & components["schemas"]["CampaignStatus"]) | null;
+            to_status: (string & components["schemas"]["CampaignStatus"]) | null;
+            committed_qty_after: number;
+            payload: {
+                [key: string]: unknown;
+            };
+            actor: components["schemas"]["Actor"];
+            /** Format: date-time */
+            occurred_at: string;
+        };
+        AdminParticipation: {
+            /** Format: uuid */
+            id: string;
+            customer: {
+                /** Format: uuid */
+                id: string;
+                name: string | null;
+                /** @description Masked, for example +9665******78. */
+                phone: string;
+            };
+            product_variant: components["schemas"]["AdminVariant"];
+            quantity: number;
+            status: components["schemas"]["ParticipationStatus"];
+            hold_unit_price: components["schemas"]["Money"];
+            hold_amount: components["schemas"]["Money"];
+            final_unit_price: components["schemas"]["Money"] | null;
+            capture_amount: components["schemas"]["Money"] | null;
+            payment: components["schemas"]["AdminPayment"] | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AdminPayment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            participation_id: string;
+            campaign: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+            };
+            provider_payment_id: string | null;
+            /**
+             * @description Null until Moyasar reports the payment.
+             * @enum {string|null}
+             */
+            source_type: "creditcard" | "applepay" | null;
+            /** @enum {string|null} */
+            scheme: "mada" | "visa" | "mastercard" | null;
+            card_last4: string | null;
+            status: components["schemas"]["PaymentStatus"];
+            rejection_reason: (string & components["schemas"]["PaymentRejectionReason"]) | null;
+            authorized_amount: components["schemas"]["Money"];
+            captured_amount: components["schemas"]["Money"];
+            refunded_amount: components["schemas"]["Money"];
+            /** Format: date-time */
+            expires_at: string;
+            /**
+             * Format: date-time
+             * @description `expires_at` minus 24 hours. No capture after this.
+             */
+            capture_cutoff_at: string;
+            /** Format: date-time */
+            authorized_at: string | null;
+            /** Format: date-time */
+            captured_at: string | null;
+            /** Format: date-time */
+            voided_at: string | null;
+            /** @description Last status seen at Moyasar. */
+            provider_status: string | null;
+            /** Format: date-time */
+            last_synced_at: string | null;
+            /** @description Whether a hold Moyasar still keeps may be released (`POST /admin/payments/{id}/void`). Null in lists. */
+            void_requestable: boolean | null;
+            /** @description Every call to Moyasar, oldest first. Empty in list responses. */
+            transactions: components["schemas"]["PaymentTransaction"][];
+        };
+        PaymentTransaction: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "authorize" | "capture" | "void" | "refund";
+            amount: components["schemas"]["Money"];
+            /** @example capture:0f8f3c3e-6d1b-4c55-9d0f-4d6c3e2b1a90 */
+            idempotency_key: string;
+            /** @enum {string} */
+            status: "pending" | "succeeded" | "failed";
+            provider_reference: string | null;
+            error_code: string | null;
+            error_message: string | null;
+            requested_by: components["schemas"]["Actor"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            completed_at: string | null;
+        };
+        /** @enum {string} */
+        RefundStatus: "pending_approval" | "approved" | "processing" | "succeeded" | "failed" | "rejected";
+        /** @enum {string} */
+        RefundReason: "customer_cancellation" | "delivery_delay" | "defective" | "shortage" | "campaign_cancelled_after_capture" | "customer_return" | "other";
+        RefundInput: {
+            /** Format: uuid */
+            payment_id: string;
+            /** Format: uuid */
+            customer_order_id?: string | null;
+            amount_halalas: number;
+            reason: components["schemas"]["RefundReason"];
+            note?: string | null;
+        };
+        Refund: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            payment_id: string;
+            /** Format: uuid */
+            customer_order_id: string | null;
+            amount: components["schemas"]["Money"];
+            /**
+             * @description `void` only for a full refund within about 2 hours of capture.
+             * @enum {string}
+             */
+            method: "void" | "refund";
+            reason: components["schemas"]["RefundReason"];
+            status: components["schemas"]["RefundStatus"];
+            provider_refund_id: string | null;
+            /** Format: uuid */
+            approval_request_id: string | null;
+            /** Format: uuid */
+            credit_note_id: string | null;
+            requested_by: components["schemas"]["Actor"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            processed_at: string | null;
+        };
+        ApprovalRequest: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "manual_refund" | "manual_capture" | "manual_void" | "ledger_adjustment" | "campaign_cancellation";
+            /** @example refund */
+            subject_type: string;
+            /** Format: uuid */
+            subject_id: string;
+            payload: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected" | "cancelled";
+            requested_by: components["schemas"]["Actor"];
+            decided_by: components["schemas"]["Actor"] | null;
+            reason: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            decided_at: string | null;
+        };
+        AdminOrder: components["schemas"]["Order"] & {
+            customer: {
+                /** Format: uuid */
+                id: string;
+                name: string | null;
+                phone: components["schemas"]["SaudiMobile"];
+            };
+            /** Format: uuid */
+            participation_id: string;
+            /** Format: uuid */
+            payment_id: string;
+            refunds: components["schemas"]["Refund"][];
+            /** @description Every shipment, newest first, including parcels brought back and bookings called off. */
+            shipments: components["schemas"]["AdminShipment"][];
+            return: components["schemas"]["OrderReturn"] | null;
+        };
+        AdminShipment: {
+            /** Format: uuid */
+            id: string;
+            /** @example Aramex */
+            courier: string;
+            /** @description Null only while a booking waits for the courier's answer. */
+            tracking_number: string | null;
+            /** Format: uri */
+            tracking_url: string | null;
+            status: components["schemas"]["ShipmentStatus"];
+            /**
+             * Format: date-time
+             * @description When the courier collected it.
+             */
+            shipped_at: string | null;
+            /** Format: date-time */
+            delivered_at: string | null;
+            /** @description Null when the parcel was handed over by hand. */
+            booking: {
+                /** @enum {string} */
+                status: "requested" | "booked" | "failed";
+                /**
+                 * Format: uuid
+                 * @description Our reference sent to the courier with the booking.
+                 */
+                reference: string;
+                /** Format: date-time */
+                requested_at: string;
+                /** @description Why the booking failed; the shipment is then cancelled. */
+                error: string | null;
+                /**
+                 * Format: uri
+                 * @description The courier's label as PDF: a signed link that works for 30 minutes.
+                 */
+                label_url: string | null;
+            } | null;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Oldest first. */
+            events: {
+                status: components["schemas"]["ShipmentStatus"];
+                description: string | null;
+                location: string | null;
+                /** @enum {string} */
+                source: "admin" | "courier_api";
+                /** Format: date-time */
+                occurred_at: string;
+            }[];
+        };
+        CourierSettings: {
+            /**
+             * @description Null without a courier API.
+             * @example Aramex
+             */
+            name: string | null;
+            /** @description Parcels can be booked through the API. */
+            books: boolean;
+            /** @description Tracking is read from the API every 30 minutes. */
+            tracks: boolean;
+        };
+        ShipmentBookingInput: {
+            shipping_cost_halalas?: number | null;
+        };
+        ShipmentCancelInput: {
+            reason?: string | null;
+        };
+        /** @enum {string} */
+        ReturnStatus: "requested" | "approved" | "rejected" | "completed";
+        /** @enum {string} */
+        ReturnReason: "defective" | "damaged_in_transit" | "wrong_item" | "not_as_described" | "changed_mind" | "other";
+        OrderReturn: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            customer_order_id: string;
+            order_number: string;
+            customer: {
+                name: string | null;
+                phone: components["schemas"]["SaudiMobile"];
+            };
+            status: components["schemas"]["ReturnStatus"];
+            reason: components["schemas"]["ReturnReason"];
+            note: string | null;
+            recorded_by: components["schemas"]["Actor"];
+            /** Format: date-time */
+            recorded_at: string;
+            decided_by: components["schemas"]["Actor"] | null;
+            /** Format: date-time */
+            decided_at: string | null;
+            decision_note: string | null;
+            /** @description The refund asked for when the return was approved. */
+            refund: components["schemas"]["Refund"] | null;
+            refundable: components["schemas"]["Money"];
+            /** @description Can be approved or rejected now: never decided, or its refund was rejected or failed. */
+            open: boolean;
+        };
+        ReturnInput: {
+            reason: components["schemas"]["ReturnReason"];
+            note?: string | null;
+        };
+        ReturnApprovalInput: {
+            /** @description What goes back to the card; at most what is still refundable. */
+            amount_halalas: number;
+            note?: string | null;
+        };
+        ReturnRejectionInput: {
+            note: string;
+        };
+        ShipmentInput: {
+            courier: string;
+            tracking_number: string;
+            /** Format: uri */
+            tracking_url?: string | null;
+            shipping_cost_halalas?: number | null;
+        };
+        ShipmentEventInput: {
+            /**
+             * @description `returned`: the courier brought the parcel back. A shipment not yet collected is called off instead.
+             * @enum {string}
+             */
+            status: "picked_up" | "in_transit" | "out_for_delivery" | "failed_attempt" | "delivered" | "returned";
+            description?: string | null;
+            location?: string | null;
+            /** Format: date-time */
+            occurred_at: string;
+        };
+        /** @enum {string} */
+        PurchaseOrderStatus: "draft" | "placed" | "supplier_confirmed" | "paid" | "shipped" | "received" | "cancelled";
+        PurchaseOrderInput: {
+            alibaba_order_ref?: string | null;
+            total_minor?: number;
+            /** @enum {string} */
+            currency?: "USD" | "CNY" | "SAR";
+            fx_rate_to_sar?: string;
+            freight_forwarder?: string | null;
+            freight_tracking_ref?: string | null;
+            /** Format: date */
+            eta?: string | null;
+            /**
+             * Format: date-time
+             * @description Once the order is paid, records or corrects the payment date.
+             */
+            paid_at?: string;
+        };
+        PurchaseOrder: {
+            /** Format: uuid */
+            id: string;
+            /** @example PO-2611-0007 */
+            po_number: string;
+            campaign: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+            };
+            supplier: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            /** Format: uuid */
+            supplier_quotation_id: string;
+            alibaba_order_ref: string | null;
+            /** @description In the supplier's currency. Starts as the captured units at the unit cost the supplier reconfirmed. */
+            total: components["schemas"]["Money"];
+            /** @description Exact decimal. The quote's rate when the order is in the quote's currency, 1 for SAR; otherwise null until recorded. */
+            fx_rate_to_sar: string | null;
+            /** @description The total at the recorded rate, rounded to the halala; null while the rate is unknown. */
+            total_sar: components["schemas"]["Money"] | null;
+            status: components["schemas"]["PurchaseOrderStatus"];
+            lines: {
+                product_variant: components["schemas"]["AdminVariant"];
+                /** @description Captured units for this variant. */
+                qty: number;
+                unit_cost: components["schemas"]["Money"];
+            }[];
+            /** Format: date-time */
+            placed_at: string | null;
+            /** Format: date-time */
+            supplier_confirmed_at: string | null;
+            /** Format: date-time */
+            paid_at: string | null;
+            /** Format: date-time */
+            shipped_at: string | null;
+            freight_forwarder: string | null;
+            freight_tracking_ref: string | null;
+            /** Format: date */
+            eta: string | null;
+            /** @description Warehouse receipts (fulfilment, E13); empty until then. */
+            receipts: components["schemas"]["InboundReceipt"][];
+            /** @description Papers kept with the order, oldest first. */
+            documents: components["schemas"]["PurchaseOrderDocument"][];
+        };
+        /** @enum {string} */
+        PurchaseOrderDocumentKind: "alibaba_invoice" | "payment_receipt" | "shipping_document" | "customs_document" | "other";
+        PurchaseOrderDocument: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["PurchaseOrderDocumentKind"];
+            /** @description The name the file had when it was uploaded. */
+            file_name: string;
+            size_bytes: number;
+            /**
+             * Format: uri
+             * @description Signed link that works for 30 minutes.
+             */
+            url: string;
+            uploaded_by: components["schemas"]["Actor"];
+            /** Format: date-time */
+            uploaded_at: string;
+            /** @description True within 24 hours of the upload; after that the paper is kept as a record. */
+            removable: boolean;
+        };
+        InboundReceiptInput: {
+            warehouse_name: string;
+            /** Format: date-time */
+            received_at: string;
+            notes?: string | null;
+            lines: {
+                /** Format: uuid */
+                product_variant_id: string;
+                qty_received: number;
+                qty_damaged: number;
+            }[];
+        };
+        InboundReceipt: {
+            /** Format: uuid */
+            id: string;
+            warehouse_name: string;
+            /** Format: date-time */
+            received_at: string;
+            received_by: components["schemas"]["Actor"];
+            notes: string | null;
+            lines: {
+                /** Format: uuid */
+                product_variant_id: string;
+                qty_expected: number;
+                qty_received: number;
+                qty_damaged: number;
+                /** @description Expected but not received. */
+                qty_missing: number;
+            }[];
+            /** @description Photos of the goods as they arrived, oldest first; signed links that work for 30 minutes. */
+            photo_urls: string[];
+        };
+        ReconciliationRun: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date */
+            run_date: string;
+            /** @enum {string} */
+            provider: "moyasar";
+            /** @enum {string} */
+            status: "running" | "matched" | "mismatches" | "failed";
+            payments_checked: number;
+            mismatch_count: number;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at: string | null;
+        };
+        ReconciliationItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            run_id: string;
+            /** Format: uuid */
+            payment_id: string | null;
+            /** @enum {string} */
+            mismatch_type: "status" | "amount" | "missing_locally" | "missing_at_provider" | "orphan_hold" | "stuck_void";
+            our_value: {
+                [key: string]: unknown;
+            } | null;
+            provider_value: {
+                [key: string]: unknown;
+            } | null;
+            resolved_by: components["schemas"]["Actor"] | null;
+            /** Format: date-time */
+            resolved_at: string | null;
+            resolution_note: string | null;
+        };
+        /** @enum {string} */
+        LedgerAccountCode: "moyasar_clearing" | "bank" | "inventory_in_transit" | "customer_prepayments" | "vat_output_payable" | "supplier_payable" | "sales_revenue" | "payment_fees" | "vat_input_recoverable";
+        /** @enum {string} */
+        LedgerTransactionType: "capture" | "refund" | "revenue_recognition" | "adjustment" | "reversal" | "settlement";
+        LedgerAccountBalance: {
+            code: components["schemas"]["LedgerAccountCode"];
+            /** @example Moyasar clearing */
+            name: string;
+            /** @enum {string} */
+            type: "asset" | "liability" | "revenue" | "expense" | "equity";
+            debits: components["schemas"]["Money"];
+            credits: components["schemas"]["Money"];
+            /** @description Debits minus credits; negative for a credit balance. */
+            balance: components["schemas"]["Money"];
+        };
+        LedgerLine: {
+            account: components["schemas"]["LedgerAccountCode"];
+            account_name: string;
+            /** @enum {string} */
+            direction: "D" | "C";
+            amount: components["schemas"]["Money"];
+        };
+        LedgerTransaction: {
+            /** Format: uuid */
+            id: string;
+            type: components["schemas"]["LedgerTransactionType"];
+            /**
+             * @description Unique per type: what the posting is for.
+             * @example capture:9b1c…
+             */
+            reference: string;
+            description: string;
+            order: {
+                /** Format: uuid */
+                id: string;
+                number: string;
+            } | null;
+            /** Format: uuid */
+            approval_request_id: string | null;
+            /** Format: uuid */
+            reverses_transaction_id: string | null;
+            entries: components["schemas"]["LedgerLine"][];
+            actor: components["schemas"]["Actor"];
+            /** Format: date-time */
+            occurred_at: string;
+        };
+        /** @description Either `lines` or `reverses_transaction_id`. */
+        LedgerAdjustmentInput: {
+            description: string;
+            lines?: {
+                account: components["schemas"]["LedgerAccountCode"];
+                /** @enum {string} */
+                direction: "D" | "C";
+                /** Format: int64 */
+                amount_halalas: number;
+            }[] | null;
+            /** Format: uuid */
+            reverses_transaction_id?: string | null;
+        };
+        LedgerAdjustment: {
+            /** Format: uuid */
+            id: string;
+            description: string;
+            /** @description Null for a reversal. */
+            lines: components["schemas"]["LedgerLine"][] | null;
+            /** @description The posting it reverses; null for lines. */
+            reverses: {
+                /** Format: uuid */
+                id: string;
+                type: components["schemas"]["LedgerTransactionType"];
+                reference: string;
+                description: string;
+            } | null;
+            /** @enum {string} */
+            status: "pending" | "posted" | "rejected";
+            /** Format: uuid */
+            approval_request_id: string | null;
+            /**
+             * Format: uuid
+             * @description The posting once approved.
+             */
+            ledger_transaction_id: string | null;
+            requested_by: components["schemas"]["Actor"] | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        MoyasarSettlement: {
+            /** Format: uuid */
+            id: string;
+            provider_settlement_id: string;
+            /** @description Net plus fee. */
+            gross: components["schemas"]["Money"];
+            /** @description Moyasar's fee, VAT included. */
+            fee: components["schemas"]["Money"];
+            fee_vat: components["schemas"]["Money"];
+            /** @description Paid into the bank. */
+            net: components["schemas"]["Money"];
+            /** Format: date-time */
+            settled_at: string | null;
+            line_count: number;
+            /** @description Lines for payments we do not know. */
+            unmatched_count: number;
+            /**
+             * Format: uuid
+             * @description Null only when every amount is zero.
+             */
+            ledger_transaction_id: string | null;
+            /** Format: date-time */
+            imported_at: string;
+        };
+        MoyasarSettlementLine: {
+            /**
+             * @description Moyasar's line type: payment, refund, void, fee, chargeback, …
+             * @example payment
+             */
+            type: string;
+            provider_payment_id: string | null;
+            /**
+             * Format: uuid
+             * @description Null when we have no such payment.
+             */
+            payment_id: string | null;
+            /** @description Net of the fee; negative for money going back. */
+            amount: components["schemas"]["Money"];
+            fee: components["schemas"]["Money"];
+            fee_vat: components["schemas"]["Money"];
+            payment_amount: components["schemas"]["Money"] | null;
+            /** Format: date-time */
+            transacted_at: string | null;
+        };
+        AuditLogEntry: {
+            /** Format: int64 */
+            id: number;
+            actor: components["schemas"]["Actor"];
+            /** @example campaign.approve */
+            action: string;
+            subject_type: string | null;
+            subject_id: string | null;
+            before: {
+                [key: string]: unknown;
+            } | null;
+            after: {
+                [key: string]: unknown;
+            } | null;
+            ip: string | null;
+            user_agent: string | null;
+            request_id: string | null;
+            /** Format: date-time */
+            occurred_at: string;
+        };
     };
-  };
-  parameters: {
-    /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-    AcceptLanguage: string;
-    /** @description `meta.next_cursor` from the previous page. */
-    Cursor: string;
-    PerPage: number;
-    AdminId: string;
-    AddressId: string;
-    CampaignId: string;
-    CategoryId: string;
-    ParticipationId: string;
-    PaymentId: string;
-    OrderId: string;
-    ProductId: string;
-    VariantId: string;
-    SupplierId: string;
-    QuotationId: string;
-    ApprovalRequestId: string;
-    PurchaseOrderId: string;
-    DocumentId: string;
-    ReceiptId: string;
-    ShipmentId: string;
-    ReturnId: string;
-  };
-  requestBodies: never;
-  headers: {
-    /** @description Request ID for support and log searches. */
-    XRequestId: string;
-    /** @description Language of the text in the response. */
-    ContentLanguage: components['schemas']['Locale'];
-    /** @description Seconds until another attempt is allowed. */
-    RetryAfter: number;
-  };
-  pathItems: never;
+    responses: {
+        /** @description Missing or expired token. */
+        Unauthenticated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Signed in, but not allowed (for example a missing admin permission). */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description No such resource, or not visible to this caller. */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The resource changed or is locked; reload and try again. */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description `invalid_transition`: not allowed from the current status. */
+        InvalidTransition: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Invalid input. */
+        ValidationFailed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ValidationError"];
+            };
+        };
+        /** @description Rate limited. */
+        TooManyRequests: {
+            headers: {
+                "Retry-After": components["headers"]["RetryAfter"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The campaign after the action. */
+        AdminCampaignResult: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    data: components["schemas"]["AdminCampaign"];
+                };
+            };
+        };
+    };
+    parameters: {
+        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+        AcceptLanguage: string;
+        /** @description `meta.next_cursor` from the previous page. */
+        Cursor: string;
+        PerPage: number;
+        AdminId: string;
+        AddressId: string;
+        CampaignId: string;
+        CategoryId: string;
+        ParticipationId: string;
+        PaymentId: string;
+        OrderId: string;
+        ProductId: string;
+        VariantId: string;
+        SupplierId: string;
+        QuotationId: string;
+        ApprovalRequestId: string;
+        PurchaseOrderId: string;
+        DocumentId: string;
+        ReceiptId: string;
+        ShipmentId: string;
+        ReturnId: string;
+    };
+    requestBodies: never;
+    headers: {
+        /** @description Request ID for support and log searches. */
+        XRequestId: string;
+        /** @description Language of the text in the response. */
+        ContentLanguage: components["schemas"]["Locale"];
+        /** @description Seconds until another attempt is allowed. */
+        RetryAfter: number;
+    };
+    pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  getHealth: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Every dependency answered. */
-      200: {
-        headers: {
-          'X-Request-Id': components['headers']['XRequestId'];
-          'Content-Language': components['headers']['ContentLanguage'];
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Health'];
-        };
-      };
-      /** @description At least one dependency failed. */
-      503: {
-        headers: {
-          'X-Request-Id': components['headers']['XRequestId'];
-          'Content-Language': components['headers']['ContentLanguage'];
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "status": "degraded",
-           *       "message": "بعض الأنظمة لا تستجيب.",
-           *       "checks": {
-           *         "database": "ok",
-           *         "redis": "failing"
-           *       },
-           *       "time": "2026-11-02T09:00:00Z"
-           *     }
-           */
-          'application/json': components['schemas']['Health'];
-        };
-      };
-    };
-  };
-  requestOtp: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          phone: components['schemas']['SaudiMobile'];
-        };
-      };
-    };
-    responses: {
-      /** @description Code sent. */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['OtpChallenge'];
-          };
-        };
-      };
-      422: components['responses']['ValidationFailed'];
-      429: components['responses']['TooManyRequests'];
-      /** @description `sms_unavailable`: the code could not be sent. Try again in a few minutes. */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-    };
-  };
-  verifyOtp: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** Format: uuid */
-          challenge_id: string;
-          /** @example 482913 */
-          code: string;
-          /**
-           * @description Shown in the account's session list.
-           * @example Safari on iPhone
-           */
-          device_name: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Signed in. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['CustomerSession'];
-          };
-        };
-      };
-      /**
-       * @description Wrong or expired code (`code`: `otp_invalid`, `otp_expired`,
-       *     `otp_attempts_exhausted`), a suspended account (`account_blocked`),
-       *     or invalid input.
-       */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-      429: components['responses']['TooManyRequests'];
-    };
-  };
-  logout: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Signed out. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthenticated'];
-    };
-  };
-  getMe: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The customer. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['User'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-    };
-  };
-  updateMe: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          name?: string | null;
-          /** Format: email */
-          email?: string | null;
-          locale?: components['schemas']['Locale'];
-        };
-      };
-    };
-    responses: {
-      /** @description Updated customer. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['User'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  acceptPrivacyPolicy: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** @example 2026-11 */
-          policy_version: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Consent recorded. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['User'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      /** @description `privacy_policy_outdated` when `policy_version` is not the current version, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  listAddresses: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Addresses, default first. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Address'][];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-    };
-  };
-  createAddress: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AddressInput'];
-      };
-    };
-    responses: {
-      /** @description Created. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Address'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      /** @description `address_limit_reached`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  deleteAddress: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        address_id: components['parameters']['AddressId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Removed. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthenticated'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  updateAddress: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        address_id: components['parameters']['AddressId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AddressInput'];
-      };
-    };
-    responses: {
-      /** @description Updated. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Address'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      404: components['responses']['NotFound'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  registerDeviceToken: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** @enum {string} */
-          platform: 'ios' | 'android' | 'web';
-          token: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Registered. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthenticated'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  listCategories: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description All categories, sorted for display. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Category'][];
-          };
-        };
-      };
-    };
-  };
-  listCampaigns: {
-    parameters: {
-      query?: {
-        filter?: 'open' | 'upcoming' | 'ended';
-        /** @description Category slug. */
-        category?: string;
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of campaigns. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['CampaignSummary'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  getCampaign: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The campaign. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['CampaignDetail'];
-          };
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  getCampaignProgress: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Current progress. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['CampaignProgress'];
-          };
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  joinCampaign: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['JoinRequest'];
-      };
-    };
-    responses: {
-      /** @description Units reserved (or the earlier join with this `client_request_id`); open the payment form. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Participation'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      /** @description `privacy_consent_required`: accept the privacy policy first. */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      404: components['responses']['NotFound'];
-      /**
-       * @description `price_changed` (body has `current_unit_price`), `sold_out` (not
-       *     enough units left; body has `remaining_qty`), or
-       *     `campaign_not_joinable` (not active, or the deadline passed).
-       */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['JoinConflict'];
-        };
-      };
-      /**
-       * @description `per_customer_limit_exceeded`, `variant_not_in_campaign` (not in
-       *     this campaign, or archived), `address_not_found`, a `client_request_id` already used for another
-       *     campaign, or invalid input.
-       */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-      429: components['responses']['TooManyRequests'];
-    };
-  };
-  listMyParticipations: {
-    parameters: {
-      query?: {
-        status?: components['schemas']['ParticipationStatus'];
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of joins. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Participation'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  getMyParticipation: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path: {
-        participation_id: components['parameters']['ParticipationId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The join. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Participation'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  cancelMyParticipation: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        participation_id: components['parameters']['ParticipationId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Cancelled; the hold is being released. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Participation'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      404: components['responses']['NotFound'];
-      /** @description `cancellation_not_allowed`. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      429: components['responses']['TooManyRequests'];
-    };
-  };
-  retryParticipationPayment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        participation_id: components['parameters']['ParticipationId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description New attempt; open the payment form with its `checkout`. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Payment'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      404: components['responses']['NotFound'];
-      /** @description `already_paid` when the participation is already `authorized` or `captured`; `reservation_expired` when it is otherwise no longer `pending_payment` or its reservation ran out; or `payment_in_progress` when the previous attempt has neither failed nor been refused. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      429: components['responses']['TooManyRequests'];
-    };
-  };
-  syncPayment: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path: {
-        payment_id: components['parameters']['PaymentId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** @description The `id` query parameter Moyasar adds to the callback URL. */
-          provider_payment_id: string;
-        };
-      };
-    };
-    responses: {
-      /**
-       * @description The participation after the check. `status` is `authorized` on
-       *     success, `pending_payment` while Moyasar is still processing or
-       *     after a decline (see `payment.status`), or `payment_failed`.
-       */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Participation'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      404: components['responses']['NotFound'];
-      /** @description `provider_payment_mismatch`: Moyasar has no such payment, or it does not belong to this payment. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-      429: components['responses']['TooManyRequests'];
-      /** @description `payment_provider_unavailable`: Moyasar could not be reached. Try again shortly; the webhook will also settle it. */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-    };
-  };
-  listMyOrders: {
-    parameters: {
-      query?: {
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of orders. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Order'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  getMyOrder: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
-        'Accept-Language'?: components['parameters']['AcceptLanguage'];
-      };
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The order. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Order'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  receiveMoyasarWebhook: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          [key: string]: unknown;
-        };
-      };
-    };
-    responses: {
-      /** @description Accepted, or a duplicate that was ignored. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Verification failed. Logged and never processed. */
-      401: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Body too large to be a Moyasar event. Not stored. */
-      413: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      429: components['responses']['TooManyRequests'];
-    };
-  };
-  adminLogin: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** Format: email */
-          email: string;
-          /** Format: password */
-          password: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Password accepted; code sent. */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['OtpChallenge'];
-          };
-        };
-      };
-      /** @description `invalid_credentials` or `account_blocked`. `account_blocked` is only returned after a correct password. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-      429: components['responses']['TooManyRequests'];
-      /** @description `sms_unavailable`: the code could not be sent. Try again in a few minutes. */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-    };
-  };
-  adminVerify: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** Format: uuid */
-          challenge_id: string;
-          code: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Signed in. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminSession'];
-          };
-        };
-      };
-      /** @description `otp_invalid`, `otp_expired`, `otp_attempts_exhausted`, or `account_blocked` if the admin was blocked after step 1. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-      429: components['responses']['TooManyRequests'];
-    };
-  };
-  adminLogout: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Signed out. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthenticated'];
-    };
-  };
-  getAdminMe: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The admin. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminUser'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-    };
-  };
-  changeAdminPassword: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** Format: password */
-          current_password: string;
-          /** Format: password */
-          password: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Password changed. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthenticated'];
-      /** @description `invalid_credentials` when the current password is wrong, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-      429: components['responses']['TooManyRequests'];
-    };
-  };
-  adminListRoles: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Every role. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminRole'][];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  adminListAdmins: {
-    parameters: {
-      query?: {
-        /** @description Only admins with this status. All admins when left out. */
-        status?: 'active' | 'blocked';
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of admins, oldest first. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminUser'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminCreateAdmin: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminCreateInput'];
-      };
-    };
-    responses: {
-      /** @description Created. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminUser'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      /** @description `forbidden` without `admins.manage`, or `cannot_grant_role`. */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminUpdateAdmin: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        admin_id: components['parameters']['AdminId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminUpdateInput'];
-      };
-    };
-    responses: {
-      /** @description The admin after the change. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminUser'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      /** @description `forbidden` without `admins.manage`, `cannot_grant_role` or `cannot_manage_admin`. */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      404: components['responses']['NotFound'];
-      /** @description `cannot_change_own_access`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminListCategories: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description All categories. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminCategory'][];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  adminCreateCategory: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminCategoryInput'];
-      };
-    };
-    responses: {
-      /** @description Created. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminCategory'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminUpdateCategory: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        category_id: components['parameters']['CategoryId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminCategoryInput'];
-      };
-    };
-    responses: {
-      /** @description Updated. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminCategory'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `category_cycle`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminListProducts: {
-    parameters: {
-      query?: {
-        status?: 'draft' | 'active' | 'archived';
-        /** @description Matches title (Arabic or English), SKU or Alibaba URL. */
-        q?: string;
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of products. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminProduct'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminCreateProduct: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminProductInput'] & {
-          variants?: components['schemas']['AdminVariantInput'][];
-        };
-      };
-    };
-    responses: {
-      /** @description Created as `draft`. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminProduct'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminGetProduct: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        product_id: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The product. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminProduct'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  adminUpdateProduct: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        product_id: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminProductInput'];
-      };
-    };
-    responses: {
-      /** @description Updated. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminProduct'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `product_needs_variant`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminCreateVariant: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        product_id: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminVariantInput'];
-      };
-    };
-    responses: {
-      /** @description Created. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminVariant'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminUpdateVariant: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        variant_id: components['parameters']['VariantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminVariantInput'];
-      };
-    };
-    responses: {
-      /** @description Updated. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminVariant'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `last_active_variant`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminUploadProductImage: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        product_id: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'multipart/form-data': {
-          /**
-           * Format: binary
-           * @description JPEG, PNG or WebP, up to 10 MB.
-           */
-          file: string;
-          /** Format: uuid */
-          product_variant_id?: string | null;
-          alt_ar?: string;
-          alt_en?: string;
-          sort_order?: number;
-        };
-      };
-    };
-    responses: {
-      /** @description Stored. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminImage'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminDeleteProductImage: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        image_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Removed. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  adminListSuppliers: {
-    parameters: {
-      query?: {
-        status?: 'prospect' | 'approved' | 'blocked';
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of suppliers. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Supplier'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminCreateSupplier: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SupplierInput'];
-      };
-    };
-    responses: {
-      /** @description Created as `prospect`. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Supplier'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminGetSupplier: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        supplier_id: components['parameters']['SupplierId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The supplier. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Supplier'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  adminUpdateSupplier: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        supplier_id: components['parameters']['SupplierId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SupplierInput'];
-      };
-    };
-    responses: {
-      /** @description Updated. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Supplier'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminReviewSupplier: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        supplier_id: components['parameters']['SupplierId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SupplierReviewInput'];
-      };
-    };
-    responses: {
-      /** @description The supplier after the decision. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Supplier'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListQuotations: {
-    parameters: {
-      query?: {
-        supplier_id?: string;
-        product_id?: string;
-        status?: 'draft' | 'accepted' | 'rejected' | 'expired';
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of quotations. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Quotation'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminCreateQuotation: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['QuotationInput'];
-      };
-    };
-    responses: {
-      /** @description Created as `draft`. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Quotation'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      /** @description `supplier_blocked`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminGetQuotation: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        quotation_id: components['parameters']['QuotationId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The quotation. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Quotation'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  adminUpdateQuotation: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        quotation_id: components['parameters']['QuotationId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['QuotationInput'] & {
-          /** @enum {string} */
-          status?: 'draft' | 'accepted' | 'rejected';
-        };
-      };
-    };
-    responses: {
-      /** @description Updated. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Quotation'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['Conflict'];
-      /** @description `quotation_expired`, `supplier_blocked`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminUploadQuotationAttachment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        quotation_id: components['parameters']['QuotationId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'multipart/form-data': {
-          /**
-           * Format: binary
-           * @description PDF, JPEG or PNG, up to 20 MB.
-           */
-          file: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Attached. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Quotation'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListCampaigns: {
-    parameters: {
-      query?: {
-        status?: components['schemas']['CampaignStatus'];
-        /** @description Only campaigns waiting on an admin (approval, supplier decision, below-target decision). */
-        needs_attention?: boolean;
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of campaigns. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminCampaign'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminCreateCampaign: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminCampaignInput'];
-      };
-    };
-    responses: {
-      /** @description Created as `draft`, without tiers. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminCampaign'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminGetCampaign: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The campaign. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminCampaign'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  adminUpdateCampaign: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AdminCampaignInput'] & {
-          lock_version: number;
-        };
-      };
-    };
-    responses: {
-      /** @description Updated. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminCampaign'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminReplaceCampaignTiers: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['TierSetInput'];
-      };
-    };
-    responses: {
-      /** @description Saved; the campaign now shows the new version. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminCampaign'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['Conflict'];
-      /** @description `tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`, a missing `reason` from version 2, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminGetCampaignMargin: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The margin check. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['MarginReport'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `tiers_missing` or `landed_cost_missing`. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-    };
-  };
-  adminSubmitCampaign: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: components['responses']['AdminCampaignResult'];
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      /** @description `tiers_missing`, a tier error (`tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`), `landed_cost_missing`, `supplier_not_approved`, `quotation_not_usable`, `product_not_active` or `variant_not_active`. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminApproveCampaign: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: {
-      content: {
-        'application/json': {
-          /** @description Only for approving below the margin floor; needs `campaigns.override_margin`. Audited. */
-          override_reason?: string | null;
-        };
-      };
-    };
-    responses: {
-      200: components['responses']['AdminCampaignResult'];
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      /** @description `margin_below_floor` (body includes `margin`), one of the submit checks, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['MarginBlockedError'];
-        };
-      };
-    };
-  };
-  adminRejectCampaign: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ReasonInput'];
-      };
-    };
-    responses: {
-      200: components['responses']['AdminCampaignResult'];
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminGetExtensionWindow: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The extension window. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ExtensionWindow'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  adminExtendCampaign: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** Format: date-time */
-          new_deadline_at: string;
-          reason: string;
-        };
-      };
-    };
-    responses: {
-      200: components['responses']['AdminCampaignResult'];
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `extension_not_allowed` (body includes `window`), or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ExtensionBlockedError'];
-        };
-      };
-    };
-  };
-  adminCancelCampaign: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ReasonInput'];
-      };
-    };
-    responses: {
-      200: components['responses']['AdminCampaignResult'];
-      /** @description Waiting for financial approval. */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ApprovalRequest'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminRecordSupplierDecision: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SupplierDecisionInput'];
-      };
-    };
-    responses: {
-      200: components['responses']['AdminCampaignResult'];
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `invalid_transition` (not awaiting the supplier) or `supplier_decision_overdue`. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      /** @description `supplier_stock_short`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminDecideBelowTarget: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** @enum {string} */
-          decision: 'proceed' | 'cancel';
-          reason: string;
-        };
-      };
-    };
-    responses: {
-      200: components['responses']['AdminCampaignResult'];
-      /** @description Cancel chosen; waiting for financial approval of the refunds. */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ApprovalRequest'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListCampaignParticipations: {
-    parameters: {
-      query?: {
-        status?: components['schemas']['ParticipationStatus'];
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of participations. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminParticipation'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListCampaignEvents: {
-    parameters: {
-      query?: {
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path: {
-        campaign_id: components['parameters']['CampaignId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Events, oldest first. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['CampaignEvent'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListPayments: {
-    parameters: {
-      query?: {
-        status?: components['schemas']['PaymentStatus'];
-        campaign_id?: string;
-        /** @description Only `authorized` holds whose tracked expiry is within this many days. */
-        expiring_within_days?: number;
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of payments. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminPayment'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminGetPayment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        payment_id: components['parameters']['PaymentId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The payment. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminPayment'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  adminRequestManualVoid: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        payment_id: components['parameters']['PaymentId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ReasonInput'];
-      };
-    };
-    responses: {
-      /** @description The approval request (an existing one if it is already waiting). */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ApprovalRequest'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `not_voidable`: the hold still counts, its capture is under way, or it never reached Moyasar. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListRefunds: {
-    parameters: {
-      query?: {
-        status?: components['schemas']['RefundStatus'];
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of refunds. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Refund'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminRequestRefund: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['RefundInput'];
-      };
-    };
-    responses: {
-      /** @description Created and waiting for approval. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['Refund'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      /** @description `shipment_open`: a full refund of an order whose parcel is booked or waiting for the courier. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      /** @description `refund_exceeds_captured`, `payment_not_captured`, `payment_not_found`, `order_not_for_payment`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminListApprovalRequests: {
-    parameters: {
-      query?: {
-        status?: 'pending' | 'approved' | 'rejected' | 'cancelled';
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of approval requests. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ApprovalRequest'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminApproveRequest: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        approval_request_id: components['parameters']['ApprovalRequestId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Approved; the action is queued. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ApprovalRequest'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-    };
-  };
-  adminRejectRequest: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        approval_request_id: components['parameters']['ApprovalRequestId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ReasonInput'];
-      };
-    };
-    responses: {
-      /** @description Rejected. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ApprovalRequest'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListOrders: {
-    parameters: {
-      query?: {
-        status?: components['schemas']['OrderStatus'];
-        campaign_id?: string;
-        /** @description Order number or customer phone. */
-        q?: string;
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of orders. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminOrder'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminGetOrder: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The order. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminOrder'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  adminCreateShipment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ShipmentInput'];
-      };
-    };
-    responses: {
-      /** @description Shipment created; the order becomes `shipped`. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminShipment'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `shipment_exists`, or the order is not `ready_to_ship`. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminAddShipmentEvent: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        shipment_id: components['parameters']['ShipmentId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ShipmentEventInput'];
-      };
-    };
-    responses: {
-      /** @description Recorded. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminShipment'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `invalid_transition` or `booking_in_progress`. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminGetCourier: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The courier. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['CourierSettings'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  adminBookShipment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: {
-      content: {
-        'application/json': components['schemas']['ShipmentBookingInput'];
-      };
-    };
-    responses: {
-      /** @description Booking asked for. */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminShipment'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `courier_api_off`, `shipment_exists` or `invalid_transition`. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminCancelShipment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        shipment_id: components['parameters']['ShipmentId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: {
-      content: {
-        'application/json': components['schemas']['ShipmentCancelInput'];
-      };
-    };
-    responses: {
-      /** @description Cancelled. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AdminShipment'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `booking_in_progress` or `invalid_transition`. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListReturns: {
-    parameters: {
-      query?: {
-        status?: components['schemas']['ReturnStatus'];
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of returns. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['OrderReturn'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminRecordReturn: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        order_id: components['parameters']['OrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ReturnInput'];
-      };
-    };
-    responses: {
-      /** @description Recorded. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['OrderReturn'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `return_window_ended`, `return_exists` or `invalid_transition`. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminApproveReturn: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        return_id: components['parameters']['ReturnId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ReturnApprovalInput'];
-      };
-    };
-    responses: {
-      /** @description Accepted; the refund waits for approval. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['OrderReturn'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      /** @description `refund_exceeds_captured`, `payment_not_captured`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminRejectReturn: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        return_id: components['parameters']['ReturnId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ReturnRejectionInput'];
-      };
-    };
-    responses: {
-      /** @description Declined. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['OrderReturn'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListPurchaseOrders: {
-    parameters: {
-      query?: {
-        status?: components['schemas']['PurchaseOrderStatus'];
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of purchase orders. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['PurchaseOrder'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminGetPurchaseOrder: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description The purchase order. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['PurchaseOrder'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-    };
-  };
-  adminUpdatePurchaseOrder: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PurchaseOrderInput'];
-      };
-    };
-    responses: {
-      /** @description Updated. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['PurchaseOrder'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminAdvancePurchaseOrder: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** @enum {string} */
-          status: 'placed' | 'supplier_confirmed' | 'paid' | 'shipped';
-          /** Format: date-time */
-          occurred_at?: string | null;
-          note?: string | null;
-        };
-      };
-    };
-    responses: {
-      /** @description Moved. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['PurchaseOrder'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminAttachPurchaseOrderDocument: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'multipart/form-data': {
-          /**
-           * Format: binary
-           * @description PDF, JPEG or PNG, up to 20 MB.
-           */
-          file: string;
-          kind: components['schemas']['PurchaseOrderDocumentKind'];
-        };
-      };
-    };
-    responses: {
-      /** @description Kept. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['PurchaseOrder'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminRemovePurchaseOrderDocument: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-        document_id: components['parameters']['DocumentId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Removed. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['PurchaseOrder'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  adminRecordInboundReceipt: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        purchase_order_id: components['parameters']['PurchaseOrderId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['InboundReceiptInput'];
-      };
-    };
-    responses: {
-      /** @description Recorded. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['InboundReceipt'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['InvalidTransition'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminAddReceiptPhoto: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        receipt_id: components['parameters']['ReceiptId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'multipart/form-data': {
-          /**
-           * Format: binary
-           * @description JPEG, PNG or WebP, up to 10 MB.
-           */
-          file: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Added. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['InboundReceipt'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListReconciliationRuns: {
-    parameters: {
-      query?: {
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Runs, newest first. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ReconciliationRun'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListReconciliationItems: {
-    parameters: {
-      query?: {
-        resolved?: boolean;
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path: {
-        run_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description A page of mismatches. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ReconciliationItem'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminResolveReconciliationItem: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        item_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          note: string;
-        };
-      };
-    };
-    responses: {
-      /** @description Resolved. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['ReconciliationItem'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListAuditLogs: {
-    parameters: {
-      query?: {
-        subject_type?: string;
-        subject_id?: string;
-        actor_admin_id?: string;
-        action?: string;
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Entries, newest first. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['AuditLogEntry'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListLedgerAccounts: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Accounts in chart order. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['LedgerAccountBalance'][];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  adminListLedgerTransactions: {
-    parameters: {
-      query?: {
-        account?: components['schemas']['LedgerAccountCode'];
-        type?: components['schemas']['LedgerTransactionType'];
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Postings, newest first. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['LedgerTransaction'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListLedgerAdjustments: {
-    parameters: {
-      query?: {
-        status?: 'pending' | 'posted' | 'rejected';
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Adjustments, newest first. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['LedgerAdjustment'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminRequestLedgerAdjustment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['LedgerAdjustmentInput'];
-      };
-    };
-    responses: {
-      /** @description Waiting for approval. */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['LedgerAdjustment'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      /** @description `already_reversed`, or `invalid_transition` for a reversal of a reversal. */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Error'];
-        };
-      };
-      /** @description `ledger_unbalanced` on `lines`, or invalid input. */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidationError'];
-        };
-      };
-    };
-  };
-  adminListSettlements: {
-    parameters: {
-      query?: {
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Settlements, newest import first. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['MoyasarSettlement'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
-  adminListSettlementLines: {
-    parameters: {
-      query?: {
-        /** @description `meta.next_cursor` from the previous page. */
-        cursor?: components['parameters']['Cursor'];
-        per_page?: components['parameters']['PerPage'];
-      };
-      header?: never;
-      path: {
-        settlement_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Lines in Moyasar's order. */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data: components['schemas']['MoyasarSettlementLine'][];
-            meta: components['schemas']['CursorMeta'];
-          };
-        };
-      };
-      401: components['responses']['Unauthenticated'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['NotFound'];
-      422: components['responses']['ValidationFailed'];
-    };
-  };
+    getHealth: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every dependency answered. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["XRequestId"];
+                    "Content-Language": components["headers"]["ContentLanguage"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description At least one dependency failed. */
+            503: {
+                headers: {
+                    "X-Request-Id": components["headers"]["XRequestId"];
+                    "Content-Language": components["headers"]["ContentLanguage"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "degraded",
+                     *       "message": "بعض الأنظمة لا تستجيب.",
+                     *       "checks": {
+                     *         "database": "ok",
+                     *         "redis": "failing"
+                     *       },
+                     *       "time": "2026-11-02T09:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    requestOtp: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    phone: components["schemas"]["SaudiMobile"];
+                };
+            };
+        };
+        responses: {
+            /** @description Code sent. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OtpChallenge"];
+                    };
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            /** @description `sms_unavailable`: the code could not be sent. Try again in a few minutes. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    verifyOtp: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    challenge_id: string;
+                    /** @example 482913 */
+                    code: string;
+                    /**
+                     * @description Shown in the account's session list.
+                     * @example Safari on iPhone
+                     */
+                    device_name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Signed in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CustomerSession"];
+                    };
+                };
+            };
+            /**
+             * @description Wrong or expired code (`code`: `otp_invalid`, `otp_expired`,
+             *     `otp_attempts_exhausted`), a suspended account (`account_blocked`),
+             *     or invalid input.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["User"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string | null;
+                    /** Format: email */
+                    email?: string | null;
+                    locale?: components["schemas"]["Locale"];
+                };
+            };
+        };
+        responses: {
+            /** @description Updated customer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["User"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    acceptPrivacyPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @example 2026-11 */
+                    policy_version: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Consent recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["User"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `privacy_policy_outdated` when `policy_version` is not the current version, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    listAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Addresses, default first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Address"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    createAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddressInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Address"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `address_limit_reached`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    deleteAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: components["parameters"]["AddressId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAddress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address_id: components["parameters"]["AddressId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddressInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Address"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    registerDeviceToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    platform: "ios" | "android" | "web";
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Registered. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listCategories: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All categories, sorted for display. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Category"][];
+                    };
+                };
+            };
+        };
+    };
+    listCampaigns: {
+        parameters: {
+            query?: {
+                filter?: "open" | "upcoming" | "ended";
+                /** @description Category slug. */
+                category?: string;
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of campaigns. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CampaignSummary"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getCampaign: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The campaign. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CampaignDetail"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getCampaignProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current progress. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CampaignProgress"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    joinCampaign: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinRequest"];
+            };
+        };
+        responses: {
+            /** @description Units reserved (or the earlier join with this `client_request_id`); open the payment form. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Participation"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `privacy_consent_required`: accept the privacy policy first. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `price_changed` (body has `current_unit_price`), `sold_out` (not
+             *     enough units left; body has `remaining_qty`), or
+             *     `campaign_not_joinable` (not active, or the deadline passed).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinConflict"];
+                };
+            };
+            /**
+             * @description `per_customer_limit_exceeded`, `variant_not_in_campaign` (not in
+             *     this campaign, or archived), `address_not_found`, a `client_request_id` already used for another
+             *     campaign, or invalid input.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    listMyParticipations: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ParticipationStatus"];
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of joins. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Participation"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getMyParticipation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                participation_id: components["parameters"]["ParticipationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The join. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Participation"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    cancelMyParticipation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                participation_id: components["parameters"]["ParticipationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled; the hold is being released. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Participation"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description `cancellation_not_allowed`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    retryParticipationPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                participation_id: components["parameters"]["ParticipationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New attempt; open the payment form with its `checkout`. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Payment"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description `already_paid` when the participation is already `authorized` or `captured`; `reservation_expired` when it is otherwise no longer `pending_payment` or its reservation ran out; or `payment_in_progress` when the previous attempt has neither failed nor been refused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    syncPayment: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                payment_id: components["parameters"]["PaymentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The `id` query parameter Moyasar adds to the callback URL. */
+                    provider_payment_id: string;
+                };
+            };
+        };
+        responses: {
+            /**
+             * @description The participation after the check. `status` is `authorized` on
+             *     success, `pending_payment` while Moyasar is still processing or
+             *     after a decline (see `payment.status`), or `payment_failed`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Participation"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description `provider_payment_mismatch`: Moyasar has no such payment, or it does not belong to this payment. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            /** @description `payment_provider_unavailable`: Moyasar could not be reached. Try again shortly; the webhook will also settle it. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listMyOrders: {
+        parameters: {
+            query?: {
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Order"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    getMyOrder: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `ar` (default) or `en`. Other languages fall back to Arabic. */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Order"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    receiveMoyasarWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Accepted, or a duplicate that was ignored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Verification failed. Logged and never processed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Body too large to be a Moyasar event. Not stored. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    adminLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    /** Format: password */
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Password accepted; code sent. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OtpChallenge"];
+                    };
+                };
+            };
+            /** @description `invalid_credentials` or `account_blocked`. `account_blocked` is only returned after a correct password. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+            /** @description `sms_unavailable`: the code could not be sent. Try again in a few minutes. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    adminVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    challenge_id: string;
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Signed in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminSession"];
+                    };
+                };
+            };
+            /** @description `otp_invalid`, `otp_expired`, `otp_attempts_exhausted`, or `account_blocked` if the admin was blocked after step 1. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    adminLogout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    getAdminMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The admin. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminUser"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+        };
+    };
+    changeAdminPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: password */
+                    current_password: string;
+                    /** Format: password */
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Password changed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `invalid_credentials` when the current password is wrong, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    adminListRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminRole"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminListAdmins: {
+        parameters: {
+            query?: {
+                /** @description Only admins with this status. All admins when left out. */
+                status?: "active" | "blocked";
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of admins, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminUser"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminCreateAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminUser"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` without `admins.manage`, or `cannot_grant_role`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminUpdateAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admin_id: components["parameters"]["AdminId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description The admin after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminUser"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `forbidden` without `admins.manage`, `cannot_grant_role` or `cannot_manage_admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `cannot_change_own_access`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminListCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All categories. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminCategory"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminCreateCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCategoryInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminCategory"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminUpdateCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: components["parameters"]["CategoryId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCategoryInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminCategory"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `category_cycle`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminListProducts: {
+        parameters: {
+            query?: {
+                status?: "draft" | "active" | "archived";
+                /** @description Matches title (Arabic or English), SKU or Alibaba URL. */
+                q?: string;
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of products. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminProduct"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminCreateProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminProductInput"] & {
+                    variants?: components["schemas"]["AdminVariantInput"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Created as `draft`. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminProduct"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminGetProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminProduct"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminUpdateProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminProductInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminProduct"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `product_needs_variant`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminCreateVariant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminVariantInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminVariant"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminUpdateVariant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                variant_id: components["parameters"]["VariantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminVariantInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminVariant"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `last_active_variant`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminUploadProductImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description JPEG, PNG or WebP, up to 10 MB.
+                     */
+                    file: string;
+                    /** Format: uuid */
+                    product_variant_id?: string | null;
+                    alt_ar?: string;
+                    alt_en?: string;
+                    sort_order?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Stored. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminImage"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminDeleteProductImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminListSuppliers: {
+        parameters: {
+            query?: {
+                status?: "prospect" | "approved" | "blocked";
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of suppliers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Supplier"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminCreateSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierInput"];
+            };
+        };
+        responses: {
+            /** @description Created as `prospect`. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Supplier"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminGetSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplier_id: components["parameters"]["SupplierId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The supplier. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Supplier"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminUpdateSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplier_id: components["parameters"]["SupplierId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Supplier"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminReviewSupplier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplier_id: components["parameters"]["SupplierId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierReviewInput"];
+            };
+        };
+        responses: {
+            /** @description The supplier after the decision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Supplier"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListQuotations: {
+        parameters: {
+            query?: {
+                supplier_id?: string;
+                product_id?: string;
+                status?: "draft" | "accepted" | "rejected" | "expired";
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of quotations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Quotation"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminCreateQuotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuotationInput"];
+            };
+        };
+        responses: {
+            /** @description Created as `draft`. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Quotation"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `supplier_blocked`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminGetQuotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quotation_id: components["parameters"]["QuotationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The quotation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Quotation"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminUpdateQuotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quotation_id: components["parameters"]["QuotationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuotationInput"] & {
+                    /** @enum {string} */
+                    status?: "draft" | "accepted" | "rejected";
+                };
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Quotation"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description `quotation_expired`, `supplier_blocked`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminUploadQuotationAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                quotation_id: components["parameters"]["QuotationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description PDF, JPEG or PNG, up to 20 MB.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Attached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Quotation"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListCampaigns: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["CampaignStatus"];
+                /** @description Only campaigns waiting on an admin (approval, supplier decision, below-target decision). */
+                needs_attention?: boolean;
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of campaigns. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminCampaign"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminCreateCampaign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCampaignInput"];
+            };
+        };
+        responses: {
+            /** @description Created as `draft`, without tiers. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminCampaign"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminGetCampaign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The campaign. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminCampaign"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminUpdateCampaign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCampaignInput"] & {
+                    lock_version: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminCampaign"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminReplaceCampaignTiers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TierSetInput"];
+            };
+        };
+        responses: {
+            /** @description Saved; the campaign now shows the new version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminCampaign"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description `tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`, a missing `reason` from version 2, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminGetCampaignMargin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The margin check. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MarginReport"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `tiers_missing` or `landed_cost_missing`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    adminSubmitCampaign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["AdminCampaignResult"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            /** @description `tiers_missing`, a tier error (`tiers_gap`, `tiers_overlap`, `tiers_do_not_reach_max`, `tiers_exceed_max`, `price_rises_with_quantity`), `landed_cost_missing`, `supplier_not_approved`, `quotation_not_usable`, `product_not_active` or `variant_not_active`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminApproveCampaign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Only for approving below the margin floor; needs `campaigns.override_margin`. Audited. */
+                    override_reason?: string | null;
+                };
+            };
+        };
+        responses: {
+            200: components["responses"]["AdminCampaignResult"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            /** @description `margin_below_floor` (body includes `margin`), one of the submit checks, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarginBlockedError"];
+                };
+            };
+        };
+    };
+    adminRejectCampaign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonInput"];
+            };
+        };
+        responses: {
+            200: components["responses"]["AdminCampaignResult"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminGetExtensionWindow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The extension window. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ExtensionWindow"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminExtendCampaign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    new_deadline_at: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            200: components["responses"]["AdminCampaignResult"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `extension_not_allowed` (body includes `window`), or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionBlockedError"];
+                };
+            };
+        };
+    };
+    adminCancelCampaign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonInput"];
+            };
+        };
+        responses: {
+            200: components["responses"]["AdminCampaignResult"];
+            /** @description Waiting for financial approval. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ApprovalRequest"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminRecordSupplierDecision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupplierDecisionInput"];
+            };
+        };
+        responses: {
+            200: components["responses"]["AdminCampaignResult"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `invalid_transition` (not awaiting the supplier) or `supplier_decision_overdue`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `supplier_stock_short`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminDecideBelowTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    decision: "proceed" | "cancel";
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            200: components["responses"]["AdminCampaignResult"];
+            /** @description Cancel chosen; waiting for financial approval of the refunds. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ApprovalRequest"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListCampaignParticipations: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ParticipationStatus"];
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of participations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminParticipation"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListCampaignEvents: {
+        parameters: {
+            query?: {
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path: {
+                campaign_id: components["parameters"]["CampaignId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Events, oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CampaignEvent"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListPayments: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PaymentStatus"];
+                campaign_id?: string;
+                /** @description Only `authorized` holds whose tracked expiry is within this many days. */
+                expiring_within_days?: number;
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of payments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminPayment"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminGetPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payment_id: components["parameters"]["PaymentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The payment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminPayment"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminRequestManualVoid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                payment_id: components["parameters"]["PaymentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonInput"];
+            };
+        };
+        responses: {
+            /** @description The approval request (an existing one if it is already waiting). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ApprovalRequest"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `not_voidable`: the hold still counts, its capture is under way, or it never reached Moyasar. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListRefunds: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["RefundStatus"];
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of refunds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Refund"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminRequestRefund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefundInput"];
+            };
+        };
+        responses: {
+            /** @description Created and waiting for approval. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Refund"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description `shipment_open`: a full refund of an order whose parcel is booked or waiting for the courier. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `refund_exceeds_captured`, `payment_not_captured`, `payment_not_found`, `order_not_for_payment`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminListApprovalRequests: {
+        parameters: {
+            query?: {
+                status?: "pending" | "approved" | "rejected" | "cancelled";
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of approval requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ApprovalRequest"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminApproveRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_request_id: components["parameters"]["ApprovalRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved; the action is queued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ApprovalRequest"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+        };
+    };
+    adminRejectRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_request_id: components["parameters"]["ApprovalRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonInput"];
+            };
+        };
+        responses: {
+            /** @description Rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ApprovalRequest"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListOrders: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["OrderStatus"];
+                campaign_id?: string;
+                /** @description Order number or customer phone. */
+                q?: string;
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminOrder"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminGetOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminOrder"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminCreateShipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShipmentInput"];
+            };
+        };
+        responses: {
+            /** @description Shipment created; the order becomes `shipped`. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminShipment"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `shipment_exists`, or the order is not `ready_to_ship`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminAddShipmentEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: components["parameters"]["ShipmentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShipmentEventInput"];
+            };
+        };
+        responses: {
+            /** @description Recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminShipment"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `invalid_transition` or `booking_in_progress`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminGetCourier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The courier. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CourierSettings"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminBookShipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ShipmentBookingInput"];
+            };
+        };
+        responses: {
+            /** @description Booking asked for. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminShipment"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `courier_api_off`, `shipment_exists` or `invalid_transition`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminCancelShipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: components["parameters"]["ShipmentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ShipmentCancelInput"];
+            };
+        };
+        responses: {
+            /** @description Cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AdminShipment"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `booking_in_progress` or `invalid_transition`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListReturns: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ReturnStatus"];
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of returns. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OrderReturn"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminRecordReturn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnInput"];
+            };
+        };
+        responses: {
+            /** @description Recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OrderReturn"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `return_window_ended`, `return_exists` or `invalid_transition`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminApproveReturn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                return_id: components["parameters"]["ReturnId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnApprovalInput"];
+            };
+        };
+        responses: {
+            /** @description Accepted; the refund waits for approval. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OrderReturn"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            /** @description `refund_exceeds_captured`, `payment_not_captured`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminRejectReturn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                return_id: components["parameters"]["ReturnId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnRejectionInput"];
+            };
+        };
+        responses: {
+            /** @description Declined. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["OrderReturn"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListPurchaseOrders: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PurchaseOrderStatus"];
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of purchase orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PurchaseOrder"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminGetPurchaseOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The purchase order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PurchaseOrder"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminUpdatePurchaseOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurchaseOrderInput"];
+            };
+        };
+        responses: {
+            /** @description Updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PurchaseOrder"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminAdvancePurchaseOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "placed" | "supplier_confirmed" | "paid" | "shipped";
+                    /** Format: date-time */
+                    occurred_at?: string | null;
+                    note?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Moved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PurchaseOrder"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminAttachPurchaseOrderDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description PDF, JPEG or PNG, up to 20 MB.
+                     */
+                    file: string;
+                    kind: components["schemas"]["PurchaseOrderDocumentKind"];
+                };
+            };
+        };
+        responses: {
+            /** @description Kept. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PurchaseOrder"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminRemovePurchaseOrderDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+                document_id: components["parameters"]["DocumentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PurchaseOrder"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    adminRecordInboundReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InboundReceiptInput"];
+            };
+        };
+        responses: {
+            /** @description Recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["InboundReceipt"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminAddReceiptPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receipt_id: components["parameters"]["ReceiptId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description JPEG, PNG or WebP, up to 10 MB.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["InboundReceipt"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListReconciliationRuns: {
+        parameters: {
+            query?: {
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runs, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ReconciliationRun"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListReconciliationItems: {
+        parameters: {
+            query?: {
+                resolved?: boolean;
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of mismatches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ReconciliationItem"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminResolveReconciliationItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    note: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Resolved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["ReconciliationItem"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListAuditLogs: {
+        parameters: {
+            query?: {
+                subject_type?: string;
+                subject_id?: string;
+                actor_admin_id?: string;
+                action?: string;
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entries, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AuditLogEntry"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListLedgerAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accounts in chart order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LedgerAccountBalance"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminListLedgerTransactions: {
+        parameters: {
+            query?: {
+                account?: components["schemas"]["LedgerAccountCode"];
+                type?: components["schemas"]["LedgerTransactionType"];
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Postings, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LedgerTransaction"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListLedgerAdjustments: {
+        parameters: {
+            query?: {
+                status?: "pending" | "posted" | "rejected";
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Adjustments, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LedgerAdjustment"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminRequestLedgerAdjustment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LedgerAdjustmentInput"];
+            };
+        };
+        responses: {
+            /** @description Waiting for approval. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LedgerAdjustment"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `already_reversed`, or `invalid_transition` for a reversal of a reversal. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `ledger_unbalanced` on `lines`, or invalid input. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationError"];
+                };
+            };
+        };
+    };
+    adminListSettlements: {
+        parameters: {
+            query?: {
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settlements, newest import first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MoyasarSettlement"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminListSettlementLines: {
+        parameters: {
+            query?: {
+                /** @description `meta.next_cursor` from the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+                per_page?: components["parameters"]["PerPage"];
+            };
+            header?: never;
+            path: {
+                settlement_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lines in Moyasar's order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MoyasarSettlementLine"][];
+                        meta: components["schemas"]["CursorMeta"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
 }

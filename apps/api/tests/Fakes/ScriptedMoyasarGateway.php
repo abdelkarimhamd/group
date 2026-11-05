@@ -177,6 +177,14 @@ final class ScriptedMoyasarGateway implements PaymentGateway
     }
 
     /**
+     * Moyasar has no record of this payment.
+     */
+    public function forget(string $id): void
+    {
+        unset($this->payments[$id]);
+    }
+
+    /**
      * Moyasar's view of a payment changes (captured, voided...).
      */
     public function setStatus(string $id, string $status, ?int $capturedHalalas = null, ?int $refundedHalalas = null): void

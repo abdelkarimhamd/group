@@ -16,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Concerns\ClosesCampaigns;
+use Tests\Concerns\RunsAsAppRole;
 use Tests\TestCase;
 
 /**
@@ -25,7 +26,7 @@ use Tests\TestCase;
  */
 class LedgerAdjustmentsTest extends TestCase
 {
-    use ClosesCampaigns, RefreshDatabase;
+    use ClosesCampaigns, RefreshDatabase, RunsAsAppRole;
 
     private Campaign $campaign;
 
@@ -139,6 +140,23 @@ class LedgerAdjustmentsTest extends TestCase
         $this->as($finance, 'get', '/api/v1/admin/ledger/transactions?type=reversal')
             ->assertOk()
             ->assertJsonPath('data.0.reverses_transaction_id', $capture->uuid);
+    }
+
+    #[Test]
+    public function a_reversal_works_with_production_grants_on_the_ledger(): void
+    {
+        // The ledger is append-only: production's app role cannot row-lock it.
+        $capture = LedgerTransaction::query()->where('type', 'capture')->firstOrFail();
+        $finance = $this->token(AdminRole::Finance);
+        $approver = $this->token(AdminRole::Finance);
+        $this->runAsAppRole();
+
+        $request = $this->as($finance, 'post', '/api/v1/admin/ledger/adjustments', ['description' => 'Posted twice by mistake', 'reverses_transaction_id' => $capture->uuid])
+            ->assertCreated()
+            ->json('data');
+        $this->as($approver, 'post', "/api/v1/admin/approval-requests/{$request['approval_request_id']}/approve")->assertOk();
+
+        $this->assertSame('reversal', LedgerTransaction::query()->where('reverses_transaction_id', $capture->id)->sole()->type->value);
     }
 
     #[Test]

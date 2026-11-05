@@ -66,7 +66,12 @@ final class LedgerAdjustments
     public function requestReversal(string $transactionUuid, string $description, AdminUser $by): LedgerAdjustment
     {
         return DB::transaction(function () use ($transactionUuid, $description, $by): LedgerAdjustment {
-            $original = LedgerTransaction::query()->where('uuid', $transactionUuid)->lockForUpdate()->firstOrFail();
+            // The ledger is append-only: the app's role may not UPDATE it, so
+            // it cannot take row locks there either (FOR UPDATE needs the
+            // privilege). Two requests for the same posting queue on an
+            // advisory lock instead; ledger_adjustments_one_reversal backs it up.
+            $original = LedgerTransaction::query()->where('uuid', $transactionUuid)->firstOrFail();
+            DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', ['ledger_reversal:'.$original->id]);
 
             if ($original->type === LedgerTransactionType::Reversal) {
                 throw new ApiException(409, 'invalid_transition');
@@ -130,7 +135,9 @@ final class LedgerAdjustments
                 approvalRequestId: $request->id,
             );
         } else {
-            $original = LedgerTransaction::query()->whereKey($adjustment->reverses_transaction_id)->lockForUpdate()->firstOrFail();
+            // A plain read: the unique reverses_transaction_id on the ledger
+            // allows one reversal, and the ledger cannot be row-locked.
+            $original = LedgerTransaction::query()->whereKey($adjustment->reverses_transaction_id)->firstOrFail();
             $posting = $this->ledger->reverse($original, $adjustment->description, $actor, $request->id);
         }
 

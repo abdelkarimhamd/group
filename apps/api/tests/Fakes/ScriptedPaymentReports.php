@@ -29,6 +29,9 @@ final class ScriptedPaymentReports implements PaymentReports
 
     public bool $down = false;
 
+    /** @var list<string> settlements whose lines cannot be read */
+    public array $unreadable = [];
+
     public int $perPage = 2;
 
     public function payments(CarbonImmutable $from, CarbonImmutable $to, int $page = 1): array
@@ -45,6 +48,10 @@ final class ScriptedPaymentReports implements PaymentReports
 
     public function settlementLines(string $settlementId, int $page = 1): array
     {
+        if (in_array($settlementId, $this->unreadable, true)) {
+            throw new GatewayException("The lines of {$settlementId} cannot be read.");
+        }
+
         return $this->page($this->lines[$settlementId] ?? [], $page);
     }
 

@@ -2538,12 +2538,15 @@ paths:
       description: |
         For a hold that no longer counts here but that Moyasar still keeps
         (reconciliation's `orphan_hold` and `stuck_void`): the payment is
-        `failed`, `capture_failed`, `expired` or `voided`, or `authorized`
-        with a rejection reason, and no capture is under way. Opens a
+        `failed`, `capture_failed` or `expired`, `voided` with an open
+        `stuck_void` mismatch, or `authorized` with a rejection reason; no
+        capture is under way, and no release approved earlier is still to
+        run. Opens a
         `manual_void` approval request; once a second admin with the finance
         role approves it, the void is sent after the commit with the key
         `void:{payment id}:{approval id}`. Every try asks Moyasar first and
-        voids only while Moyasar shows the payment authorized. A hold that
+        voids only while Moyasar shows the payment authorized; a payment
+        Moyasar does not know is recorded as failed (`not_found`). A hold that
         still counts for a campaign is released by cancelling the
         participation or the campaign, never this way. There is no manual
         capture: captures go through closing the campaign, which issues the

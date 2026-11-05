@@ -6,6 +6,8 @@ use App\Models\AuditLog;
 use App\Models\StatusTransition;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Finance\Models\ApprovalRequest;
+use App\Modules\Finance\Models\ReconciliationItem;
+use App\Modules\Finance\Models\ReconciliationRun;
 use App\Modules\Identity\Enums\AdminRole;
 use App\Modules\Payments\Gateway\GatewayException;
 use App\Modules\Payments\Gateway\PaymentGateway;
@@ -87,6 +89,50 @@ class ManualVoidsTest extends TestCase
         // Running the job again sends nothing.
         (new ExecuteManualVoid(ApprovalRequest::query()->where('uuid', $approval['id'])->value('id')))->handle(app(ManualVoids::class));
         $this->assertCount(1, $this->gateway->voids);
+
+        // Voided here and at Moyasar: nothing left to release.
+        $this->as($finance, 'get', "/api/v1/admin/payments/{$this->payment->uuid}")->assertOk()->assertJsonPath('data.void_requestable', false);
+        $this->as($finance, 'post', "/api/v1/admin/payments/{$this->payment->uuid}/void", ['reason' => 'Again'])->assertConflict()->assertJsonPath('code', 'not_voidable');
+    }
+
+    #[Test]
+    public function a_hold_is_released_by_one_approval_at_a_time(): void
+    {
+        Queue::fake([ExecuteManualVoid::class]);
+        $finance = $this->token(AdminRole::Finance);
+        $first = $this->as($finance, 'post', "/api/v1/admin/payments/{$this->payment->uuid}/void", ['reason' => 'Orphan hold'])->json('data.id');
+        $this->as($this->token(AdminRole::Finance), 'post', "/api/v1/admin/approval-requests/{$first}/approve")->assertOk();
+
+        // Approved and not run yet: a second release is refused.
+        $this->as($finance, 'get', "/api/v1/admin/payments/{$this->payment->uuid}")->assertOk()->assertJsonPath('data.void_requestable', false);
+        $this->as($finance, 'post', "/api/v1/admin/payments/{$this->payment->uuid}/void", ['reason' => 'Again'])->assertConflict()->assertJsonPath('code', 'not_voidable');
+
+        // Moyasar has never heard of the payment: recorded as failed, not retried.
+        $this->gateway->forget((string) $this->payment->provider_payment_id);
+        app(ManualVoids::class)->execute(ApprovalRequest::query()->where('uuid', $first)->sole());
+        $attempt = PaymentTransaction::query()->where('idempotency_key', "void:{$this->payment->uuid}:{$first}")->sole();
+        $this->assertSame(['failed', 'not_found'], [$attempt->status->value, $attempt->error_code]);
+        $this->assertSame([], $this->gateway->voids);
+
+        // Done, though in vain: it may be asked for again.
+        $this->as($finance, 'post', "/api/v1/admin/payments/{$this->payment->uuid}/void", ['reason' => 'Again'])->assertCreated();
+    }
+
+    #[Test]
+    public function a_payment_we_voided_is_released_again_only_when_moyasar_still_holds_it(): void
+    {
+        $this->payment->forceFill(['status' => 'voided', 'provider_status' => 'voided', 'voided_at' => now()])->save();
+        $finance = $this->token(AdminRole::Finance);
+        $this->as($finance, 'get', "/api/v1/admin/payments/{$this->payment->uuid}")->assertOk()->assertJsonPath('data.void_requestable', false);
+
+        // Reconciliation finds Moyasar still holding it.
+        $run = ReconciliationRun::create(['run_date' => '2026-11-01', 'status' => 'mismatches', 'started_at' => now(), 'finished_at' => now()]);
+        $item = ReconciliationItem::create(['reconciliation_run_id' => $run->id, 'payment_authorization_id' => $this->payment->id, 'provider_payment_id' => $this->payment->provider_payment_id, 'mismatch_type' => 'stuck_void']);
+        $this->as($finance, 'get', "/api/v1/admin/payments/{$this->payment->uuid}")->assertOk()->assertJsonPath('data.void_requestable', true);
+        $this->as($finance, 'post', "/api/v1/admin/payments/{$this->payment->uuid}/void", ['reason' => 'Stuck void'])->assertCreated();
+
+        $item->forceFill(['resolved_at' => now(), 'resolved_by_admin_id' => $this->adminWithToken(AdminRole::Finance)[0]->id, 'resolution_note' => 'Released at Moyasar'])->save();
+        $this->as($finance, 'get', "/api/v1/admin/payments/{$this->payment->uuid}")->assertOk()->assertJsonPath('data.void_requestable', false);
     }
 
     #[Test]

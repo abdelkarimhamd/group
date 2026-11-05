@@ -98,24 +98,31 @@ class SettlementsTest extends TestCase
     }
 
     #[Test]
-    public function reading_stops_at_the_first_page_with_nothing_new(): void
+    public function every_page_is_read_so_a_settlement_skipped_once_is_imported_later(): void
     {
         foreach (range(1, 5) as $n) {
             $this->reports->settle("stl_{$n}", "2026-10-2{$n}T06:00:00Z", ScriptedPaymentReports::line('payment', 'pay_x', 1000, 0, 0));
         }
 
-        $this->artisan('payments:settlements')->expectsOutputToContain('Settlements read: 5, imported: 5.')->assertSuccessful();
+        // The lines of stl_4 cannot be read: it is skipped, the older ones are not.
+        $this->reports->unreadable = ['stl_4'];
+        $this->artisan('payments:settlements')
+            ->expectsOutputToContain('Settlements read: 5, imported: 4.')
+            ->expectsOutputToContain('Settlements that could not be imported: 1.')
+            ->assertFailed();
         $this->assertSame([1, 2, 3], $this->reports->settlementPages);
+        $this->assertFalse(MoyasarSettlement::query()->where('provider_settlement_id', 'stl_4')->exists());
 
-        // A new one: the first page has it, the second has nothing new.
-        $this->reports->settle('stl_6', '2026-11-04T06:00:00Z', ScriptedPaymentReports::line('payment', 'pay_y', 1000, 0, 0));
+        // Nothing new on the first page; stl_4 is on the second and is imported now.
+        $this->reports->unreadable = [];
         $this->reports->settlementPages = [];
-        $this->artisan('payments:settlements')->expectsOutputToContain('Settlements read: 4, imported: 1.')->assertSuccessful();
-        $this->assertSame([1, 2], $this->reports->settlementPages);
-        $this->assertSame(6, MoyasarSettlement::count());
+        $this->artisan('payments:settlements')->expectsOutputToContain('Settlements read: 5, imported: 1.')->assertSuccessful();
+        $this->assertSame([1, 2, 3], $this->reports->settlementPages);
+        $this->assertSame(5, MoyasarSettlement::count());
+
         // A settlement with nothing in it is kept without a posting.
         $this->reports->settle('stl_7', '2026-11-05T06:00:00Z');
-        $this->artisan('payments:settlements')->assertSuccessful();
+        $this->artisan('payments:settlements')->expectsOutputToContain('imported: 1.')->assertSuccessful();
         $this->assertNull(MoyasarSettlement::query()->where('provider_settlement_id', 'stl_7')->value('ledger_transaction_id'));
     }
 

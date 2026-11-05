@@ -20,7 +20,7 @@ final class ImportSettlementsCommand extends Command
     public function handle(Settlements $settlements): int
     {
         try {
-            ['imported' => $imported, 'seen' => $seen] = $settlements->import();
+            ['imported' => $imported, 'seen' => $seen, 'failed' => $failed] = $settlements->import();
         } catch (GatewayException $e) {
             Log::critical('payments.settlements.failed', ['error' => $e->getMessage()]);
             $this->error('Moyasar could not be read: '.$e->getMessage());
@@ -29,6 +29,14 @@ final class ImportSettlementsCommand extends Command
         }
 
         $this->info("Settlements read: {$seen}, imported: {$imported}.");
+
+        // Skipped this time; the next run tries them again.
+        if ($failed > 0) {
+            Log::critical('payments.settlements.incomplete', ['failed' => $failed]);
+            $this->error("Settlements that could not be imported: {$failed}.");
+
+            return self::FAILURE;
+        }
 
         return self::SUCCESS;
     }

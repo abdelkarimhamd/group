@@ -23,6 +23,13 @@ class ExecuteManualVoid implements ShouldBeUnique, ShouldQueue
 
     public int $tries = 6;
 
+    /**
+     * Longer than every try and its backoff (about 80 minutes). Without it
+     * the lock never expires, and a lost job would keep every requeue of
+     * finance:requeue-approved out for good.
+     */
+    public int $uniqueFor = 7200;
+
     public function __construct(public readonly int $approvalRequestId) {}
 
     /**

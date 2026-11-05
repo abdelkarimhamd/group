@@ -3,8 +3,11 @@
 namespace App\Modules\Payments\Services;
 
 use App\Exceptions\ApiException;
+use App\Modules\Finance\Enums\ApprovalStatus;
 use App\Modules\Finance\Enums\ApprovalType;
+use App\Modules\Finance\Enums\MismatchType;
 use App\Modules\Finance\Models\ApprovalRequest;
+use App\Modules\Finance\Models\ReconciliationItem;
 use App\Modules\Finance\Services\Approvals;
 use App\Modules\Identity\Models\AdminUser;
 use App\Modules\Payments\Enums\PaymentStatus;
@@ -12,6 +15,7 @@ use App\Modules\Payments\Enums\TransactionStatus;
 use App\Modules\Payments\Enums\TransactionType;
 use App\Modules\Payments\Gateway\GatewayException;
 use App\Modules\Payments\Gateway\PaymentGateway;
+use App\Modules\Payments\Gateway\ProviderPaymentNotFound;
 use App\Modules\Payments\Jobs\ExecuteManualVoid;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\PaymentTransaction;
@@ -34,7 +38,9 @@ use LogicException;
  * Every try asks Moyasar first and calls void only while Moyasar shows the
  * payment authorized, so a retry after an unknown outcome never sends it
  * blind. A hold that still counts for a campaign, or one whose capture is
- * in flight, cannot be released this way.
+ * in flight, cannot be released this way; nor can one with an approved
+ * release still to run, or one we voided unless reconciliation found
+ * Moyasar still holding it (an open stuck_void).
  */
 final class ManualVoids
 {
@@ -48,7 +54,10 @@ final class ManualVoids
         private readonly AuditLogger $audit,
     ) {}
 
-    public static function requestable(PaymentAuthorization $payment): bool
+    /**
+     * @param  ApprovalRequest|null  $deciding  the request being approved, which is not "another" release
+     */
+    public static function requestable(PaymentAuthorization $payment, ?ApprovalRequest $deciding = null): bool
     {
         if ($payment->provider_payment_id === null) {
             return false;
@@ -57,9 +66,35 @@ final class ManualVoids
         $released = in_array($payment->status, self::RELEASED, true)
             || ($payment->status === PaymentStatus::Authorized && $payment->rejection_reason !== null);
 
-        return $released && ! PaymentTransaction::query()
-            ->where('idempotency_key', Captures::attemptKey($payment))
-            ->where('status', TransactionStatus::Pending)
+        // Voided here means voided at Moyasar too, unless reconciliation saw otherwise.
+        if ($payment->status === PaymentStatus::Voided && ! ReconciliationItem::query()
+            ->where('payment_authorization_id', $payment->id)
+            ->where('mismatch_type', MismatchType::StuckVoid)
+            ->whereNull('resolved_at')
+            ->exists()) {
+            return false;
+        }
+
+        return $released
+            && ! PaymentTransaction::query()
+                ->where('idempotency_key', Captures::attemptKey($payment))
+                ->where('status', TransactionStatus::Pending)
+                ->exists()
+            && ! self::releaseInProgress($payment, $deciding);
+    }
+
+    /**
+     * An approved release of this hold that has not run to the end yet.
+     */
+    private static function releaseInProgress(PaymentAuthorization $payment, ?ApprovalRequest $except): bool
+    {
+        return ApprovalRequest::query()
+            ->when($except !== null, fn ($query) => $query->whereKeyNot($except?->id))
+            ->where('type', ApprovalType::ManualVoid)
+            ->where('subject_type', $payment->getMorphClass())
+            ->where('subject_id', $payment->id)
+            ->where('status', ApprovalStatus::Approved)
+            ->whereNull('executed_at')
             ->exists();
     }
 
@@ -93,11 +128,11 @@ final class ManualVoids
      * The second admin approved: the void is sent after commit. Call with
      * the payment locked (lockForDecision).
      *
-     * @throws ApiException 409 not_voidable when the hold counts again (a capture started, say)
+     * @throws ApiException 409 not_voidable when the hold counts again (a capture started, say) or another release was approved first
      */
     public function approved(PaymentAuthorization $payment, ApprovalRequest $request): void
     {
-        if (! self::requestable($payment)) {
+        if (! self::requestable($payment, $request)) {
             throw new ApiException(409, 'not_voidable');
         }
 
@@ -130,7 +165,14 @@ final class ManualVoids
         }
 
         // Ask first, every time: Moyasar documents no idempotency for void.
-        $remote = $this->gateway->fetch((string) $payment->provider_payment_id);
+        try {
+            $remote = $this->gateway->fetch((string) $payment->provider_payment_id);
+        } catch (ProviderPaymentNotFound $e) {
+            // Retrying never changes this answer.
+            $this->record($payment, $attempt, $request, false, 'not_found', $e->getMessage(), ['resolved_by' => 'fetch'], $actor);
+
+            return;
+        }
 
         if ($remote->status === 'voided') {
             $this->record($payment, $attempt, $request, true, null, null, ['resolved_by' => 'fetch'] + $remote->raw, $actor);
