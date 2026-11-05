@@ -87,6 +87,8 @@ const PALETTE = {
     returned: 'red',
     cancelled: 'grey',
   },
+  booking: { requested: 'gold', booked: 'green', failed: 'red' },
+  return: { requested: 'gold', approved: 'cyan', rejected: 'grey', completed: 'green' },
   purchaseOrder: {
     draft: 'grey',
     placed: 'blue',

@@ -62,6 +62,12 @@ export type Shipment = S['Shipment'];
 export type ShipmentStatus = S['ShipmentStatus'];
 export type ShipmentInput = S['ShipmentInput'];
 export type ShipmentEventInput = S['ShipmentEventInput'];
+export type AdminShipment = S['AdminShipment'];
+export type ShipmentBooking = NonNullable<AdminShipment['booking']>;
+export type CourierSettings = S['CourierSettings'];
+export type OrderReturn = S['OrderReturn'];
+export type ReturnStatus = S['ReturnStatus'];
+export type ReturnReason = S['ReturnReason'];
 
 export type PurchaseOrder = S['PurchaseOrder'];
 export type PurchaseOrderStatus = S['PurchaseOrderStatus'];

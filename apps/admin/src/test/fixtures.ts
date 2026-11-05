@@ -1,10 +1,13 @@
 import type {
   AdminCampaign,
+  AdminOrder,
   AdminRole,
+  AdminShipment,
   AdminUser,
   ApprovalRequest,
   MarginReport,
   Money,
+  OrderReturn,
   PurchaseOrder,
   Supplier,
 } from '../api/types';
@@ -173,6 +176,122 @@ export function purchaseOrder(overrides: Partial<PurchaseOrder> = {}): PurchaseO
     eta: null,
     receipts: [],
     documents: [],
+    ...overrides,
+  };
+}
+
+const ORDER_ID = '99999999-9999-4999-8999-000000000001';
+
+export function order(overrides: Partial<AdminOrder> = {}): AdminOrder {
+  return {
+    id: ORDER_ID,
+    order_number: 'ORD-2611-000001',
+    campaign: {
+      id: '11111111-1111-4111-8111-111111111111',
+      code: 'GB-2611-0007',
+      title: 'Wireless headset',
+      image: null,
+      status: 'fulfilling',
+      starts_at: '2026-11-10T09:00:00Z',
+      deadline_at: '2026-11-17T09:00:00Z',
+      current_unit_price: sar(15500),
+      lowest_unit_price: sar(15500),
+      progress: {
+        campaign_id: '11111111-1111-4111-8111-111111111111',
+        status: 'fulfilling',
+        committed_qty: 120,
+        min_target_qty: 100,
+        max_qty: 300,
+        remaining_qty: 0,
+        units_to_target: 0,
+        deal_confirmed_at: '2026-11-14T09:00:00Z',
+        current_unit_price: sar(15500),
+        deadline_at: '2026-11-17T09:00:00Z',
+        updated_at: '2026-11-17T09:00:00Z',
+        version: 42,
+      },
+    },
+    product_variant: {
+      id: '55555555-5555-4555-8555-000000000001',
+      sku: 'HS-BLK',
+      name: 'Black',
+      option_values: {},
+    },
+    quantity: 2,
+    unit_price: sar(15500),
+    goods_total: sar(31000),
+    delivery_fee: sar(0),
+    total: sar(31000),
+    vat: sar(4043),
+    status: 'ready_to_ship',
+    shipping_address: {
+      recipient_name: 'Noura Ahmed',
+      recipient_phone: '+966512345678',
+      city: 'Riyadh',
+      district: 'Al Olaya',
+      street: 'King Fahd Road',
+      building_no: '1234',
+      postal_code: '12214',
+    },
+    payment: { status: 'captured', captured_amount: sar(31000), refunded_amount: sar(0) },
+    shipment: null,
+    invoices: [],
+    delivered_at: null,
+    return_window_ends_at: null,
+    created_at: '2026-11-17T10:00:00Z',
+    customer: {
+      id: '00000000-0000-4000-8000-0000000000c1',
+      name: 'Noura Ahmed',
+      phone: '+966512345678',
+    },
+    participation_id: '00000000-0000-4000-8000-0000000000d1',
+    payment_id: '00000000-0000-4000-8000-0000000000e1',
+    refunds: [],
+    shipments: [],
+    return: null,
+    ...overrides,
+  };
+}
+
+export function shipment(overrides: Partial<AdminShipment> = {}): AdminShipment {
+  return {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-000000000001',
+    courier: 'Aramex',
+    tracking_number: '44120099881',
+    tracking_url: 'https://www.aramex.com/sa/en/track/results?ShipmentNumber=44120099881',
+    status: 'pending',
+    shipped_at: null,
+    delivered_at: null,
+    booking: {
+      status: 'booked',
+      reference: 'bbbbbbbb-bbbb-4bbb-8bbb-000000000001',
+      requested_at: '2026-11-20T09:00:00Z',
+      error: null,
+      label_url: 'https://files.example.sa/labels/1.pdf?signature=x',
+    },
+    created_at: '2026-11-20T09:00:00Z',
+    events: [],
+    ...overrides,
+  };
+}
+
+export function orderReturn(overrides: Partial<OrderReturn> = {}): OrderReturn {
+  return {
+    id: 'cccccccc-cccc-4ccc-8ccc-000000000001',
+    customer_order_id: ORDER_ID,
+    order_number: 'ORD-2611-000001',
+    customer: { name: 'Noura Ahmed', phone: '+966512345678' },
+    status: 'requested',
+    reason: 'defective',
+    note: 'Left earcup does not charge.',
+    recorded_by: { type: 'admin', id: '00000000-0000-4000-8000-000000000001', name: 'Sara' },
+    recorded_at: '2026-11-23T09:00:00Z',
+    decided_by: null,
+    decided_at: null,
+    decision_note: null,
+    refund: null,
+    refundable: sar(31000),
+    open: true,
     ...overrides,
   };
 }

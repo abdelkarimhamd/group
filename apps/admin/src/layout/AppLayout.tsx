@@ -7,6 +7,7 @@ import {
   FileTextOutlined,
   FlagOutlined,
   LogoutOutlined,
+  RollbackOutlined,
   ShopOutlined,
   ShoppingCartOutlined,
   ShoppingOutlined,
@@ -102,6 +103,12 @@ export function AppLayout() {
             key: '/orders',
             label: t('nav.orders'),
             icon: <ShoppingCartOutlined />,
+            permission: 'orders.view',
+          },
+          {
+            key: '/returns',
+            label: t('nav.returns'),
+            icon: <RollbackOutlined />,
             permission: 'orders.view',
           },
           {

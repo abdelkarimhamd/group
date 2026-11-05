@@ -33,6 +33,7 @@ const ProductsPage = page(() => import('./pages/catalog/ProductsPage'), 'Product
 const DashboardPage = page(() => import('./pages/dashboard/DashboardPage'), 'DashboardPage');
 const OrderDetailPage = page(() => import('./pages/orders/OrderDetailPage'), 'OrderDetailPage');
 const OrdersPage = page(() => import('./pages/orders/OrdersPage'), 'OrdersPage');
+const ReturnsPage = page(() => import('./pages/orders/ReturnsPage'), 'ReturnsPage');
 const PaymentDetailPage = page(
   () => import('./pages/payments/PaymentDetailPage'),
   'PaymentDetailPage',
@@ -113,6 +114,7 @@ export function AppRoutes() {
 
         <Route path="orders" element={guard('orders.view', <OrdersPage />)} />
         <Route path="orders/:orderId" element={guard('orders.view', <OrderDetailPage />)} />
+        <Route path="returns" element={guard('orders.view', <ReturnsPage />)} />
 
         <Route path="purchase-orders" element={guard('purchasing.view', <PurchaseOrdersPage />)} />
         <Route

@@ -63,8 +63,7 @@ export function OrdersTable({ query }: { query: OrderQuery }) {
         {
           title: t('orders.shipment'),
           key: 'shipment',
-          render: (_, o) =>
-            o.shipment ? <StatusTag kind="shipment" value={o.shipment.status} /> : '—',
+          render: (_, o) => <StatusTag kind="shipment" value={o.shipments[0]?.status} />,
         },
         {
           title: t('common.createdAt'),
