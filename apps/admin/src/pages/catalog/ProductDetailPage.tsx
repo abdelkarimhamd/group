@@ -31,8 +31,8 @@ import { StatusTag } from '../../components/StatusTag';
 import { useBilingual } from '../../i18n/LocaleProvider';
 import { ProductFormModal } from './ProductFormModal';
 import { VariantFormModal } from './VariantFormModal';
+import { MAX_IMAGE_BYTES } from '../../lib/uploads';
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export function ProductDetailPage() {

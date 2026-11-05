@@ -12,12 +12,14 @@ import { PageHeader } from '../../components/PageHeader';
 import { QueryState } from '../../components/Results';
 import { StatusTag } from '../../components/StatusTag';
 import { useBilingual } from '../../i18n/LocaleProvider';
+import { PurchaseOrderDocuments } from './PurchaseOrderDocuments';
 import {
   AdvancePurchaseOrderModal,
   EditPurchaseOrderModal,
   InboundReceiptModal,
   NEXT_PO_STATUS,
 } from './PurchaseOrderModals';
+import { ReceiptPhotos } from './ReceiptPhotos';
 
 const FLOW: PurchaseOrderStatus[] = [
   'draft',
@@ -226,24 +228,12 @@ export function PurchaseOrderDetailPage() {
                     },
                   ]}
                 />
-                {r.photo_urls.length > 0 && (
-                  <Space wrap style={{ marginTop: 8 }}>
-                    {r.photo_urls.map((url, i) => (
-                      <Typography.Link
-                        key={url}
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                      >
-                        {t('purchasing.photo')} {i + 1}
-                      </Typography.Link>
-                    ))}
-                  </Space>
-                )}
+                <ReceiptPhotos receipt={r} />
               </div>
             ))
           )}
         </Card>
+        <PurchaseOrderDocuments po={po} />
       </Space>
       {modal === 'edit' && <EditPurchaseOrderModal po={po} onClose={() => setModal(null)} />}
       {modal === 'advance' && <AdvancePurchaseOrderModal po={po} onClose={() => setModal(null)} />}

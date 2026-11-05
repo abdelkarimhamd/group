@@ -51,6 +51,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read AdminUser|null $placedBy
  * @property-read Collection<int, SupplierPurchaseOrderLine> $lines
  * @property-read Collection<int, InboundReceipt> $receipts
+ * @property-read Collection<int, PurchaseOrderDocument> $documents
  */
 class SupplierPurchaseOrder extends Model
 {
@@ -150,5 +151,15 @@ class SupplierPurchaseOrder extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(SupplierPurchaseOrderLine::class)->orderBy('id');
+    }
+
+    /**
+     * Papers kept with the order, oldest first.
+     *
+     * @return HasMany<PurchaseOrderDocument, $this>
+     */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(PurchaseOrderDocument::class)->orderBy('id');
     }
 }

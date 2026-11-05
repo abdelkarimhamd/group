@@ -36,6 +36,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CarbonImmutable $created_at
  * @property CarbonImmutable $updated_at
  * @property-read CustomerOrder $order
+ * @property-read Invoice|null $original The invoice a credit note is against.
  */
 class Invoice extends Model
 {
@@ -78,5 +79,15 @@ class Invoice extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(CustomerOrder::class, 'customer_order_id');
+    }
+
+    /**
+     * The invoice a credit note is against.
+     *
+     * @return BelongsTo<Invoice, $this>
+     */
+    public function original(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class, 'original_invoice_id');
     }
 }

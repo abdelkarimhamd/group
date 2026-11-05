@@ -2,13 +2,16 @@
 
 namespace App\Modules\Orders\Http\Resources;
 
+use App\Http\Resources\ActorJson;
 use App\Modules\Catalog\Http\Resources\AdminVariantResource;
 use App\Modules\Fulfillment\Http\Resources\InboundReceiptResource;
+use App\Modules\Orders\Models\PurchaseOrderDocument;
 use App\Modules\Orders\Models\SupplierPurchaseOrder;
 use App\Modules\Orders\Models\SupplierPurchaseOrderLine;
 use App\Support\Money\Money;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * The `PurchaseOrder` schema. Load RELATIONS first.
@@ -17,7 +20,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class PurchaseOrderResource extends JsonResource
 {
-    public const RELATIONS = ['campaign', 'supplier', 'quotation', 'lines.variant', 'receipts.lines.variant', 'receipts.receivedBy'];
+    public const RELATIONS = ['campaign', 'supplier', 'quotation', 'lines.variant', 'receipts.lines.variant', 'receipts.receivedBy', 'documents.uploadedBy'];
 
     /**
      * @return array<string, mixed>
@@ -48,6 +51,19 @@ class PurchaseOrderResource extends JsonResource
             'freight_tracking_ref' => $this->freight_tracking_ref,
             'eta' => $this->eta?->format('Y-m-d'),
             'receipts' => InboundReceiptResource::collection($this->receipts)->resolve($request),
+            'documents' => $this->documents->map(fn (PurchaseOrderDocument $document) => [
+                'id' => $document->uuid,
+                'kind' => $document->kind->value,
+                'file_name' => $document->file_name,
+                'size_bytes' => $document->size_bytes,
+                'url' => Storage::disk($document->disk)->temporaryUrl(
+                    $document->path,
+                    now()->addMinutes((int) config('groupbuy.media.attachment_url_minutes')),
+                ),
+                'uploaded_by' => ActorJson::admin($document->uploadedBy),
+                'uploaded_at' => $document->created_at->toIso8601ZuluString(),
+                'removable' => $document->isRemovable(),
+            ])->all(),
         ];
     }
 }

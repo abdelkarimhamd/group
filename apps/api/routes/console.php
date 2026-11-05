@@ -7,6 +7,7 @@ use App\Modules\Finance\Console\RequeueApprovedCommand;
 use App\Modules\Fulfillment\Console\CompleteDeliveredOrdersCommand;
 use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Notifications\Console\DispatchDueNotificationsCommand;
+use App\Modules\Orders\Console\RenderInvoicePdfsCommand;
 use App\Modules\Payments\Console\ExpireHoldsCommand;
 use App\Modules\Payments\Console\RequeueWebhooksCommand;
 use App\Modules\Supplier\Console\ExpireQuotationsCommand;
@@ -41,6 +42,9 @@ Schedule::command(CompleteDeliveredOrdersCommand::class)->hourly()->withoutOverl
 
 // Customer messages due for a retry, or whose job was lost, are sent again.
 Schedule::command(DispatchDueNotificationsCommand::class)->everyMinute()->withoutOverlapping()->onOneServer();
+
+// Invoice and credit note PDFs whose job ran out of tries or was lost.
+Schedule::command(RenderInvoicePdfsCommand::class)->everyTenMinutes()->withoutOverlapping()->onOneServer();
 
 // Approved refunds and campaign cancellations whose job ran out of tries or
 // was lost are queued again; PostgreSQL remembers what is still owed.

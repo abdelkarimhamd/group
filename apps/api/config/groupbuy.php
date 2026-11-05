@@ -198,13 +198,34 @@ return [
     ],
 
     'media' => [
-        // Product photos are public. Supplier quotation files are private and
-        // shown through short-lived signed links.
+        // Product photos are public. Supplier quotation files, purchase order
+        // papers, warehouse receipt photos and invoice PDFs are private and
+        // shown through short-lived signed links. Receipt photos and invoice
+        // PDFs keep their path without the disk, so DOCUMENTS_DISK stays the
+        // same once files are kept: moving buckets means copying the files.
         'disk' => env('MEDIA_DISK', 'public'),
         'documents_disk' => env('DOCUMENTS_DISK', 'local'),
         'image_max_kb' => 10240,
         'attachment_max_kb' => 20480,
         'attachment_url_minutes' => 30,
+        // Limits that keep one record's files reviewable on one screen.
+        'documents_per_purchase_order' => 50,
+        'photos_per_receipt' => 30,
+        // A purchase order paper can be removed this long after upload, to
+        // correct a wrong file; after that it is kept as evidence.
+        'document_removal_hours' => 24,
+    ],
+
+    'invoices' => [
+        // Each invoice and credit note gets an Arabic and English PDF,
+        // rendered on the queue once it is issued. invoices:render-pdfs
+        // queues again any still missing this long after issue (a job that
+        // ran out of tries or was lost).
+        'pdf_requeue_after_minutes' => 10,
+        // Older invoices without a PDF are not queued again on their own
+        // (their render keeps failing): the sweep warns, and
+        // `invoices:render-pdfs --all` queues them once the cause is fixed.
+        'pdf_requeue_within_days' => 7,
     ],
 
 ];

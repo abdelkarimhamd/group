@@ -7,6 +7,7 @@ use App\Modules\Fulfillment\Models\InboundReceipt;
 use App\Modules\Fulfillment\Models\InboundReceiptLine;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * The `InboundReceipt` schema. Load RELATIONS first.
@@ -35,8 +36,14 @@ class InboundReceiptResource extends JsonResource
                 'qty_damaged' => $line->qty_damaged,
                 'qty_missing' => $line->missing(),
             ])->all(),
-            // Photos come with file storage (an integration, last).
-            'photo_urls' => [],
+            // Private evidence: short-lived signed links, oldest first.
+            'photo_urls' => array_map(
+                fn (string $path) => Storage::disk((string) config('groupbuy.media.documents_disk'))->temporaryUrl(
+                    $path,
+                    now()->addMinutes((int) config('groupbuy.media.attachment_url_minutes')),
+                ),
+                $this->photo_s3_keys,
+            ),
         ];
     }
 }

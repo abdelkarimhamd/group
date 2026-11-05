@@ -124,7 +124,7 @@ class OrdersTest extends TestCase
             ->assertJsonPath('data.invoices.0.id', $invoice->uuid)
             ->assertJsonPath('data.invoices.0.type', 'simplified_tax_invoice')
             ->assertJsonPath('data.invoices.0.total.amount_minor', 31500)
-            ->assertJsonPath('data.invoices.0.pdf_url', null);
+            ->assertJsonPath('data.invoices.0.pdf_url', fn (string $url) => str_contains($url, "invoices/2026/{$invoice->invoice_number}.pdf"));
 
         // The join points at its order.
         $this->asCustomer($token)->getJson("/api/v1/me/participations/{$mine->uuid}")
