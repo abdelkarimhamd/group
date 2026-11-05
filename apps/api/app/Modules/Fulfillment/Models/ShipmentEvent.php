@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $location
  * @property string $source courier_api or admin
  * @property array<string, mixed>|null $raw_payload
+ * @property string|null $external_key The courier's update, hashed: read twice, recorded once.
  * @property CarbonImmutable $occurred_at
  * @property string $actor_type
  * @property int|null $actor_id

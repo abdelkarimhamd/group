@@ -93,4 +93,29 @@ return [
         'callback_base_url' => env('WEB_URL', 'http://localhost:3000'),
     ],
 
+    // Couriers (open question Q11). `manual`: no API, staff enter tracking by
+    // hand. `fake`: books and tracks without a network call (refused in
+    // production). `aramex`: Aramex's Shipping and Tracking services; the
+    // warehouse it ships from is groupbuy.couriers.shipper.
+    'courier' => [
+        'driver' => env('COURIER_DRIVER', 'manual'),
+        // A booking or tracking read that has not answered by then is an
+        // unclear answer: a booking is not resent on its own.
+        'timeout_seconds' => (int) env('COURIER_TIMEOUT_SECONDS', 20),
+        'aramex' => [
+            // Sandbox: https://ws.sbx.aramex.net
+            'base_url' => env('ARAMEX_BASE_URL', 'https://ws.aramex.net'),
+            'username' => env('ARAMEX_USERNAME', ''),
+            'password' => env('ARAMEX_PASSWORD', ''),
+            'account_number' => env('ARAMEX_ACCOUNT_NUMBER', ''),
+            'account_pin' => env('ARAMEX_ACCOUNT_PIN', ''),
+            'account_entity' => env('ARAMEX_ACCOUNT_ENTITY', 'RUH'),
+            'account_country_code' => env('ARAMEX_ACCOUNT_COUNTRY_CODE', 'SA'),
+            'version' => env('ARAMEX_API_VERSION', 'v1.0'),
+            // Domestic express parcel; confirm both with the Aramex account manager.
+            'product_group' => env('ARAMEX_PRODUCT_GROUP', 'DOM'),
+            'product_type' => env('ARAMEX_PRODUCT_TYPE', 'ONP'),
+        ],
+    ],
+
 ];

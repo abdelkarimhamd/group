@@ -19,6 +19,7 @@ use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
 use App\Modules\Orders\Services\Invoices;
+use App\Modules\Orders\Services\ReturnSettlement;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RefundMethod;
 use App\Modules\Payments\Enums\RefundReason;
@@ -79,6 +80,7 @@ final class Refunds
         private readonly Ledger $ledger,
         private readonly Shipments $shipments,
         private readonly Notifier $notifier,
+        private readonly ReturnSettlement $returns,
     ) {}
 
     /**
@@ -468,7 +470,11 @@ final class Refunds
                 return;
             }
 
-            if ($payment->status === PaymentStatus::Refunded) {
+            // A refund for a return closes the order as returned; any other
+            // closes it once everything went back.
+            $closed = $this->returns->refunded($campaign, $order, $refund, $payment->status === PaymentStatus::Refunded, $actor);
+
+            if (! $closed && $payment->status === PaymentStatus::Refunded) {
                 $this->closeOrder($campaign, $order, $actor);
             }
 
@@ -599,7 +605,7 @@ final class Refunds
     /**
      * Captured, less what is refunded or asked for.
      */
-    private static function refundable(PaymentAuthorization $payment): Money
+    public static function refundable(PaymentAuthorization $payment): Money
     {
         $outstanding = (int) $payment->refunds()->whereIn('status', RefundStatus::outstanding())->sum('amount_halalas');
 

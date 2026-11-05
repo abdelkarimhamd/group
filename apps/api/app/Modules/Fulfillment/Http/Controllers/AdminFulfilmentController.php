@@ -3,12 +3,15 @@
 namespace App\Modules\Fulfillment\Http\Controllers;
 
 use App\Http\Controllers\AdminController;
+use App\Modules\Fulfillment\Couriers\CourierGateway;
 use App\Modules\Fulfillment\Http\Requests\InboundReceiptRequest;
 use App\Modules\Fulfillment\Http\Requests\ReceiptPhotoRequest;
+use App\Modules\Fulfillment\Http\Requests\ShipmentBookingRequest;
+use App\Modules\Fulfillment\Http\Requests\ShipmentCancelRequest;
 use App\Modules\Fulfillment\Http\Requests\ShipmentEventRequest;
 use App\Modules\Fulfillment\Http\Requests\ShipmentRequest;
+use App\Modules\Fulfillment\Http\Resources\AdminShipmentResource;
 use App\Modules\Fulfillment\Http\Resources\InboundReceiptResource;
-use App\Modules\Fulfillment\Http\Resources\ShipmentResource;
 use App\Modules\Fulfillment\Services\ReceiptPhotos;
 use App\Modules\Fulfillment\Services\Receipts;
 use App\Modules\Fulfillment\Services\Shipments;
@@ -40,13 +43,40 @@ final class AdminFulfilmentController extends AdminController
     {
         $shipment = $this->shipments->create($order, $request->validated(), $this->admin($request));
 
-        return ShipmentResource::make($shipment->load('events'))->response()->setStatusCode(201);
+        return AdminShipmentResource::make($shipment->load('events'))->response()->setStatusCode(201);
+    }
+
+    public function book(ShipmentBookingRequest $request, string $order): JsonResponse
+    {
+        $shipment = $this->shipments->book($order, $request->validated(), $this->admin($request));
+
+        return AdminShipmentResource::make($shipment->load('events'))->response()->setStatusCode(202);
+    }
+
+    public function cancel(ShipmentCancelRequest $request, string $shipment): AdminShipmentResource
+    {
+        $cancelled = $this->shipments->cancel($shipment, $request->validated('reason'), $this->admin($request));
+
+        return AdminShipmentResource::make($cancelled->load('events'));
     }
 
     public function track(ShipmentEventRequest $request, string $shipment): JsonResponse
     {
         $updated = $this->shipments->addEvent($shipment, $request->validated(), $this->admin($request));
 
-        return ShipmentResource::make($updated->load('events'))->response()->setStatusCode(201);
+        return AdminShipmentResource::make($updated->load('events'))->response()->setStatusCode(201);
+    }
+
+    /**
+     * Which courier API is set up, so the portal offers booking only when
+     * it can work.
+     */
+    public function courier(CourierGateway $courier): JsonResponse
+    {
+        return response()->json(['data' => [
+            'name' => $courier->name(),
+            'books' => $courier->books(),
+            'tracks' => $courier->name() !== null,
+        ]]);
     }
 }

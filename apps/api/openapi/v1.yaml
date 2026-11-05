@@ -2772,11 +2772,15 @@ paths:
     post:
       tags: [Admin fulfilment]
       operationId: adminCreateShipment
-      summary: Ship an order from the warehouse
+      summary: Ship an order from the warehouse by hand
       description: |
         Hands a `ready_to_ship` order to the courier: the shipment starts
         `picked_up` with its first tracking event, and the order becomes
-        `shipped`. One shipment per order in the pilot.
+        `shipped`. One open shipment per order (409 `shipment_exists`); a
+        parcel the courier brought back or a booking called off leaves room
+        for another. Without `tracking_url`, the link is built from the
+        courier's name when a pattern is configured
+        (`groupbuy.couriers.tracking_urls`).
       x-epic: E13
       x-status: live
       x-permission: fulfilment.edit
@@ -2795,7 +2799,7 @@ paths:
                 type: object
                 required: [data]
                 properties:
-                  data: {$ref: '#/components/schemas/Shipment'}
+                  data: {$ref: '#/components/schemas/AdminShipment'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -2808,23 +2812,25 @@ paths:
 
   /admin/shipments/{shipment_id}/events:
     parameters:
-      - name: shipment_id
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
+      - $ref: '#/components/parameters/ShipmentId'
     post:
       tags: [Admin fulfilment]
       operationId: adminAddShipmentEvent
       summary: Record a tracking update by hand
       description: |
-        For couriers without a tracking API (open question Q11). Updates may
+        For couriers without a tracking API, or to correct one. Updates may
         arrive out of order: the newest sets the shipment's status, and
-        `delivered` always does. `delivered` marks the order delivered and
-        starts its 7-day return window (`groupbuy.orders.return_window_days`);
-        once every order of the campaign is delivered or cancelled, the
-        campaign is `completed`. No update is dated before the pickup
-        (`event_before_shipment`, 422). A delivered shipment takes no more
-        updates (409).
+        `delivered` and `returned` always do. The first update of a booked
+        parcel means the courier has it: the order becomes `shipped`.
+        `delivered` marks the order delivered and starts its 7-day return
+        window (`groupbuy.orders.return_window_days`); once every order of
+        the campaign is settled, the campaign is `completed`. `returned` is
+        the courier bringing the parcel back: the order is `ready_to_ship`
+        again, for another shipment or a refund, and the customer is told.
+        No update is dated before the pickup (`event_before_shipment`, 422).
+        A delivered, returned or cancelled shipment takes no more updates
+        (409 `invalid_transition`), and neither does a booking still waiting
+        for the courier's answer (409 `booking_in_progress`).
       x-epic: E13
       x-status: live
       x-permission: fulfilment.edit
@@ -2843,7 +2849,281 @@ paths:
                 type: object
                 required: [data]
                 properties:
-                  data: {$ref: '#/components/schemas/Shipment'}
+                  data: {$ref: '#/components/schemas/AdminShipment'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`invalid_transition` or `booking_in_progress`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/courier:
+    get:
+      tags: [Admin fulfilment]
+      operationId: adminGetCourier
+      summary: The courier API that is set up
+      description: |
+        `COURIER_DRIVER`: with `manual` (the default until a courier is
+        chosen, open question Q11) there is no API, `name` is null and
+        parcels are handed over and tracked by hand.
+      x-epic: E13
+      x-status: live
+      x-permission: orders.view
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: The courier.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/CourierSettings'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /admin/orders/{order_id}/shipment/booking:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Admin fulfilment]
+      operationId: adminBookShipment
+      summary: Book an order with the courier's API
+      description: |
+        The shipment starts `pending` with its booking `requested`; the
+        booking goes to the courier on the queue, with the booking's
+        `reference` as ours. The courier's tracking number and label (a
+        30-minute signed link) follow once it answers. The order stays
+        `ready_to_ship` until the courier collects the parcel, which tracking
+        read from the courier reports. A refusal, or no clear answer, cancels
+        the shipment with the reason in `booking.error`: the courier
+        documents no idempotency, so a booking is never sent twice on its
+        own. 409 `courier_api_off` without a courier API, `shipment_exists`,
+        or `invalid_transition` if the order is not `ready_to_ship`.
+      x-epic: E13
+      x-status: live
+      x-permission: fulfilment.edit
+      security: [{adminToken: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ShipmentBookingInput'}
+      responses:
+        '202':
+          description: Booking asked for.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminShipment'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`courier_api_off`, `shipment_exists` or `invalid_transition`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/shipments/{shipment_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ShipmentId'
+    post:
+      tags: [Admin fulfilment]
+      operationId: adminCancelShipment
+      summary: Call off a shipment the courier has not collected
+      description: |
+        Only a `pending` shipment (a booking the courier has not collected);
+        the order stays `ready_to_ship` for another shipment. Call off a
+        booked parcel in the courier's portal too. 409 `booking_in_progress`
+        while the courier has not answered the booking, `invalid_transition`
+        once it is collected.
+      x-epic: E13
+      x-status: live
+      x-permission: fulfilment.edit
+      security: [{adminToken: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ShipmentCancelInput'}
+      responses:
+        '200':
+          description: Cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/AdminShipment'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`booking_in_progress` or `invalid_transition`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/returns:
+    get:
+      tags: [Admin orders]
+      operationId: adminListReturns
+      summary: Customer returns
+      description: Newest first.
+      x-epic: E13
+      x-status: live
+      x-permission: orders.view
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/ReturnStatus'}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: A page of returns.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/OrderReturn'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/orders/{order_id}/return:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Admin orders]
+      operationId: adminRecordReturn
+      summary: Record a customer's return
+      description: |
+        The customer asked support to return a `delivered` order within its
+        return window. The order becomes `return_requested` and is not
+        completed when the window ends, until the return is decided. One
+        return per order. 409 `return_window_ended`, `return_exists`, or
+        `invalid_transition` if the order is not `delivered`.
+      x-epic: E13
+      x-status: live
+      x-permission: refunds.request
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReturnInput'}
+      responses:
+        '201':
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/OrderReturn'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`return_window_ended`, `return_exists` or `invalid_transition`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/returns/{return_id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/ReturnId'
+    post:
+      tags: [Admin orders]
+      operationId: adminApproveReturn
+      summary: Accept a return and ask for its refund
+      description: |
+        Asks for a refund of `amount_halalas` (reason `customer_return`),
+        which waits for a second admin with the finance role like any refund
+        (see `adminRequestRefund` for its 422 codes). Once it goes through,
+        the order is `returned` and the return `completed`, even if the
+        delivery fee was kept. The customer is told the return was accepted.
+        A return whose refund was rejected or failed can be approved again
+        with another amount, or rejected.
+      x-epic: E13
+      x-status: live
+      x-permission: refunds.request
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReturnApprovalInput'}
+      responses:
+        '200':
+          description: Accepted; the refund waits for approval.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/OrderReturn'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422':
+          description: '`refund_exceeds_captured`, `payment_not_captured`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+
+  /admin/returns/{return_id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/ReturnId'
+    post:
+      tags: [Admin orders]
+      operationId: adminRejectReturn
+      summary: Decline a return
+      description: |
+        The order is `delivered` again, and completed by the hourly sweep if
+        its return window has ended. The customer is told; the note stays
+        with staff.
+      x-epic: E13
+      x-status: live
+      x-permission: refunds.request
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReturnRejectionInput'}
+      responses:
+        '200':
+          description: Declined.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/OrderReturn'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -3416,6 +3696,16 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    ShipmentId:
+      name: shipment_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ReturnId:
+      name: return_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
 
   responses:
     Unauthenticated:
@@ -3884,6 +4174,7 @@ components:
           type: object
           allOf: [{$ref: '#/components/schemas/Shipment'}]
           nullable: true
+          description: The newest parcel the courier has collected; a booking not yet collected is not shown.
         invoices:
           type: array
           items: {$ref: '#/components/schemas/InvoiceRef'}
@@ -4545,7 +4836,7 @@ components:
 
     RefundReason:
       type: string
-      enum: [customer_cancellation, delivery_delay, defective, shortage, campaign_cancelled_after_capture, other]
+      enum: [customer_cancellation, delivery_delay, defective, shortage, campaign_cancelled_after_capture, customer_return, other]
 
     RefundInput:
       type: object
@@ -4598,7 +4889,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/Order'
         - type: object
-          required: [customer, participation_id, payment_id, refunds]
+          required: [customer, participation_id, payment_id, refunds, shipments, return]
           properties:
             customer:
               type: object
@@ -4612,6 +4903,128 @@ components:
             refunds:
               type: array
               items: {$ref: '#/components/schemas/Refund'}
+            shipments:
+              type: array
+              description: Every shipment, newest first, including parcels brought back and bookings called off.
+              items: {$ref: '#/components/schemas/AdminShipment'}
+            return:
+              type: object
+              allOf: [{$ref: '#/components/schemas/OrderReturn'}]
+              nullable: true
+
+    AdminShipment:
+      type: object
+      required: [id, courier, tracking_number, tracking_url, status, shipped_at, delivered_at, booking, created_at, events]
+      properties:
+        id: {type: string, format: uuid}
+        courier: {type: string, example: Aramex}
+        tracking_number: {type: string, nullable: true, description: Null only while a booking waits for the courier's answer.}
+        tracking_url: {type: string, format: uri, nullable: true}
+        status: {$ref: '#/components/schemas/ShipmentStatus'}
+        shipped_at: {type: string, format: date-time, nullable: true, description: When the courier collected it.}
+        delivered_at: {type: string, format: date-time, nullable: true}
+        booking:
+          type: object
+          nullable: true
+          description: Null when the parcel was handed over by hand.
+          required: [status, reference, requested_at, error, label_url]
+          properties:
+            status: {type: string, enum: [requested, booked, failed]}
+            reference: {type: string, format: uuid, description: Our reference sent to the courier with the booking.}
+            requested_at: {type: string, format: date-time}
+            error: {type: string, nullable: true, description: "Why the booking failed; the shipment is then cancelled."}
+            label_url: {type: string, format: uri, nullable: true, description: "The courier's label as PDF: a signed link that works for 30 minutes."}
+        created_at: {type: string, format: date-time}
+        events:
+          type: array
+          description: Oldest first.
+          items:
+            type: object
+            required: [status, description, location, source, occurred_at]
+            properties:
+              status: {$ref: '#/components/schemas/ShipmentStatus'}
+              description: {type: string, nullable: true}
+              location: {type: string, nullable: true}
+              source: {type: string, enum: [admin, courier_api]}
+              occurred_at: {type: string, format: date-time}
+
+    CourierSettings:
+      type: object
+      required: [name, books, tracks]
+      properties:
+        name: {type: string, nullable: true, example: Aramex, description: Null without a courier API.}
+        books: {type: boolean, description: Parcels can be booked through the API.}
+        tracks: {type: boolean, description: Tracking is read from the API every 30 minutes.}
+
+    ShipmentBookingInput:
+      type: object
+      properties:
+        shipping_cost_halalas: {type: integer, minimum: 0, nullable: true}
+
+    ShipmentCancelInput:
+      type: object
+      properties:
+        reason: {type: string, maxLength: 1000, nullable: true}
+
+    ReturnStatus:
+      type: string
+      enum: [requested, approved, rejected, completed]
+
+    ReturnReason:
+      type: string
+      enum: [defective, damaged_in_transit, wrong_item, not_as_described, changed_mind, other]
+
+    OrderReturn:
+      type: object
+      required: [id, customer_order_id, order_number, customer, status, reason, note, recorded_by, recorded_at, decided_by, decided_at, decision_note, refund, refundable, open]
+      properties:
+        id: {type: string, format: uuid}
+        customer_order_id: {type: string, format: uuid}
+        order_number: {type: string}
+        customer:
+          type: object
+          required: [name, phone]
+          properties:
+            name: {type: string, nullable: true}
+            phone: {$ref: '#/components/schemas/SaudiMobile'}
+        status: {$ref: '#/components/schemas/ReturnStatus'}
+        reason: {$ref: '#/components/schemas/ReturnReason'}
+        note: {type: string, nullable: true}
+        recorded_by: {$ref: '#/components/schemas/Actor'}
+        recorded_at: {type: string, format: date-time}
+        decided_by:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Actor'}]
+          nullable: true
+        decided_at: {type: string, format: date-time, nullable: true}
+        decision_note: {type: string, nullable: true}
+        refund:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Refund'}]
+          nullable: true
+          description: The refund asked for when the return was approved.
+        refundable: {$ref: '#/components/schemas/Money'}
+        open: {type: boolean, description: 'Can be approved or rejected now: never decided, or its refund was rejected or failed.'}
+
+    ReturnInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: {$ref: '#/components/schemas/ReturnReason'}
+        note: {type: string, maxLength: 2000, nullable: true}
+
+    ReturnApprovalInput:
+      type: object
+      required: [amount_halalas]
+      properties:
+        amount_halalas: {type: integer, minimum: 1, description: 'What goes back to the card; at most what is still refundable.'}
+        note: {type: string, maxLength: 1000, nullable: true}
+
+    ReturnRejectionInput:
+      type: object
+      required: [note]
+      properties:
+        note: {type: string, minLength: 3, maxLength: 1000}
 
     ShipmentInput:
       type: object
@@ -4628,8 +5041,8 @@ components:
       properties:
         status:
           type: string
-          enum: [picked_up, in_transit, out_for_delivery, failed_attempt, delivered]
-          description: Returns and cancelled shipments come with returns handling.
+          enum: [picked_up, in_transit, out_for_delivery, failed_attempt, delivered, returned]
+          description: '`returned`: the courier brought the parcel back. A shipment not yet collected is called off instead.'
         description: {type: string, maxLength: 500, nullable: true}
         location: {type: string, maxLength: 200, nullable: true}
         occurred_at: {type: string, format: date-time}

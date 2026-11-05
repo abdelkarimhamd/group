@@ -154,8 +154,7 @@ class FulfilmentTest extends TestCase
             ->assertJsonPath('data.events.1.status', 'failed_attempt')
             ->assertJsonPath('data.events.2.status', 'in_transit');
         $this->track($shipment['id'], ['status' => 'teleported', 'occurred_at' => now()->toIso8601ZuluString()])->assertUnprocessable();
-        // Returns and cancellations need their order moved too: not by a tracking update yet.
-        $this->track($shipment['id'], ['status' => 'returned', 'occurred_at' => now()->toIso8601ZuluString()])->assertUnprocessable()->assertJsonValidationErrors('status');
+        // A shipment is called off, not cancelled by a tracking update.
         $this->track($shipment['id'], ['status' => 'cancelled', 'occurred_at' => now()->toIso8601ZuluString()])->assertUnprocessable()->assertJsonValidationErrors('status');
         // Nothing happens before the pickup, so a delivery cannot wipe out the return window.
         $this->track($shipment['id'], ['status' => 'delivered', 'occurred_at' => now()->subDays(10)->toIso8601ZuluString()])

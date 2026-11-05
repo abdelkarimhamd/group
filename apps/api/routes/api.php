@@ -21,6 +21,7 @@ use App\Modules\Identity\Http\Controllers\CustomerAuthController;
 use App\Modules\Notifications\Http\Controllers\DeviceTokenController;
 use App\Modules\Orders\Http\Controllers\AdminOrderController;
 use App\Modules\Orders\Http\Controllers\AdminPurchaseOrderController;
+use App\Modules\Orders\Http\Controllers\AdminReturnController;
 use App\Modules\Orders\Http\Controllers\MyOrderController;
 use App\Modules\Payments\Http\Controllers\AdminPaymentController;
 use App\Modules\Payments\Http\Controllers\AdminRefundController;
@@ -191,6 +192,15 @@ Route::prefix('v1')->name('v1.')->group(function () {
             Route::post('inbound-receipts/{receipt}/photos', [AdminFulfilmentController::class, 'addPhoto'])->whereUuid('receipt')->can('fulfilment.edit')->name('inbound-receipts.photos.store');
             Route::post('orders/{order}/shipment', [AdminFulfilmentController::class, 'ship'])->whereUuid('order')->can('fulfilment.edit')->name('orders.shipment.store');
             Route::post('shipments/{shipment}/events', [AdminFulfilmentController::class, 'track'])->whereUuid('shipment')->can('fulfilment.edit')->name('shipments.events.store');
+            Route::get('courier', [AdminFulfilmentController::class, 'courier'])->can('orders.view')->name('courier.show');
+            Route::post('orders/{order}/shipment/booking', [AdminFulfilmentController::class, 'book'])->whereUuid('order')->can('fulfilment.edit')->name('orders.shipment.book');
+            Route::post('shipments/{shipment}/cancel', [AdminFulfilmentController::class, 'cancel'])->whereUuid('shipment')->can('fulfilment.edit')->name('shipments.cancel');
+
+            // Customer returns (E13)
+            Route::get('returns', [AdminReturnController::class, 'index'])->can('orders.view')->name('returns.index');
+            Route::post('orders/{order}/return', [AdminReturnController::class, 'store'])->whereUuid('order')->can('refunds.request')->name('orders.return.store');
+            Route::post('returns/{return}/approve', [AdminReturnController::class, 'approve'])->whereUuid('return')->can('refunds.request')->name('returns.approve');
+            Route::post('returns/{return}/reject', [AdminReturnController::class, 'reject'])->whereUuid('return')->can('refunds.request')->name('returns.reject');
 
             // Finance (E15): second-admin approvals, reconciliation, audit log
             Route::get('approval-requests', [AdminApprovalController::class, 'index'])->can('approvals.view')->name('approval-requests.index');

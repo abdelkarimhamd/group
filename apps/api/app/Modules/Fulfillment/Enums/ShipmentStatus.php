@@ -4,6 +4,7 @@ namespace App\Modules\Fulfillment\Enums;
 
 /**
  * Where a parcel is on its way to the customer (spec, Data model: shipments).
+ * `pending` is a booking the courier has not collected yet.
  */
 enum ShipmentStatus: string
 {
@@ -25,13 +26,14 @@ enum ShipmentStatus: string
     }
 
     /**
-     * What a tracking update may say. Returns and cancelled shipments need
-     * their order moved too, which comes with returns handling.
+     * What staff may enter as a tracking update. `returned` is the courier
+     * bringing the parcel back, which puts the order back to ready to ship;
+     * a shipment not yet collected is called off instead (cancelled).
      *
      * @return list<self>
      */
     public static function trackable(): array
     {
-        return [self::PickedUp, self::InTransit, self::OutForDelivery, self::FailedAttempt, self::Delivered];
+        return [self::PickedUp, self::InTransit, self::OutForDelivery, self::FailedAttempt, self::Delivered, self::Returned];
     }
 }

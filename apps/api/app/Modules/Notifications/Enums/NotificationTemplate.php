@@ -36,4 +36,10 @@ enum NotificationTemplate: string
     case Delivered = 'delivered';
     /** Money went back to the card (a refund, or a cancelled campaign). */
     case Refunded = 'refunded';
+    /** The courier could not deliver and brought the parcel back to the warehouse. */
+    case DeliveryFailed = 'delivery_failed';
+    /** Staff accepted a return; the refund waits for finance. */
+    case ReturnAccepted = 'return_accepted';
+    /** Staff did not accept a return. */
+    case ReturnDeclined = 'return_declined';
 }

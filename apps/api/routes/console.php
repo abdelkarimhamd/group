@@ -5,6 +5,7 @@ use App\Modules\Campaign\Console\SweepClosingCommand;
 use App\Modules\Finance\Console\ReconcilePaymentsCommand;
 use App\Modules\Finance\Console\RequeueApprovedCommand;
 use App\Modules\Fulfillment\Console\CompleteDeliveredOrdersCommand;
+use App\Modules\Fulfillment\Console\TrackShipmentsCommand;
 use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Notifications\Console\DispatchDueNotificationsCommand;
 use App\Modules\Orders\Console\RenderInvoicePdfsCommand;
@@ -39,6 +40,10 @@ Schedule::command(RequeueWebhooksCommand::class)->everyFiveMinutes()->withoutOve
 // Delivered orders past their 7-day return window are completed, and with
 // them any campaign that has nothing left on its way.
 Schedule::command(CompleteDeliveredOrdersCommand::class)->hourly()->withoutOverlapping()->onOneServer();
+
+// Courier bookings left without an answer are settled, then tracking is
+// read from the courier's API (nothing with COURIER_DRIVER=manual).
+Schedule::command(TrackShipmentsCommand::class)->everyThirtyMinutes()->withoutOverlapping()->onOneServer();
 
 // Customer messages due for a retry, or whose job was lost, are sent again.
 Schedule::command(DispatchDueNotificationsCommand::class)->everyMinute()->withoutOverlapping()->onOneServer();
