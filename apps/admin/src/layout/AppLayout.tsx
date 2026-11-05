@@ -1,6 +1,8 @@
 import {
   AuditOutlined,
   BankOutlined,
+  BookOutlined,
+  WalletOutlined,
   CheckSquareOutlined,
   CreditCardOutlined,
   DashboardOutlined,
@@ -146,6 +148,18 @@ export function AppLayout() {
             label: t('nav.reconciliation'),
             icon: <BankOutlined />,
             permission: 'reconciliation.view',
+          },
+          {
+            key: '/ledger',
+            label: t('nav.ledger'),
+            icon: <BookOutlined />,
+            permission: 'ledger.view',
+          },
+          {
+            key: '/settlements',
+            label: t('nav.settlements'),
+            icon: <WalletOutlined />,
+            permission: 'ledger.view',
           },
         ],
       },

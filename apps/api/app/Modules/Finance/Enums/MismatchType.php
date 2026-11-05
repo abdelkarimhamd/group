@@ -10,7 +10,7 @@ enum MismatchType: string
     /** Same status, another captured or refunded amount. */
     case Amount = 'amount';
 
-    /** Moyasar has a payment we have no row for (needs Moyasar's payment list, with the integration). */
+    /** Moyasar holds or took money for a payment we have no record of (from Moyasar's payment list). */
     case MissingLocally = 'missing_locally';
 
     /** We have a provider payment ID Moyasar does not know. */

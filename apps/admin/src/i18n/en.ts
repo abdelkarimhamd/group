@@ -19,6 +19,8 @@ const en = {
     refunds: 'Refunds',
     approvals: 'Approvals',
     reconciliation: 'Reconciliation',
+    ledger: 'Ledger',
+    settlements: 'Settlements',
     administration: 'Administration',
     auditLog: 'Audit log',
     admins: 'Admins',
@@ -160,6 +162,7 @@ const en = {
     },
     payments: {
       view: 'See holds, charges, refunds and Moyasar calls',
+      void: 'Ask to release a card hold Moyasar still keeps (needs an approval)',
     },
     refunds: {
       request: 'Ask for a refund (needs an approval)',
@@ -181,6 +184,10 @@ const en = {
     reconciliation: {
       view: 'See reconciliation runs and mismatches',
       resolve: 'Close a reconciliation mismatch with a note',
+    },
+    ledger: {
+      view: 'See the ledger, adjustments and Moyasar settlements',
+      adjust: 'Ask for a ledger adjustment or reversal (needs an approval)',
     },
     audit: {
       view: 'Read the audit log',
@@ -338,6 +345,7 @@ const en = {
       failed: 'Failed',
     },
     transaction: { pending: 'Pending', succeeded: 'Succeeded', failed: 'Failed' },
+    ledgerAdjustment: { pending: 'Waiting for approval', posted: 'Posted', rejected: 'Rejected' },
     admin: { active: 'Active', blocked: 'Blocked' },
   },
   catalog: {
@@ -712,6 +720,11 @@ const en = {
     error: 'Error',
     requestedBy: 'Requested by',
     completedAt: 'Completed',
+    releaseHold: 'Release hold',
+    releaseHoldTitle: 'Release this hold at Moyasar',
+    releaseHoldHelp:
+      'For a hold Moyasar still keeps although it no longer counts here. A second admin with the finance role approves it; then Moyasar is asked first and the hold is voided only if it is still there.',
+    releaseHoldRequested: 'Sent for approval. The hold is released once finance approves.',
   },
   refunds: {
     subtitle: 'Every refund waits for a second admin with the finance role.',
@@ -754,6 +767,8 @@ const en = {
       order: 'Order',
       customer_order: 'Order',
       ledger: 'Ledger',
+      payment_authorization: 'Payment',
+      ledger_adjustment: 'Ledger adjustment',
     },
     decidedBy: 'Decided by',
     approve: 'Approve',
@@ -943,6 +958,70 @@ const en = {
     resolveHelp:
       'This only records how it was resolved. Any fix that moves money goes through an approval request.',
     resolvedDone: 'Marked resolved',
+  },
+  ledger: {
+    subtitle:
+      'Double-entry postings in SAR. Hand adjustments and reversals wait for a second admin with the finance role.',
+    balances: 'Balances',
+    postings: 'Postings',
+    adjustments: 'Adjustments',
+    account: 'Account',
+    accountType: 'Type',
+    accountTypes: {
+      asset: 'Asset',
+      liability: 'Liability',
+      equity: 'Equity',
+      revenue: 'Revenue',
+      expense: 'Expense',
+    },
+    debits: 'Debits',
+    credits: 'Credits',
+    balance: 'Balance',
+    balanceHelp: 'Debits minus credits. A negative amount is a credit balance.',
+    type: 'Kind',
+    types: {
+      capture: 'Capture',
+      refund: 'Refund',
+      revenue_recognition: 'Revenue recognised',
+      adjustment: 'Adjustment',
+      reversal: 'Reversal',
+      settlement: 'Moyasar settlement',
+    },
+    reference: 'Reference',
+    description: 'Description',
+    direction: 'Side',
+    directions: { D: 'Debit', C: 'Credit' },
+    occurredAt: 'Posted at',
+    postedBy: 'By',
+    newAdjustment: 'New adjustment',
+    adjustmentHelp:
+      'Debits must equal credits. Nothing is posted until a second admin with the finance role approves it; a wrong adjustment is fixed by reversing it.',
+    addLine: 'Add line',
+    totals: 'Debits {{debits}} · Credits {{credits}}',
+    unbalanced: 'Debits and credits must be equal.',
+    requested: 'Sent for approval.',
+    reverse: 'Reverse',
+    reverseTitle: 'Reverse this posting',
+    reverseHelp:
+      'Posts the same lines on the other side once finance approves. A posting is reversed only once.',
+    reverses: 'Reverses',
+  },
+  settlements: {
+    subtitle:
+      "Moyasar's payouts to the bank, imported every morning and posted to the ledger with the fees Moyasar kept.",
+    providerId: 'Moyasar settlement',
+    settledAt: 'Settled',
+    gross: 'Gross',
+    fee: 'Fee',
+    feeVat: 'VAT on fee',
+    net: 'Paid to bank',
+    lines: 'Lines',
+    unmatched: 'Unknown payments',
+    unmatchedHelp: 'Lines for payments we have no record of. Check them in the Moyasar dashboard.',
+    lineType: 'Kind',
+    payment: 'Payment',
+    unknownPayment: 'Not ours',
+    transactedAt: 'Date',
   },
   audit: {
     subtitle: 'Every admin action and every action that moves money.',

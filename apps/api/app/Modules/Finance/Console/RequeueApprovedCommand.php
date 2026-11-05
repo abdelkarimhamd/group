@@ -7,6 +7,7 @@ use App\Modules\Finance\Enums\ApprovalStatus;
 use App\Modules\Finance\Enums\ApprovalType;
 use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Payments\Enums\RefundStatus;
+use App\Modules\Payments\Jobs\ExecuteManualVoid;
 use App\Modules\Payments\Jobs\ExecuteRefund;
 use App\Modules\Payments\Models\Refund;
 use Carbon\CarbonImmutable;
@@ -14,7 +15,7 @@ use Illuminate\Console\Command;
 
 /**
  * Every five minutes: approved refunds left approved or processing, and
- * approved campaign cancellations not yet carried out, are queued again
+ * approved campaign cancellations and manual voids not yet carried out, are queued again
  * once nothing changed on them for a while (their job ran out of tries
  * while Moyasar was down, or was lost). The database, not the queue,
  * remembers what still has to happen. A copy is dropped while the first
@@ -26,7 +27,7 @@ final class RequeueApprovedCommand extends Command
 {
     protected $signature = 'finance:requeue-approved';
 
-    protected $description = 'Queue again approved refunds and campaign cancellations that did not finish';
+    protected $description = 'Queue again approved refunds, campaign cancellations and manual voids that did not finish';
 
     public function handle(): int
     {
@@ -48,7 +49,16 @@ final class RequeueApprovedCommand extends Command
             ->pluck('id');
         $cancellations->each(fn (int $id) => ExecuteCampaignCancellation::dispatch($id));
 
-        $this->info("Queued {$refunds->count()} refunds and {$cancellations->count()} campaign cancellations again.");
+        $voids = ApprovalRequest::query()
+            ->where('type', ApprovalType::ManualVoid)
+            ->where('status', ApprovalStatus::Approved)
+            ->whereNull('executed_at')
+            ->where('updated_at', '<', $before)
+            ->orderBy('id')
+            ->pluck('id');
+        $voids->each(fn (int $id) => ExecuteManualVoid::dispatch($id));
+
+        $this->info("Queued {$refunds->count()} refunds, {$cancellations->count()} campaign cancellations and {$voids->count()} manual voids again.");
 
         return self::SUCCESS;
     }

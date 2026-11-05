@@ -25,7 +25,10 @@ function subjectLink(request: ApprovalRequest): string | null {
     case 'campaign':
       return `/campaigns/${request.subject_id}`;
     case 'payment':
+    case 'payment_authorization':
       return `/payments/${request.subject_id}`;
+    case 'ledger_adjustment':
+      return '/ledger?tab=adjustments';
     case 'customer_order':
     case 'order':
       return `/orders/${request.subject_id}`;
@@ -58,6 +61,10 @@ export function ApprovalsPage() {
       queryClient.invalidateQueries({ queryKey: ['get', '/admin/approval-requests'] }),
       queryClient.invalidateQueries({ queryKey: ['get', '/admin/refunds'] }),
       queryClient.invalidateQueries({ queryKey: ['get', '/admin/campaigns/{campaign_id}'] }),
+      queryClient.invalidateQueries({ queryKey: ['get', '/admin/payments/{payment_id}'] }),
+      queryClient.invalidateQueries({ queryKey: ['get', '/admin/ledger/adjustments'] }),
+      queryClient.invalidateQueries({ queryKey: ['get', '/admin/ledger/transactions'] }),
+      queryClient.invalidateQueries({ queryKey: ['get', '/admin/ledger/accounts'] }),
     ]);
 
   const approve = async (request: ApprovalRequest) => {

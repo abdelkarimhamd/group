@@ -29,9 +29,12 @@ use LogicException;
  *  - delivery: the prepayment left after refunds becomes sales revenue.
  *  - refund: the reverse of its credit note, against revenue once the
  *    order's revenue was recognised, otherwise against the prepayment.
+ *  - settlement: Moyasar's payout to the bank, its fees and their VAT,
+ *    out of Moyasar clearing (Settlements imports them).
+ *  - adjustment and reversal: by hand, once a second admin approved
+ *    (LedgerAdjustments).
  *
- * Moyasar's fees and settlements to the bank, and supplier payments, are
- * posted once their data arrives (integrations); the accounts exist.
+ * Supplier payments are not posted yet; their accounts exist.
  */
 final class Ledger
 {
@@ -100,6 +103,66 @@ final class Ledger
             [LedgerAccountCode::VatOutputPayable, 'D', $vat],
             [LedgerAccountCode::MoyasarClearing, 'C', $total],
         ], $actor, $order?->id);
+    }
+
+    /**
+     * A Moyasar payout: what left clearing (gross) reached the bank (net)
+     * less Moyasar's fees, whose VAT can be reclaimed. A payout that gives
+     * back more than it pays has negative amounts; those lines go the other
+     * way round.
+     */
+    public function postSettlement(string $providerSettlementId, Money $gross, Money $net, Money $fee, Money $feeVat, Actor $actor): LedgerTransaction
+    {
+        if (! $gross->equals($net->plus($fee))) {
+            throw new LogicException("Settlement {$providerSettlementId} does not add up.");
+        }
+
+        return $this->post(LedgerTransactionType::Settlement, 'settlement:'.$providerSettlementId, "Moyasar settlement {$providerSettlementId}", self::signed([
+            [LedgerAccountCode::Bank, 'D', $net],
+            [LedgerAccountCode::PaymentFees, 'D', $fee->minus($feeVat)],
+            [LedgerAccountCode::VatInputRecoverable, 'D', $feeVat],
+            [LedgerAccountCode::MoyasarClearing, 'C', $gross],
+        ]), $actor);
+    }
+
+    /**
+     * Undo a posting with the same entries the other way round. A posting
+     * is reversed at most once (a unique index), and a reversal itself is
+     * corrected by a new adjustment, not reversed.
+     */
+    public function reverse(LedgerTransaction $original, string $description, Actor $actor, ?int $approvalRequestId = null): LedgerTransaction
+    {
+        if ($original->type === LedgerTransactionType::Reversal) {
+            throw new LogicException("Ledger transaction {$original->id} is a reversal; post an adjustment instead.");
+        }
+
+        $lines = $original->entries()->with('account')->orderBy('id')->get()
+            ->map(fn (LedgerEntry $entry) => [
+                LedgerAccountCode::from($entry->account->code),
+                $entry->direction === 'D' ? 'C' : 'D',
+                Money::sar($entry->amount_halalas),
+            ])
+            ->all();
+
+        return $this->post(LedgerTransactionType::Reversal, 'reversal:'.$original->uuid, $description, array_values($lines), $actor,
+            customerOrderId: $original->customer_order_id,
+            approvalRequestId: $approvalRequestId,
+            reversesTransactionId: $original->id,
+        );
+    }
+
+    /**
+     * Lines with a negative amount go on the other side, so every amount
+     * posted is positive.
+     *
+     * @param  list<array{LedgerAccountCode, 'C'|'D', Money}>  $lines
+     * @return list<array{LedgerAccountCode, 'C'|'D', Money}>
+     */
+    private static function signed(array $lines): array
+    {
+        return array_map(fn (array $line) => $line[2]->isNegative()
+            ? [$line[0], $line[1] === 'D' ? 'C' : 'D', Money::zero()->minus($line[2])]
+            : $line, $lines);
     }
 
     /**

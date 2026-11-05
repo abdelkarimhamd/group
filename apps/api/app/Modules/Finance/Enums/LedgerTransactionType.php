@@ -17,4 +17,7 @@ enum LedgerTransactionType: string
     case Adjustment = 'adjustment';
 
     case Reversal = 'reversal';
+
+    /** Moyasar paid out to the bank, less its fees and their VAT. */
+    case Settlement = 'settlement';
 }

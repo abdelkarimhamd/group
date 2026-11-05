@@ -15,4 +15,5 @@ enum LedgerAccountCode: string
     case SupplierPayable = 'supplier_payable';
     case SalesRevenue = 'sales_revenue';
     case PaymentFees = 'payment_fees';
+    case VatInputRecoverable = 'vat_input_recoverable';
 }

@@ -1,14 +1,16 @@
-import { UndoOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Space, Table, Typography } from 'antd';
+import { UnlockOutlined, UndoOutlined } from '@ant-design/icons';
+import { useQueryClient } from '@tanstack/react-query';
+import { Alert, App, Button, Card, Space, Table, Typography } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
-import { $api } from '../../api/client';
+import { $api, api } from '../../api/client';
 import type { PaymentTransaction } from '../../api/types';
 import { Can, useAuth } from '../../auth/AuthProvider';
 import { Fields } from '../../components/Fields';
 import { ActorText, CodeText, DateTimeText, Ltr, MoneyText } from '../../components/format';
 import { PageHeader } from '../../components/PageHeader';
+import { ReasonModal } from '../../components/ReasonModal';
 import { QueryState } from '../../components/Results';
 import { StatusTag } from '../../components/StatusTag';
 import { EXPIRY_ALERT_DAYS } from '../../config';
@@ -23,6 +25,9 @@ export function PaymentDetailPage() {
     params: { path: { payment_id: paymentId } },
   });
   const [refunding, setRefunding] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
 
   const p = payment.data?.data;
   if (!p) return <QueryState isPending={payment.isPending} error={payment.error} />;
@@ -36,13 +41,22 @@ export function PaymentDetailPage() {
         subtitle={<Ltr>{p.campaign.code}</Ltr>}
         tags={<StatusTag kind="payment" value={p.status} />}
         extra={
-          <Can permission="refunds.request">
-            {refundable > 0 && (
-              <Button icon={<UndoOutlined />} onClick={() => setRefunding(true)}>
-                {t('refunds.request')}
-              </Button>
-            )}
-          </Can>
+          <Space wrap>
+            <Can permission="refunds.request">
+              {refundable > 0 && (
+                <Button icon={<UndoOutlined />} onClick={() => setRefunding(true)}>
+                  {t('refunds.request')}
+                </Button>
+              )}
+            </Can>
+            <Can permission="payments.void">
+              {p.void_requestable && (
+                <Button danger icon={<UnlockOutlined />} onClick={() => setReleasing(true)}>
+                  {t('payments.releaseHold')}
+                </Button>
+              )}
+            </Can>
+          </Space>
         }
       />
       <Space orientation="vertical" size={16} style={{ width: '100%' }}>
@@ -176,6 +190,23 @@ export function PaymentDetailPage() {
           />
         </Card>
       </Space>
+      <ReasonModal
+        open={releasing}
+        danger
+        title={t('payments.releaseHoldTitle')}
+        okText={t('refunds.submit')}
+        description={t('payments.releaseHoldHelp')}
+        onCancel={() => setReleasing(false)}
+        onSubmit={async (reason) => {
+          await api.POST('/admin/payments/{payment_id}/void', {
+            params: { path: { payment_id: p.id } },
+            body: { reason },
+          });
+          await queryClient.invalidateQueries({ queryKey: ['get', '/admin/approval-requests'] });
+          message.success(t('payments.releaseHoldRequested'));
+          setReleasing(false);
+        }}
+      />
       {refunding && (
         <RefundRequestModal
           paymentId={p.id}

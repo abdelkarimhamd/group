@@ -48,6 +48,8 @@ const PurchaseOrdersPage = page(
   () => import('./pages/purchasing/PurchaseOrdersPage'),
   'PurchaseOrdersPage',
 );
+const LedgerPage = page(() => import('./pages/ledger/LedgerPage'), 'LedgerPage');
+const SettlementsPage = page(() => import('./pages/ledger/SettlementsPage'), 'SettlementsPage');
 const ReconciliationPage = page(
   () => import('./pages/reconciliation/ReconciliationPage'),
   'ReconciliationPage',
@@ -130,6 +132,8 @@ export function AppRoutes() {
           path="reconciliation/:runId"
           element={guard('reconciliation.view', <ReconciliationRunPage />)}
         />
+        <Route path="ledger" element={guard('ledger.view', <LedgerPage />)} />
+        <Route path="settlements" element={guard('ledger.view', <SettlementsPage />)} />
         <Route path="admins" element={guard('admins.manage', <AdminsPage />)} />
         <Route path="audit-log" element={guard('audit.view', <AuditLogPage />)} />
 

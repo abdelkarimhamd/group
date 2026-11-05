@@ -1383,6 +1383,42 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/admin/payments/{payment_id}/void': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        payment_id: components['parameters']['PaymentId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Ask to release a hold Moyasar still keeps
+     * @description For a hold that no longer counts here but that Moyasar still keeps
+     *     (reconciliation's `orphan_hold` and `stuck_void`): the payment is
+     *     `failed`, `capture_failed` or `expired`, `voided` with an open
+     *     `stuck_void` mismatch, or `authorized` with a rejection reason; no
+     *     capture is under way, and no release approved earlier is still to
+     *     run. Opens a
+     *     `manual_void` approval request; once a second admin with the finance
+     *     role approves it, the void is sent after the commit with the key
+     *     `void:{payment id}:{approval id}`. Every try asks Moyasar first and
+     *     voids only while Moyasar shows the payment authorized; a payment
+     *     Moyasar does not know is recorded as failed (`not_found`). A hold that
+     *     still counts for a campaign is released by cancelling the
+     *     participation or the campaign, never this way. There is no manual
+     *     capture: captures go through closing the campaign, which issues the
+     *     order and the invoice.
+     */
+    post: operations['adminRequestManualVoid'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/admin/refunds': {
     parameters: {
       query?: never;
@@ -2006,6 +2042,114 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/admin/ledger/accounts': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Ledger accounts with their balances
+     * @description Every account of the chart, with debits, credits and the balance (debits minus credits).
+     */
+    get: operations['adminListLedgerAccounts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/ledger/transactions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Ledger postings
+     * @description Newest first, each with its balanced lines. Filter by type, or by an account one of its lines touches.
+     */
+    get: operations['adminListLedgerTransactions'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/ledger/adjustments': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Hand-made postings and reversals */
+    get: operations['adminListLedgerAdjustments'];
+    put?: never;
+    /**
+     * Ask for a ledger adjustment or reversal
+     * @description Either balanced `lines` to post (debits equal credits), or the ID of
+     *     a posting to reverse in full. Opens a `ledger_adjustment` approval
+     *     request; nothing reaches the ledger until a second admin with the
+     *     finance role approves it, and then it is posted in that decision.
+     *     Postings are never changed: a wrong adjustment is fixed by reversing
+     *     it. A posting is reversed at most once, and reversals are not
+     *     reversed.
+     */
+    post: operations['adminRequestLedgerAdjustment'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/settlements': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Moyasar payouts to the bank
+     * @description Imported daily by `payments:settlements`, each posted to the ledger
+     *     (bank, payment fees and recoverable VAT against Moyasar clearing).
+     *     `unmatched_count` counts lines for payments we do not know.
+     */
+    get: operations['adminListSettlements'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/settlements/{settlement_id}/lines': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        settlement_id: string;
+      };
+      cookie?: never;
+    };
+    /** What one settlement paid out */
+    get: operations['adminListSettlementLines'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2573,6 +2717,7 @@ export interface components {
       | 'campaigns.close'
       | 'payments.view'
       | 'refunds.request'
+      | 'payments.void'
       | 'approvals.view'
       | 'approvals.decide'
       | 'orders.view'
@@ -2582,6 +2727,8 @@ export interface components {
       | 'reconciliation.view'
       | 'reconciliation.resolve'
       | 'audit.view'
+      | 'ledger.view'
+      | 'ledger.adjust'
       | 'admins.manage';
     AdminUser: {
       /** Format: uuid */
@@ -3100,6 +3247,8 @@ export interface components {
       provider_status: string | null;
       /** Format: date-time */
       last_synced_at: string | null;
+      /** @description Whether a hold Moyasar still keeps may be released (`POST /admin/payments/{id}/void`). Null in lists. */
+      void_requestable: boolean | null;
       /** @description Every call to Moyasar, oldest first. Empty in list responses. */
       transactions: components['schemas']['PaymentTransaction'][];
     };
@@ -3511,6 +3660,148 @@ export interface components {
       /** Format: date-time */
       resolved_at: string | null;
       resolution_note: string | null;
+    };
+    /** @enum {string} */
+    LedgerAccountCode:
+      | 'moyasar_clearing'
+      | 'bank'
+      | 'inventory_in_transit'
+      | 'customer_prepayments'
+      | 'vat_output_payable'
+      | 'supplier_payable'
+      | 'sales_revenue'
+      | 'payment_fees'
+      | 'vat_input_recoverable';
+    /** @enum {string} */
+    LedgerTransactionType:
+      'capture' | 'refund' | 'revenue_recognition' | 'adjustment' | 'reversal' | 'settlement';
+    LedgerAccountBalance: {
+      code: components['schemas']['LedgerAccountCode'];
+      /** @example Moyasar clearing */
+      name: string;
+      /** @enum {string} */
+      type: 'asset' | 'liability' | 'revenue' | 'expense' | 'equity';
+      debits: components['schemas']['Money'];
+      credits: components['schemas']['Money'];
+      /** @description Debits minus credits; negative for a credit balance. */
+      balance: components['schemas']['Money'];
+    };
+    LedgerLine: {
+      account: components['schemas']['LedgerAccountCode'];
+      account_name: string;
+      /** @enum {string} */
+      direction: 'D' | 'C';
+      amount: components['schemas']['Money'];
+    };
+    LedgerTransaction: {
+      /** Format: uuid */
+      id: string;
+      type: components['schemas']['LedgerTransactionType'];
+      /**
+       * @description Unique per type: what the posting is for.
+       * @example capture:9b1c…
+       */
+      reference: string;
+      description: string;
+      order: {
+        /** Format: uuid */
+        id: string;
+        number: string;
+      } | null;
+      /** Format: uuid */
+      approval_request_id: string | null;
+      /** Format: uuid */
+      reverses_transaction_id: string | null;
+      entries: components['schemas']['LedgerLine'][];
+      actor: components['schemas']['Actor'];
+      /** Format: date-time */
+      occurred_at: string;
+    };
+    /** @description Either `lines` or `reverses_transaction_id`. */
+    LedgerAdjustmentInput: {
+      description: string;
+      lines?:
+        | {
+            account: components['schemas']['LedgerAccountCode'];
+            /** @enum {string} */
+            direction: 'D' | 'C';
+            /** Format: int64 */
+            amount_halalas: number;
+          }[]
+        | null;
+      /** Format: uuid */
+      reverses_transaction_id?: string | null;
+    };
+    LedgerAdjustment: {
+      /** Format: uuid */
+      id: string;
+      description: string;
+      /** @description Null for a reversal. */
+      lines: components['schemas']['LedgerLine'][] | null;
+      /** @description The posting it reverses; null for lines. */
+      reverses: {
+        /** Format: uuid */
+        id: string;
+        type: components['schemas']['LedgerTransactionType'];
+        reference: string;
+        description: string;
+      } | null;
+      /** @enum {string} */
+      status: 'pending' | 'posted' | 'rejected';
+      /** Format: uuid */
+      approval_request_id: string | null;
+      /**
+       * Format: uuid
+       * @description The posting once approved.
+       */
+      ledger_transaction_id: string | null;
+      requested_by: components['schemas']['Actor'] | null;
+      /** Format: date-time */
+      created_at: string;
+    };
+    MoyasarSettlement: {
+      /** Format: uuid */
+      id: string;
+      provider_settlement_id: string;
+      /** @description Net plus fee. */
+      gross: components['schemas']['Money'];
+      /** @description Moyasar's fee, VAT included. */
+      fee: components['schemas']['Money'];
+      fee_vat: components['schemas']['Money'];
+      /** @description Paid into the bank. */
+      net: components['schemas']['Money'];
+      /** Format: date-time */
+      settled_at: string | null;
+      line_count: number;
+      /** @description Lines for payments we do not know. */
+      unmatched_count: number;
+      /**
+       * Format: uuid
+       * @description Null only when every amount is zero.
+       */
+      ledger_transaction_id: string | null;
+      /** Format: date-time */
+      imported_at: string;
+    };
+    MoyasarSettlementLine: {
+      /**
+       * @description Moyasar's line type: payment, refund, void, fee, chargeback, …
+       * @example payment
+       */
+      type: string;
+      provider_payment_id: string | null;
+      /**
+       * Format: uuid
+       * @description Null when we have no such payment.
+       */
+      payment_id: string | null;
+      /** @description Net of the fee; negative for money going back. */
+      amount: components['schemas']['Money'];
+      fee: components['schemas']['Money'];
+      fee_vat: components['schemas']['Money'];
+      payment_amount: components['schemas']['Money'] | null;
+      /** Format: date-time */
+      transacted_at: string | null;
     };
     AuditLogEntry: {
       /** Format: int64 */
@@ -6106,6 +6397,47 @@ export interface operations {
       404: components['responses']['NotFound'];
     };
   };
+  adminRequestManualVoid: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        payment_id: components['parameters']['PaymentId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReasonInput'];
+      };
+    };
+    responses: {
+      /** @description The approval request (an existing one if it is already waiting). */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['ApprovalRequest'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /** @description `not_voidable`: the hold still counts, its capture is under way, or it never reached Moyasar. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      422: components['responses']['ValidationFailed'];
+    };
+  };
   adminListRefunds: {
     parameters: {
       query?: {
@@ -7071,6 +7403,203 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
+    };
+  };
+  adminListLedgerAccounts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Accounts in chart order. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['LedgerAccountBalance'][];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  adminListLedgerTransactions: {
+    parameters: {
+      query?: {
+        account?: components['schemas']['LedgerAccountCode'];
+        type?: components['schemas']['LedgerTransactionType'];
+        /** @description `meta.next_cursor` from the previous page. */
+        cursor?: components['parameters']['Cursor'];
+        per_page?: components['parameters']['PerPage'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Postings, newest first. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['LedgerTransaction'][];
+            meta: components['schemas']['CursorMeta'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
+    };
+  };
+  adminListLedgerAdjustments: {
+    parameters: {
+      query?: {
+        status?: 'pending' | 'posted' | 'rejected';
+        /** @description `meta.next_cursor` from the previous page. */
+        cursor?: components['parameters']['Cursor'];
+        per_page?: components['parameters']['PerPage'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Adjustments, newest first. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['LedgerAdjustment'][];
+            meta: components['schemas']['CursorMeta'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
+    };
+  };
+  adminRequestLedgerAdjustment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['LedgerAdjustmentInput'];
+      };
+    };
+    responses: {
+      /** @description Waiting for approval. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['LedgerAdjustment'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /** @description `already_reversed`, or `invalid_transition` for a reversal of a reversal. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      /** @description `ledger_unbalanced` on `lines`, or invalid input. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ValidationError'];
+        };
+      };
+    };
+  };
+  adminListSettlements: {
+    parameters: {
+      query?: {
+        /** @description `meta.next_cursor` from the previous page. */
+        cursor?: components['parameters']['Cursor'];
+        per_page?: components['parameters']['PerPage'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Settlements, newest import first. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['MoyasarSettlement'][];
+            meta: components['schemas']['CursorMeta'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
+    };
+  };
+  adminListSettlementLines: {
+    parameters: {
+      query?: {
+        /** @description `meta.next_cursor` from the previous page. */
+        cursor?: components['parameters']['Cursor'];
+        per_page?: components['parameters']['PerPage'];
+      };
+      header?: never;
+      path: {
+        settlement_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Lines in Moyasar's order. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['MoyasarSettlementLine'][];
+            meta: components['schemas']['CursorMeta'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
       422: components['responses']['ValidationFailed'];
     };
   };

@@ -80,3 +80,14 @@ export type InboundReceiptInput = S['InboundReceiptInput'];
 export type ReconciliationRun = S['ReconciliationRun'];
 export type ReconciliationItem = S['ReconciliationItem'];
 export type AuditLogEntry = S['AuditLogEntry'];
+
+export type LedgerAccountCode = S['LedgerAccountCode'];
+export type LedgerTransactionType = S['LedgerTransactionType'];
+export type LedgerAccountBalance = S['LedgerAccountBalance'];
+export type LedgerLine = S['LedgerLine'];
+export type LedgerTransaction = S['LedgerTransaction'];
+export type LedgerAdjustment = S['LedgerAdjustment'];
+export type LedgerAdjustmentStatus = LedgerAdjustment['status'];
+export type LedgerAdjustmentInput = S['LedgerAdjustmentInput'];
+export type MoyasarSettlement = S['MoyasarSettlement'];
+export type MoyasarSettlementLine = S['MoyasarSettlementLine'];

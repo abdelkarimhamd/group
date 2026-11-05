@@ -16,7 +16,9 @@ use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductImage;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Finance\Models\ApprovalRequest;
+use App\Modules\Finance\Models\LedgerAdjustment;
 use App\Modules\Finance\Models\LedgerTransaction;
+use App\Modules\Finance\Models\MoyasarSettlement;
 use App\Modules\Finance\Models\ReconciliationItem;
 use App\Modules\Finance\Models\ReconciliationRun;
 use App\Modules\Fulfillment\Couriers\AramexCourier;
@@ -47,6 +49,7 @@ use App\Modules\Orders\Models\SupplierPurchaseOrder;
 use App\Modules\Payments\Gateway\FakeMoyasarGateway;
 use App\Modules\Payments\Gateway\MoyasarGateway;
 use App\Modules\Payments\Gateway\PaymentGateway;
+use App\Modules\Payments\Gateway\PaymentReports;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\Refund;
 use App\Modules\Supplier\Models\Supplier;
@@ -78,7 +81,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OtpService::class);
         $this->app->singleton(AdminAccounts::class);
 
-        $this->app->singleton(PaymentGateway::class, fn ($app) => match ($driver = config('services.moyasar.driver')) {
+        $moyasar = fn ($app) => match ($driver = config('services.moyasar.driver')) {
             'fake' => new FakeMoyasarGateway($app->isProduction()),
             'moyasar' => new MoyasarGateway(
                 (string) config('services.moyasar.secret_key'),
@@ -89,7 +92,10 @@ class AppServiceProvider extends ServiceProvider
                 $app->isProduction(),
             ),
             default => throw new InvalidArgumentException("Unknown Moyasar driver [{$driver}]."),
-        });
+        };
+        $this->app->singleton(PaymentGateway::class, $moyasar);
+        // Moyasar's payment and settlement lists, for reconciliation and the ledger.
+        $this->app->singleton(PaymentReports::class, $moyasar);
 
         // The Supplier module asks which campaigns use a quotation; the Campaign module answers.
         $this->app->bind(QuotationUsage::class, CampaignQuotationUsage::class);
@@ -175,6 +181,8 @@ class AppServiceProvider extends ServiceProvider
             'shipment' => Shipment::class,
             'order_return' => OrderReturn::class,
             'ledger_transaction' => LedgerTransaction::class,
+            'ledger_adjustment' => LedgerAdjustment::class,
+            'moyasar_settlement' => MoyasarSettlement::class,
             'reconciliation_run' => ReconciliationRun::class,
             'reconciliation_item' => ReconciliationItem::class,
         ]);

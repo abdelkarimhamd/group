@@ -5,13 +5,15 @@ namespace App\Modules\Payments\Http\Resources;
 use App\Http\Resources\ActorJson;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\PaymentTransaction;
+use App\Modules\Payments\Services\ManualVoids;
 use App\Support\Money\Money;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * The `AdminPayment` schema. Load `participation.campaign` first, and
- * TRANSACTIONS when showing one payment; lists leave `transactions` empty.
+ * TRANSACTIONS when showing one payment; lists leave `transactions` empty
+ * and `void_requestable` null.
  *
  * @mixin PaymentAuthorization
  */
@@ -46,6 +48,7 @@ class AdminPaymentResource extends JsonResource
             'voided_at' => $this->voided_at?->toIso8601ZuluString(),
             'provider_status' => $this->provider_status,
             'last_synced_at' => $this->last_synced_at?->toIso8601ZuluString(),
+            'void_requestable' => $this->relationLoaded('transactions') ? ManualVoids::requestable($this->resource) : null,
             'transactions' => $this->relationLoaded('transactions')
                 ? $this->transactions->map(fn (PaymentTransaction $transaction) => [
                     'id' => $transaction->uuid,

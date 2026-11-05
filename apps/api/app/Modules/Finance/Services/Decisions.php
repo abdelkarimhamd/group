@@ -8,8 +8,11 @@ use App\Modules\Campaign\Services\CampaignCancellations;
 use App\Modules\Finance\Enums\ApprovalStatus;
 use App\Modules\Finance\Enums\ApprovalType;
 use App\Modules\Finance\Models\ApprovalRequest;
+use App\Modules\Finance\Models\LedgerAdjustment;
 use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\Refund;
+use App\Modules\Payments\Services\ManualVoids;
 use App\Modules\Payments\Services\Refunds;
 use App\Support\Actor;
 use App\Support\Audit\AuditLogger;
@@ -22,16 +25,20 @@ use Illuminate\Support\Facades\DB;
  * (spec: an action that moves money needs a second admin). Never the
  * admin who asked. The subject is locked before the request, in the
  * subject's usual lock order; approving queues the action, which runs
- * after commit (a refund is sent, a cancellation carried out).
+ * after commit (a refund or a manual void is sent, a cancellation carried
+ * out), or posts a ledger adjustment in the same transaction.
  *
- * Manual captures, voids and ledger adjustments have no screen that opens
- * them yet; a request of those types cannot be decided here.
+ * Manual captures are not offered: a capture always runs in the closing
+ * flow, which issues the order and its tax invoice. A request of that type
+ * cannot be decided here.
  */
 final class Decisions
 {
     public function __construct(
         private readonly Refunds $refunds,
         private readonly CampaignCancellations $cancellations,
+        private readonly ManualVoids $manualVoids,
+        private readonly LedgerAdjustments $adjustments,
         private readonly AuditLogger $audit,
         private readonly StatusHistory $history,
     ) {}
@@ -56,14 +63,25 @@ final class Decisions
     {
         $found = ApprovalRequest::query()->where('uuid', $uuid)->firstOrFail();
 
-        if (! in_array($found->type, [ApprovalType::ManualRefund, ApprovalType::CampaignCancellation], true)) {
+        $subjectClass = match ($found->type) {
+            ApprovalType::ManualRefund => Refund::class,
+            ApprovalType::ManualVoid => PaymentAuthorization::class,
+            ApprovalType::LedgerAdjustment => LedgerAdjustment::class,
+            ApprovalType::CampaignCancellation => Campaign::class,
+            ApprovalType::ManualCapture => null,
+        };
+
+        if ($subjectClass === null || $found->subject_type !== (new $subjectClass)->getMorphClass()) {
             throw new ApiException(409, 'invalid_transition');
         }
 
         return DB::transaction(function () use ($found, $by, $to, $reason): ApprovalRequest {
-            $subject = $found->type === ApprovalType::ManualRefund
-                ? $this->refunds->lockForDecision($found->subject_id)
-                : Campaign::query()->whereKey($found->subject_id)->lockForUpdate()->firstOrFail();
+            $subject = match ($found->type) {
+                ApprovalType::ManualRefund => $this->refunds->lockForDecision($found->subject_id),
+                ApprovalType::ManualVoid => $this->manualVoids->lockForDecision($found->subject_id),
+                ApprovalType::LedgerAdjustment => $this->adjustments->lockForDecision($found->subject_id),
+                ApprovalType::CampaignCancellation => Campaign::query()->whereKey($found->subject_id)->lockForUpdate()->firstOrFail(),
+            };
             $request = ApprovalRequest::query()->whereKey($found->id)->lockForUpdate()->firstOrFail();
 
             if ($request->status !== ApprovalStatus::Pending) {
@@ -86,6 +104,9 @@ final class Decisions
                 $subject instanceof Refund && $to === ApprovalStatus::Approved => $this->refunds->approve($subject, $actor),
                 $subject instanceof Refund => $this->refunds->reject($subject, (string) $reason, $actor),
                 $subject instanceof Campaign && $to === ApprovalStatus::Approved => $this->cancellations->approve($subject, $request),
+                $subject instanceof PaymentAuthorization && $to === ApprovalStatus::Approved => $this->manualVoids->approved($subject, $request),
+                $subject instanceof LedgerAdjustment && $to === ApprovalStatus::Approved => $this->adjustments->approve($subject, $request, $actor),
+                $subject instanceof LedgerAdjustment => $this->adjustments->reject($subject, (string) $reason, $actor),
                 default => null,
             };
 
