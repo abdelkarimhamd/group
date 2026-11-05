@@ -27,4 +27,12 @@ enum RefundStatus: string
     {
         return [self::PendingApproval, self::Approved, self::Processing, self::Succeeded];
     }
+
+    /**
+     * Nothing went back and nothing will: finance said no, or Moyasar did.
+     */
+    public function isDead(): bool
+    {
+        return $this === self::Rejected || $this === self::Failed;
+    }
 }

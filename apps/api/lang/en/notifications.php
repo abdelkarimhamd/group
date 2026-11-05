@@ -61,4 +61,16 @@ return [
         'title' => 'Refund sent',
         'body' => 'We refunded :amount SAR for order :order to your card. Your bank may take up to 14 days to show it.',
     ],
+    'delivery_failed' => [
+        'title' => 'Delivery failed',
+        'body' => 'The courier could not deliver order :order and brought it back to us. We will contact you to deliver it again.',
+    ],
+    'return_accepted' => [
+        'title' => 'Return accepted',
+        'body' => 'We accepted the return of order :order. We will refund :amount SAR to your card once the refund is approved.',
+    ],
+    'return_declined' => [
+        'title' => 'Return not accepted',
+        'body' => 'We could not accept the return of order :order. Contact us if you have any questions.',
+    ],
 ];

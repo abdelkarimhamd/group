@@ -9,5 +9,7 @@ enum RefundReason: string
     case Defective = 'defective';
     case Shortage = 'shortage';
     case CampaignCancelledAfterCapture = 'campaign_cancelled_after_capture';
+    /** An approved customer return (Orders\Services\Returns). */
+    case CustomerReturn = 'customer_return';
     case Other = 'other';
 }

@@ -19,6 +19,10 @@ use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Finance\Models\LedgerTransaction;
 use App\Modules\Finance\Models\ReconciliationItem;
 use App\Modules\Finance\Models\ReconciliationRun;
+use App\Modules\Fulfillment\Couriers\AramexCourier;
+use App\Modules\Fulfillment\Couriers\CourierGateway;
+use App\Modules\Fulfillment\Couriers\FakeCourier;
+use App\Modules\Fulfillment\Couriers\ManualCourier;
 use App\Modules\Fulfillment\Models\InboundReceipt;
 use App\Modules\Fulfillment\Models\Shipment;
 use App\Modules\Identity\Admins\AdminAccounts;
@@ -37,6 +41,7 @@ use App\Modules\Notifications\Sms\TaqnyatSmsSender;
 use App\Modules\Notifications\Sms\UnifonicSmsSender;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
+use App\Modules\Orders\Models\OrderReturn;
 use App\Modules\Orders\Models\PurchaseOrderDocument;
 use App\Modules\Orders\Models\SupplierPurchaseOrder;
 use App\Modules\Payments\Gateway\FakeMoyasarGateway;
@@ -106,6 +111,18 @@ class AppServiceProvider extends ServiceProvider
             default => throw new InvalidArgumentException("Unknown SMS driver [{$driver}]."),
         });
 
+        $this->app->singleton(CourierGateway::class, fn ($app) => match ($driver = config('services.courier.driver')) {
+            'manual' => new ManualCourier,
+            'fake' => new FakeCourier($app->isProduction()),
+            'aramex' => new AramexCourier(
+                (string) config('services.courier.aramex.base_url'),
+                config('services.courier.aramex'),
+                config('groupbuy.couriers.shipper'),
+                (int) config('services.courier.timeout_seconds'),
+            ),
+            default => throw new InvalidArgumentException("Unknown courier driver [{$driver}]."),
+        });
+
         $this->app->singleton(PushSender::class, fn ($app) => match ($driver = config('services.push.driver')) {
             'log' => new LogPushSender($app->isProduction(), config('services.push.log_channel')),
             'expo' => new ExpoPushSender(
@@ -156,6 +173,7 @@ class AppServiceProvider extends ServiceProvider
             'purchase_order_document' => PurchaseOrderDocument::class,
             'inbound_receipt' => InboundReceipt::class,
             'shipment' => Shipment::class,
+            'order_return' => OrderReturn::class,
             'ledger_transaction' => LedgerTransaction::class,
             'reconciliation_run' => ReconciliationRun::class,
             'reconciliation_item' => ReconciliationItem::class,

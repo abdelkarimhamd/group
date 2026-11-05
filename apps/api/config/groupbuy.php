@@ -131,6 +131,63 @@ return [
         'return_window_days' => 7,
     ],
 
+    // Spec, E13: the last mile. The courier itself is services.courier.
+    'couriers' => [
+        // The warehouse parcels leave from, as the courier's booking needs it.
+        'shipper' => [
+            'name' => env('WAREHOUSE_CONTACT_NAME', 'Warehouse contact not set'),
+            'company' => env('GROUPBUY_SELLER_NAME_EN', 'Seller name not set'),
+            'phone' => env('WAREHOUSE_PHONE', '+966500000000'),
+            'email' => env('WAREHOUSE_EMAIL', ''),
+            'line1' => env('WAREHOUSE_ADDRESS_LINE1', 'Warehouse address not set'),
+            'line2' => env('WAREHOUSE_ADDRESS_LINE2', ''),
+            'city' => env('WAREHOUSE_CITY', 'Riyadh'),
+            'postal_code' => env('WAREHOUSE_POSTAL_CODE', ''),
+        ],
+        // Used for a variant without its own weight.
+        'default_unit_weight_grams' => 1000,
+        // A booking still unanswered this long after it was asked for (its
+        // job was lost) is queued again by shipments:track.
+        'booking_requeue_after_minutes' => 30,
+        // A booking sent this long ago with no answer recorded is cancelled
+        // for staff to check in the courier's portal. Longer than the
+        // booking job can run (BookShipment::$timeout), so a slow answer is
+        // never thrown away.
+        'booking_answer_within_minutes' => 15,
+        // Parcels read per run of shipments:track (every thirty minutes) and
+        // per call to the courier.
+        'track_per_run' => 500,
+        'track_per_call' => 50,
+        // Where a customer follows a parcel, by courier name in lower case;
+        // {number} is the tracking number. Used when staff give no link.
+        'tracking_urls' => [
+            'aramex' => 'https://www.aramex.com/sa/en/track/results?ShipmentNumber={number}',
+        ],
+        // The courier's update codes as our shipment statuses. A code listed
+        // under `ignore` is not a movement (the booking itself). Any other
+        // code not listed means the parcel moved: `picked_up` for a parcel
+        // not yet collected, otherwise `in_transit`. Staff record a parcel
+        // the courier brings back by hand. Aramex's codes are from its
+        // guide: check them against real tracking before launch.
+        'aramex' => [
+            'codes' => [
+                'SH003' => 'out_for_delivery',
+                'SH005' => 'delivered',
+                'SH006' => 'delivered',
+            ],
+            'ignore' => ['SH014'],
+        ],
+        'fake' => [
+            'codes' => [
+                'PU' => 'picked_up',
+                'IT' => 'in_transit',
+                'OD' => 'out_for_delivery',
+                'DL' => 'delivered',
+            ],
+            'ignore' => ['CR'],
+        ],
+    ],
+
     // Spec, E14: sends run on the queue with retries, and every send is logged.
     'notifications' => [
         // Tries per message before it is marked failed, and the wait before

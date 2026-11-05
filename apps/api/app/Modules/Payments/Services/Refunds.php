@@ -11,6 +11,8 @@ use App\Modules\Finance\Enums\ApprovalType;
 use App\Modules\Finance\Models\ApprovalRequest;
 use App\Modules\Finance\Services\Approvals;
 use App\Modules\Finance\Services\Ledger;
+use App\Modules\Fulfillment\Enums\ShipmentStatus;
+use App\Modules\Fulfillment\Models\Shipment;
 use App\Modules\Fulfillment\Services\Shipments;
 use App\Modules\Identity\Models\AdminUser;
 use App\Modules\Notifications\Enums\NotificationTemplate;
@@ -19,6 +21,7 @@ use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
 use App\Modules\Orders\Services\Invoices;
+use App\Modules\Orders\Services\ReturnSettlement;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RefundMethod;
 use App\Modules\Payments\Enums\RefundReason;
@@ -79,6 +82,7 @@ final class Refunds
         private readonly Ledger $ledger,
         private readonly Shipments $shipments,
         private readonly Notifier $notifier,
+        private readonly ReturnSettlement $returns,
     ) {}
 
     /**
@@ -107,6 +111,13 @@ final class Refunds
 
             if ($amount->greaterThan(self::refundable($payment))) {
                 throw ApiException::unprocessable('refund_exceeds_captured', 'amount_halalas');
+            }
+
+            // Refunding everything closes the order: a parcel booked or on
+            // its way to the courier is called off first, by staff.
+            if ($order !== null && $order->status === OrderStatus::ReadyToShip && $amount->equals(self::refundable($payment))
+                && Shipment::query()->where('customer_order_id', $order->id)->where('status', ShipmentStatus::Pending)->exists()) {
+                throw new ApiException(409, 'shipment_open');
             }
 
             $actor = Actor::admin($by->id);
@@ -468,7 +479,11 @@ final class Refunds
                 return;
             }
 
-            if ($payment->status === PaymentStatus::Refunded) {
+            // A refund for a return closes the order as returned; any other
+            // closes it once everything went back.
+            $closed = $this->returns->refunded($campaign, $order, $refund, $payment->status === PaymentStatus::Refunded, $actor);
+
+            if (! $closed && $payment->status === PaymentStatus::Refunded) {
                 $this->closeOrder($campaign, $order, $actor);
             }
 
@@ -553,6 +568,10 @@ final class Refunds
             return;
         }
 
+        if ($order->status === OrderStatus::ReadyToShip) {
+            $this->shipments->cancelForClosedOrder($order, $actor);
+        }
+
         $from = $order->status;
         $order->status = $to;
         $order->save();
@@ -599,7 +618,7 @@ final class Refunds
     /**
      * Captured, less what is refunded or asked for.
      */
-    private static function refundable(PaymentAuthorization $payment): Money
+    public static function refundable(PaymentAuthorization $payment): Money
     {
         $outstanding = (int) $payment->refunds()->whereIn('status', RefundStatus::outstanding())->sum('amount_halalas');
 

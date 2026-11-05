@@ -1402,6 +1402,9 @@ export interface paths {
      *     `method` is `void` for a full refund within 2 hours of capture
      *     (`groupbuy.payments.void_after_capture_minutes`), otherwise `refund`.
      *     Without `customer_order_id` the refund is linked to the payment's order.
+     *     Refunding everything left on an order that is `ready_to_ship` closes
+     *     the order, so it is refused while a shipment the courier has not
+     *     collected is open: cancel the shipment first.
      */
     post: operations['adminRequestRefund'];
     delete?: never;
@@ -1516,10 +1519,14 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Ship an order from the warehouse
+     * Ship an order from the warehouse by hand
      * @description Hands a `ready_to_ship` order to the courier: the shipment starts
      *     `picked_up` with its first tracking event, and the order becomes
-     *     `shipped`. One shipment per order in the pilot.
+     *     `shipped`. One open shipment per order (409 `shipment_exists`); a
+     *     parcel the courier brought back or a booking called off leaves room
+     *     for another. Without `tracking_url`, the link is built from the
+     *     courier's name when a pattern is configured
+     *     (`groupbuy.couriers.tracking_urls`).
      */
     post: operations['adminCreateShipment'];
     delete?: never;
@@ -1533,7 +1540,7 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
-        shipment_id: string;
+        shipment_id: components['parameters']['ShipmentId'];
       };
       cookie?: never;
     };
@@ -1541,16 +1548,198 @@ export interface paths {
     put?: never;
     /**
      * Record a tracking update by hand
-     * @description For couriers without a tracking API (open question Q11). Updates may
+     * @description For couriers without a tracking API, or to correct one. Updates may
      *     arrive out of order: the newest sets the shipment's status, and
-     *     `delivered` always does. `delivered` marks the order delivered and
-     *     starts its 7-day return window (`groupbuy.orders.return_window_days`);
-     *     once every order of the campaign is delivered or cancelled, the
-     *     campaign is `completed`. No update is dated before the pickup
-     *     (`event_before_shipment`, 422). A delivered shipment takes no more
-     *     updates (409).
+     *     `delivered` and `returned` always do. The first update of a booked
+     *     parcel means the courier has it: the order becomes `shipped`.
+     *     `delivered` marks the order delivered and starts its 7-day return
+     *     window (`groupbuy.orders.return_window_days`); once every order of
+     *     the campaign is settled, the campaign is `completed`. `returned` is
+     *     the courier bringing the parcel back: the order is `ready_to_ship`
+     *     again, for another shipment or a refund, and the customer is told.
+     *     No update is dated before the pickup (`event_before_shipment`, 422).
+     *     A delivered, returned or cancelled shipment takes no more updates
+     *     (409 `invalid_transition`), and neither does a booking still waiting
+     *     for the courier's answer (409 `booking_in_progress`).
      */
     post: operations['adminAddShipmentEvent'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/courier': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The courier API that is set up
+     * @description `COURIER_DRIVER`: with `manual` (the default until a courier is
+     *     chosen, open question Q11) there is no API, `name` is null and
+     *     parcels are handed over and tracked by hand.
+     */
+    get: operations['adminGetCourier'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/orders/{order_id}/shipment/booking': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: components['parameters']['OrderId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Book an order with the courier's API
+     * @description The shipment starts `pending` with its booking `requested`; the
+     *     booking goes to the courier on the queue, with the booking's
+     *     `reference` as ours. The courier's tracking number and label (a
+     *     30-minute signed link) follow once it answers. The order stays
+     *     `ready_to_ship` until the courier collects the parcel, which tracking
+     *     read from the courier reports. A refusal, or no clear answer, cancels
+     *     the shipment with the reason in `booking.error`: the courier
+     *     documents no idempotency, so a booking is never sent twice on its
+     *     own. 409 `courier_api_off` without a courier API, `shipment_exists`,
+     *     or `invalid_transition` if the order is not `ready_to_ship`.
+     */
+    post: operations['adminBookShipment'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/shipments/{shipment_id}/cancel': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        shipment_id: components['parameters']['ShipmentId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Call off a shipment the courier has not collected
+     * @description Only a `pending` shipment (a booking the courier has not collected);
+     *     the order stays `ready_to_ship` for another shipment. Call off a
+     *     booked parcel in the courier's portal too. 409 `booking_in_progress`
+     *     while the courier has not answered the booking, `invalid_transition`
+     *     once it is collected.
+     */
+    post: operations['adminCancelShipment'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/returns': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Customer returns
+     * @description Newest first.
+     */
+    get: operations['adminListReturns'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/orders/{order_id}/return': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: components['parameters']['OrderId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Record a customer's return
+     * @description The customer asked support to return a `delivered` order within its
+     *     return window. The order becomes `return_requested` and is not
+     *     completed when the window ends, until the return is decided. One
+     *     return per order. 409 `return_window_ended`, `return_exists`, or
+     *     `invalid_transition` if the order is not `delivered`.
+     */
+    post: operations['adminRecordReturn'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/returns/{return_id}/approve': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        return_id: components['parameters']['ReturnId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Accept a return and ask for its refund
+     * @description Asks for a refund of `amount_halalas` (reason `customer_return`),
+     *     which waits for a second admin with the finance role like any refund
+     *     (see `adminRequestRefund` for its 422 codes). Once it goes through,
+     *     the order is `returned` and the return `completed`, even if the
+     *     delivery fee was kept. The customer is told the return was accepted.
+     *     A return whose refund was rejected or failed can be approved again
+     *     with another amount, or rejected.
+     */
+    post: operations['adminApproveReturn'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/returns/{return_id}/reject': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        return_id: components['parameters']['ReturnId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Decline a return
+     * @description The order is `delivered` again, and completed by the hourly sweep if
+     *     its return window has ended. The customer is told; the note stays
+     *     with staff.
+     */
+    post: operations['adminRejectReturn'];
     delete?: never;
     options?: never;
     head?: never;
@@ -2287,6 +2476,7 @@ export interface components {
         captured_amount: components['schemas']['Money'];
         refunded_amount: components['schemas']['Money'];
       };
+      /** @description The newest parcel the courier has collected; a booking not yet collected is not shown. */
       shipment: components['schemas']['Shipment'] | null;
       invoices: components['schemas']['InvoiceRef'][];
       /** Format: date-time */
@@ -2942,6 +3132,7 @@ export interface components {
       | 'defective'
       | 'shortage'
       | 'campaign_cancelled_after_capture'
+      | 'customer_return'
       | 'other';
     RefundInput: {
       /** Format: uuid */
@@ -3017,6 +3208,123 @@ export interface components {
       /** Format: uuid */
       payment_id: string;
       refunds: components['schemas']['Refund'][];
+      /** @description Every shipment, newest first, including parcels brought back and bookings called off. */
+      shipments: components['schemas']['AdminShipment'][];
+      return: components['schemas']['OrderReturn'] | null;
+    };
+    AdminShipment: {
+      /** Format: uuid */
+      id: string;
+      /** @example Aramex */
+      courier: string;
+      /** @description Null only while a booking waits for the courier's answer. */
+      tracking_number: string | null;
+      /** Format: uri */
+      tracking_url: string | null;
+      status: components['schemas']['ShipmentStatus'];
+      /**
+       * Format: date-time
+       * @description When the courier collected it.
+       */
+      shipped_at: string | null;
+      /** Format: date-time */
+      delivered_at: string | null;
+      /** @description Null when the parcel was handed over by hand. */
+      booking: {
+        /** @enum {string} */
+        status: 'requested' | 'booked' | 'failed';
+        /**
+         * Format: uuid
+         * @description Our reference sent to the courier with the booking.
+         */
+        reference: string;
+        /** Format: date-time */
+        requested_at: string;
+        /** @description Why the booking failed; the shipment is then cancelled. */
+        error: string | null;
+        /**
+         * Format: uri
+         * @description The courier's label as PDF: a signed link that works for 30 minutes.
+         */
+        label_url: string | null;
+      } | null;
+      /** Format: date-time */
+      created_at: string;
+      /** @description Oldest first. */
+      events: {
+        status: components['schemas']['ShipmentStatus'];
+        description: string | null;
+        location: string | null;
+        /** @enum {string} */
+        source: 'admin' | 'courier_api';
+        /** Format: date-time */
+        occurred_at: string;
+      }[];
+    };
+    CourierSettings: {
+      /**
+       * @description Null without a courier API.
+       * @example Aramex
+       */
+      name: string | null;
+      /** @description Parcels can be booked through the API. */
+      books: boolean;
+      /** @description Tracking is read from the API every 30 minutes. */
+      tracks: boolean;
+    };
+    ShipmentBookingInput: {
+      shipping_cost_halalas?: number | null;
+    };
+    ShipmentCancelInput: {
+      reason?: string | null;
+    };
+    /** @enum {string} */
+    ReturnStatus: 'requested' | 'approved' | 'rejected' | 'completed';
+    /** @enum {string} */
+    ReturnReason:
+      | 'defective'
+      | 'damaged_in_transit'
+      | 'wrong_item'
+      | 'not_as_described'
+      | 'changed_mind'
+      | 'other';
+    OrderReturn: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      customer_order_id: string;
+      order_number: string;
+      customer: {
+        name: string | null;
+        phone: components['schemas']['SaudiMobile'];
+      };
+      status: components['schemas']['ReturnStatus'];
+      reason: components['schemas']['ReturnReason'];
+      note: string | null;
+      recorded_by: components['schemas']['Actor'];
+      /** Format: date-time */
+      recorded_at: string;
+      decided_by: components['schemas']['Actor'] | null;
+      /** Format: date-time */
+      decided_at: string | null;
+      decision_note: string | null;
+      /** @description The refund asked for when the return was approved. */
+      refund: components['schemas']['Refund'] | null;
+      refundable: components['schemas']['Money'];
+      /** @description Can be approved or rejected now: never decided, or its refund was rejected or failed. */
+      open: boolean;
+    };
+    ReturnInput: {
+      reason: components['schemas']['ReturnReason'];
+      note?: string | null;
+    };
+    ReturnApprovalInput: {
+      /** @description What goes back to the card; at most what is still refundable. */
+      amount_halalas: number;
+      note?: string | null;
+    };
+    ReturnRejectionInput: {
+      note: string;
     };
     ShipmentInput: {
       courier: string;
@@ -3027,10 +3335,16 @@ export interface components {
     };
     ShipmentEventInput: {
       /**
-       * @description Returns and cancelled shipments come with returns handling.
+       * @description `returned`: the courier brought the parcel back. A shipment not yet collected is called off instead.
        * @enum {string}
        */
-      status: 'picked_up' | 'in_transit' | 'out_for_delivery' | 'failed_attempt' | 'delivered';
+      status:
+        | 'picked_up'
+        | 'in_transit'
+        | 'out_for_delivery'
+        | 'failed_attempt'
+        | 'delivered'
+        | 'returned';
       description?: string | null;
       location?: string | null;
       /** Format: date-time */
@@ -3317,6 +3631,8 @@ export interface components {
     PurchaseOrderId: string;
     DocumentId: string;
     ReceiptId: string;
+    ShipmentId: string;
+    ReturnId: string;
   };
   requestBodies: never;
   headers: {
@@ -5847,6 +6163,15 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
+      /** @description `shipment_open`: a full refund of an order whose parcel is booked or waiting for the courier. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
       /** @description `refund_exceeds_captured`, `payment_not_captured`, `payment_not_found`, `order_not_for_payment`, or invalid input. */
       422: {
         headers: {
@@ -6033,7 +6358,7 @@ export interface operations {
         };
         content: {
           'application/json': {
-            data: components['schemas']['Shipment'];
+            data: components['schemas']['AdminShipment'];
           };
         };
       };
@@ -6057,7 +6382,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        shipment_id: string;
+        shipment_id: components['parameters']['ShipmentId'];
       };
       cookie?: never;
     };
@@ -6074,7 +6399,267 @@ export interface operations {
         };
         content: {
           'application/json': {
-            data: components['schemas']['Shipment'];
+            data: components['schemas']['AdminShipment'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /** @description `invalid_transition` or `booking_in_progress`. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      422: components['responses']['ValidationFailed'];
+    };
+  };
+  adminGetCourier: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The courier. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['CourierSettings'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  adminBookShipment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: components['parameters']['OrderId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ShipmentBookingInput'];
+      };
+    };
+    responses: {
+      /** @description Booking asked for. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['AdminShipment'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /** @description `courier_api_off`, `shipment_exists` or `invalid_transition`. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      422: components['responses']['ValidationFailed'];
+    };
+  };
+  adminCancelShipment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        shipment_id: components['parameters']['ShipmentId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['ShipmentCancelInput'];
+      };
+    };
+    responses: {
+      /** @description Cancelled. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['AdminShipment'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /** @description `booking_in_progress` or `invalid_transition`. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      422: components['responses']['ValidationFailed'];
+    };
+  };
+  adminListReturns: {
+    parameters: {
+      query?: {
+        status?: components['schemas']['ReturnStatus'];
+        /** @description `meta.next_cursor` from the previous page. */
+        cursor?: components['parameters']['Cursor'];
+        per_page?: components['parameters']['PerPage'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description A page of returns. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['OrderReturn'][];
+            meta: components['schemas']['CursorMeta'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationFailed'];
+    };
+  };
+  adminRecordReturn: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        order_id: components['parameters']['OrderId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReturnInput'];
+      };
+    };
+    responses: {
+      /** @description Recorded. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['OrderReturn'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /** @description `return_window_ended`, `return_exists` or `invalid_transition`. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
+      422: components['responses']['ValidationFailed'];
+    };
+  };
+  adminApproveReturn: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        return_id: components['parameters']['ReturnId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReturnApprovalInput'];
+      };
+    };
+    responses: {
+      /** @description Accepted; the refund waits for approval. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['OrderReturn'];
+          };
+        };
+      };
+      401: components['responses']['Unauthenticated'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['InvalidTransition'];
+      /** @description `refund_exceeds_captured`, `payment_not_captured`, or invalid input. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ValidationError'];
+        };
+      };
+    };
+  };
+  adminRejectReturn: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        return_id: components['parameters']['ReturnId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReturnRejectionInput'];
+      };
+    };
+    responses: {
+      /** @description Declined. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            data: components['schemas']['OrderReturn'];
           };
         };
       };

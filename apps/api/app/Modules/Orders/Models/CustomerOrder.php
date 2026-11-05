@@ -53,6 +53,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property-read Collection<int, Invoice> $invoices
  * @property-read Collection<int, Refund> $refunds
  * @property-read Shipment|null $shipment
+ * @property-read Collection<int, Shipment> $shipments
+ * @property-read OrderReturn|null $orderReturn
  */
 class CustomerOrder extends Model
 {
@@ -150,13 +152,36 @@ class CustomerOrder extends Model
     }
 
     /**
-     * The last mile (fulfilment, E13); one per order in the pilot.
+     * The parcel the customer follows: the newest shipment the courier has
+     * picked up (fulfilment, E13). A booking not yet collected is not shown.
      *
      * @return HasOne<Shipment, $this>
      */
     public function shipment(): HasOne
     {
-        return $this->hasOne(Shipment::class);
+        return $this->hasOne(Shipment::class)->ofMany(['id' => 'max'], fn ($query) => $query->whereNotNull('shipped_at'));
+    }
+
+    /**
+     * Every shipment of the order, newest first: a parcel the courier
+     * brought back or a booking cancelled before pickup leaves room for
+     * another.
+     *
+     * @return HasMany<Shipment, $this>
+     */
+    public function shipments(): HasMany
+    {
+        return $this->hasMany(Shipment::class)->orderByDesc('id');
+    }
+
+    /**
+     * A return recorded by staff within the return window; one per order.
+     *
+     * @return HasOne<OrderReturn, $this>
+     */
+    public function orderReturn(): HasOne
+    {
+        return $this->hasOne(OrderReturn::class);
     }
 
     /**
