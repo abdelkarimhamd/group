@@ -2,6 +2,7 @@
 
 use App\Modules\Campaign\Console\CampaignTickCommand;
 use App\Modules\Campaign\Console\SweepClosingCommand;
+use App\Modules\Finance\Console\ImportSettlementsCommand;
 use App\Modules\Finance\Console\ReconcilePaymentsCommand;
 use App\Modules\Finance\Console\RequeueApprovedCommand;
 use App\Modules\Fulfillment\Console\CompleteDeliveredOrdersCommand;
@@ -59,3 +60,6 @@ Schedule::command(RequeueApprovedCommand::class)->everyFiveMinutes()->withoutOve
 // early in the morning in Riyadh; mismatches go to finance.
 Schedule::command(ReconcilePaymentsCommand::class)->dailyAt('03:00')->timezone('Asia/Riyadh')
     ->withoutOverlapping((int) config('groupbuy.finance.reconciliation_timeout_minutes'))->onOneServer();
+
+// Moyasar's payouts to the bank, with their fees, into the ledger.
+Schedule::command(ImportSettlementsCommand::class)->dailyAt('04:00')->timezone('Asia/Riyadh')->withoutOverlapping()->onOneServer();

@@ -103,6 +103,7 @@ const PALETTE = {
   supplier: { prospect: 'gold', approved: 'green', blocked: 'red' },
   quotation: { draft: 'grey', accepted: 'green', rejected: 'red', expired: 'default' },
   reconciliationRun: { running: 'blue', matched: 'green', mismatches: 'orange', failed: 'red' },
+  ledgerAdjustment: { pending: 'gold', posted: 'green', rejected: 'default' },
   transaction: { pending: 'gold', succeeded: 'green', failed: 'red' },
   admin: { active: 'green', blocked: 'red' },
 } as const;

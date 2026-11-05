@@ -46,6 +46,7 @@ final class AdminPermissions
         'campaigns.close' => 'Record the supplier reconfirmation and below-target decisions',
         'payments.view' => 'See holds, charges, refunds and Moyasar calls',
         'refunds.request' => 'Ask for a refund (needs an approval)',
+        'payments.void' => 'Ask to release a card hold Moyasar still keeps (needs an approval)',
         'approvals.view' => 'See approval requests',
         'approvals.decide' => 'Approve or reject a request made by another admin',
         'orders.view' => 'See customer orders and shipments',
@@ -55,6 +56,8 @@ final class AdminPermissions
         'reconciliation.view' => 'See reconciliation runs and mismatches',
         'reconciliation.resolve' => 'Close a reconciliation mismatch with a note',
         'audit.view' => 'Read the audit log',
+        'ledger.view' => 'See the ledger, adjustments and Moyasar settlements',
+        'ledger.adjust' => 'Ask for a ledger adjustment or reversal (needs an approval)',
         'admins.manage' => 'Create admins, change their roles and block them',
     ];
 
@@ -86,6 +89,7 @@ final class AdminPermissions
                 'catalog.view', 'suppliers.view', 'suppliers.approve', 'campaigns.view', 'campaigns.approve',
                 'payments.view', 'refunds.request', 'approvals.view', 'approvals.decide', 'orders.view',
                 'purchasing.view', 'reconciliation.view', 'reconciliation.resolve', 'audit.view',
+                'payments.void', 'ledger.view', 'ledger.adjust',
             ],
 
             AdminRole::Operations->value => [

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Payments\Gateway;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -27,7 +28,7 @@ use Throwable;
  * given_id on payment creation), so the key is sent as an Idempotency-Key
  * header in case, but the fetch-first retries are what prevent doubles.
  */
-final class MoyasarGateway implements PaymentGateway
+final class MoyasarGateway implements PaymentGateway, PaymentReports
 {
     /** Refusals that are about our set-up, not the payment: retrying after a fix can work. */
     private const SETUP_ERRORS = [401, 403, 405];
@@ -91,6 +92,125 @@ final class MoyasarGateway implements PaymentGateway
     public function refund(string $providerPaymentId, int $amountHalalas, string $idempotencyKey): GatewayResult
     {
         return $this->operate($providerPaymentId, 'refund', $amountHalalas, $idempotencyKey, ['refunded']);
+    }
+
+    public function payments(CarbonImmutable $from, CarbonImmutable $to, int $page = 1): array
+    {
+        // created[gt] and created[lt] are both inclusive ("on or after", "on or before").
+        $page = $this->page('payments', [
+            'page' => $page,
+            'created[gt]' => $from->utc()->format('Y-m-d\\TH:i:s\\Z'),
+            'created[lt]' => $to->utc()->subSecond()->format('Y-m-d\\TH:i:s\\Z'),
+        ], ['payments']);
+
+        return ['items' => array_map(self::payment(...), $page['items']), 'next_page' => $page['next_page']];
+    }
+
+    public function settlements(int $page = 1): array
+    {
+        $page = $this->page('settlements', ['page' => $page], ['settlements']);
+
+        return ['items' => array_map(self::settlement(...), $page['items']), 'next_page' => $page['next_page']];
+    }
+
+    public function settlementLines(string $settlementId, int $page = 1): array
+    {
+        $page = $this->page('settlements/'.rawurlencode($settlementId).'/lines', ['page' => $page], ['lines', 'settlement_lines']);
+
+        return ['items' => array_map(self::settlementLine(...), $page['items']), 'next_page' => $page['next_page']];
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    public static function settlement(array $body): ProviderSettlement
+    {
+        $id = $body['id'] ?? null;
+
+        if (! is_string($id) || $id === '') {
+            throw new GatewayException('Moyasar sent a settlement without an id.');
+        }
+
+        $currency = is_string($body['currency'] ?? null) ? strtoupper($body['currency']) : 'SAR';
+
+        return new ProviderSettlement($id, $currency, self::time($body['settlement_date'] ?? $body['settled_at'] ?? $body['created_at'] ?? null), $body);
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    public static function settlementLine(array $body): ProviderSettlementLine
+    {
+        if (! is_string($body['type'] ?? null) || ! is_int($body['amount'] ?? null)) {
+            throw new GatewayException('Moyasar sent a settlement line without a type or amount.');
+        }
+
+        $paymentId = $body['payment_id'] ?? null;
+
+        return new ProviderSettlementLine(
+            type: mb_substr($body['type'], 0, 32),
+            paymentId: is_string($paymentId) && $paymentId !== '' ? $paymentId : null,
+            amountHalalas: $body['amount'],
+            feeHalalas: is_int($body['fee'] ?? null) ? $body['fee'] : 0,
+            taxHalalas: is_int($body['tax'] ?? null) ? $body['tax'] : 0,
+            paymentAmountHalalas: is_int($body['payment_amount'] ?? null) ? $body['payment_amount'] : null,
+            transactedAt: self::time($body['transacted_at'] ?? null),
+            raw: $body,
+        );
+    }
+
+    private static function time(mixed $value): ?CarbonImmutable
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        try {
+            return CarbonImmutable::parse($value)->utc();
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * One page of a Moyasar list: the objects under the first key found,
+     * and the next page from meta.next_page.
+     *
+     * @param  array<string, int|string>  $query
+     * @param  list<string>  $keys
+     * @return array{items: list<array<string, mixed>>, next_page: int|null}
+     */
+    private function page(string $path, array $query, array $keys): array
+    {
+        $response = $this->send('get', $path, null, null, $query);
+
+        if (! $response->successful()) {
+            $why = in_array($response->status(), self::SETUP_ERRORS, true) ? ' (check the Moyasar key, IP whitelist and account)' : '';
+
+            throw new GatewayException("Moyasar answered {$response->status()} to listing {$path}{$why}.");
+        }
+
+        $body = self::body($response);
+        $items = null;
+
+        foreach ($keys as $key) {
+            if (is_array($body[$key] ?? null)) {
+                $items = $body[$key];
+                break;
+            }
+        }
+
+        if ($items === null || ! array_is_list($items)) {
+            throw new GatewayException("Moyasar sent no list for {$path}.");
+        }
+
+        $meta = is_array($body['meta'] ?? null) ? $body['meta'] : [];
+        $next = $meta['next_page'] ?? null;
+
+        return [
+            'items' => array_values(array_filter($items, 'is_array')),
+            'next_page' => is_int($next) && $next > (int) ($query['page'] ?? 1) ? $next : null,
+        ];
     }
 
     /**
@@ -163,8 +283,9 @@ final class MoyasarGateway implements PaymentGateway
 
     /**
      * @param  array<string, int>|null  $json
+     * @param  array<string, int|string>  $query
      */
-    private function send(string $method, string $path, ?array $json, ?string $idempotencyKey): Response
+    private function send(string $method, string $path, ?array $json, ?string $idempotencyKey, array $query = []): Response
     {
         $request = $this->client();
 
@@ -173,7 +294,7 @@ final class MoyasarGateway implements PaymentGateway
         }
 
         try {
-            $response = $method === 'get' ? $request->get($path) : $request->post($path, $json ?? []);
+            $response = $method === 'get' ? $request->get($path, $query) : $request->post($path, $json ?? []);
         } catch (ConnectionException $e) {
             throw new GatewayException('Moyasar could not be reached: '.$e->getMessage(), previous: $e);
         } catch (Throwable $e) {

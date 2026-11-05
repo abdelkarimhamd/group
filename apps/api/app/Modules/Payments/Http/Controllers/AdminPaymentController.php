@@ -6,10 +6,13 @@ use App\Http\Controllers\AdminController;
 use App\Http\Resources\CursorPage;
 use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignParticipation;
+use App\Modules\Finance\Http\Resources\ApprovalRequestResource;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Http\Requests\AdminListPaymentsRequest;
+use App\Modules\Payments\Http\Requests\ManualVoidRequest;
 use App\Modules\Payments\Http\Resources\AdminPaymentResource;
 use App\Modules\Payments\Models\PaymentAuthorization;
+use App\Modules\Payments\Services\ManualVoids;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -41,6 +44,19 @@ final class AdminPaymentController extends AdminController
         }
 
         return CursorPage::response($query->cursorPaginate((int) $request->validated('per_page', 20)), AdminPaymentResource::class);
+    }
+
+    /**
+     * Asks to release a hold Moyasar still keeps although it no longer
+     * counts here; a second admin with the finance role approves it.
+     */
+    public function requestVoid(ManualVoidRequest $request, string $payment, ManualVoids $voids): JsonResponse
+    {
+        $approval = $voids->request($payment, $request->validated('reason'), $this->admin($request));
+
+        return ApprovalRequestResource::make($approval->load(ApprovalRequestResource::RELATIONS))
+            ->response()
+            ->setStatusCode(201);
     }
 
     public function show(string $payment): AdminPaymentResource

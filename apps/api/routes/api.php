@@ -11,7 +11,9 @@ use App\Modules\Catalog\Http\Controllers\AdminVariantController;
 use App\Modules\Catalog\Http\Controllers\CategoryController;
 use App\Modules\Finance\Http\Controllers\AdminApprovalController;
 use App\Modules\Finance\Http\Controllers\AdminAuditLogController;
+use App\Modules\Finance\Http\Controllers\AdminLedgerController;
 use App\Modules\Finance\Http\Controllers\AdminReconciliationController;
+use App\Modules\Finance\Http\Controllers\AdminSettlementController;
 use App\Modules\Fulfillment\Http\Controllers\AdminFulfilmentController;
 use App\Modules\Identity\Http\Controllers\AccountController;
 use App\Modules\Identity\Http\Controllers\AddressController;
@@ -202,7 +204,8 @@ Route::prefix('v1')->name('v1.')->group(function () {
             Route::post('returns/{return}/approve', [AdminReturnController::class, 'approve'])->whereUuid('return')->can('refunds.request')->name('returns.approve');
             Route::post('returns/{return}/reject', [AdminReturnController::class, 'reject'])->whereUuid('return')->can('refunds.request')->name('returns.reject');
 
-            // Finance (E15): second-admin approvals, reconciliation, audit log
+            // Finance (E15): second-admin approvals, reconciliation, audit log,
+            // the ledger, Moyasar settlements and releasing stuck holds
             Route::get('approval-requests', [AdminApprovalController::class, 'index'])->can('approvals.view')->name('approval-requests.index');
             Route::post('approval-requests/{approvalRequest}/approve', [AdminApprovalController::class, 'approve'])->whereUuid('approvalRequest')->can('approvals.decide')->name('approval-requests.approve');
             Route::post('approval-requests/{approvalRequest}/reject', [AdminApprovalController::class, 'reject'])->whereUuid('approvalRequest')->can('approvals.decide')->name('approval-requests.reject');
@@ -210,6 +213,13 @@ Route::prefix('v1')->name('v1.')->group(function () {
             Route::get('reconciliation-runs/{run}/items', [AdminReconciliationController::class, 'items'])->whereUuid('run')->can('reconciliation.view')->name('reconciliation-runs.items');
             Route::post('reconciliation-items/{item}/resolve', [AdminReconciliationController::class, 'resolve'])->whereUuid('item')->can('reconciliation.resolve')->name('reconciliation-items.resolve');
             Route::get('audit-logs', [AdminAuditLogController::class, 'index'])->can('audit.view')->name('audit-logs.index');
+            Route::post('payments/{payment}/void', [AdminPaymentController::class, 'requestVoid'])->whereUuid('payment')->can('payments.void')->name('payments.void');
+            Route::get('ledger/accounts', [AdminLedgerController::class, 'accounts'])->can('ledger.view')->name('ledger.accounts.index');
+            Route::get('ledger/transactions', [AdminLedgerController::class, 'transactions'])->can('ledger.view')->name('ledger.transactions.index');
+            Route::get('ledger/adjustments', [AdminLedgerController::class, 'adjustments'])->can('ledger.view')->name('ledger.adjustments.index');
+            Route::post('ledger/adjustments', [AdminLedgerController::class, 'requestAdjustment'])->can('ledger.adjust')->name('ledger.adjustments.store');
+            Route::get('settlements', [AdminSettlementController::class, 'index'])->can('ledger.view')->name('settlements.index');
+            Route::get('settlements/{settlement}/lines', [AdminSettlementController::class, 'lines'])->whereUuid('settlement')->can('ledger.view')->name('settlements.lines');
         });
     });
 });

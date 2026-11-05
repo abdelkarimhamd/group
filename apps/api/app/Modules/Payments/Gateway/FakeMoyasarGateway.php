@@ -3,6 +3,7 @@
 namespace App\Modules\Payments\Gateway;
 
 use App\Modules\Payments\Models\PaymentAuthorization;
+use Carbon\CarbonImmutable;
 use LogicException;
 
 /**
@@ -13,10 +14,11 @@ use LogicException;
  * A provider payment ID names its outcome and our payment:
  * `fake_authorized_<payment uuid>` is a hold for exactly the payment's
  * amount (mada, card ending 0000), and `fake_declined_<payment uuid>` is a
- * declined card. Captures, voids and refunds always succeed. Refuses to run in
- * production.
+ * declined card. Captures, voids and refunds always succeed. Its lists are
+ * empty: no payments we do not know of, and no settlements. Refuses to run
+ * in production.
  */
-final class FakeMoyasarGateway implements PaymentGateway
+final class FakeMoyasarGateway implements PaymentGateway, PaymentReports
 {
     private const PATTERN = '/^fake_(authorized|declined)_([0-9a-f-]{36})$/';
 
@@ -58,6 +60,21 @@ final class FakeMoyasarGateway implements PaymentGateway
             raw: ['id' => $providerPaymentId, 'status' => $status, 'fake' => true],
             refundedHalalas: $payment->refunded_amount_halalas,
         );
+    }
+
+    public function payments(CarbonImmutable $from, CarbonImmutable $to, int $page = 1): array
+    {
+        return ['items' => [], 'next_page' => null];
+    }
+
+    public function settlements(int $page = 1): array
+    {
+        return ['items' => [], 'next_page' => null];
+    }
+
+    public function settlementLines(string $settlementId, int $page = 1): array
+    {
+        return ['items' => [], 'next_page' => null];
     }
 
     public function void(string $providerPaymentId, string $idempotencyKey): GatewayResult

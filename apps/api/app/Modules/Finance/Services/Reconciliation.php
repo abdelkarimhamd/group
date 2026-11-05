@@ -12,6 +12,7 @@ use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\TransactionStatus;
 use App\Modules\Payments\Gateway\GatewayException;
 use App\Modules\Payments\Gateway\PaymentGateway;
+use App\Modules\Payments\Gateway\PaymentReports;
 use App\Modules\Payments\Gateway\ProviderPayment;
 use App\Modules\Payments\Gateway\ProviderPaymentNotFound;
 use App\Modules\Payments\Models\PaymentAuthorization;
@@ -22,6 +23,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -32,8 +34,9 @@ use Throwable;
  * finance; resolving one records a note, and any fix that moves money goes
  * through an approval request.
  *
- * Finding payments Moyasar has and we do not (missing_locally) needs
- * Moyasar's payment list, which comes with the real integration.
+ * Then Moyasar's own list of the day's payments is read: one that holds or
+ * took money and that we have no record of is missing_locally (a customer
+ * charged while our confirmation never arrived, say).
  */
 final class Reconciliation
 {
@@ -51,12 +54,16 @@ final class Reconciliation
         'capture_failed' => ['authorized', 'voided'],
     ];
 
+    /** Moyasar statuses where the customer's money is held or taken. */
+    private const MONEY_HELD = ['authorized', 'captured', 'paid'];
+
     /** Ours, where Moyasar still holding the money means our release did not land (also an authorized hold with a rejection reason). */
     private const RELEASED = [PaymentStatus::Voided, PaymentStatus::Expired, PaymentStatus::CaptureFailed];
 
     public function __construct(
         private readonly PaymentGateway $gateway,
         private readonly AuditLogger $audit,
+        private readonly PaymentReports $reports,
     ) {}
 
     /**
@@ -88,6 +95,8 @@ final class Reconciliation
                 // moving counts as abandoned.
                 $this->close($run, ['payments_checked' => $checked, 'mismatch_count' => $mismatches, 'updated_at' => CarbonImmutable::now()], final: false);
             });
+
+            $mismatches += $this->missingLocally($run, $from, $to);
         } catch (Throwable $e) {
             // Moyasar being unreachable is expected now and then; anything else is a bug.
             $expected = $e instanceof GatewayException;
@@ -294,6 +303,62 @@ final class Reconciliation
         }
 
         return null;
+    }
+
+    /**
+     * Moyasar's payments created on the day that hold or took money and
+     * that no payment of ours points to. Returns how many were listed.
+     *
+     * @throws GatewayException when Moyasar cannot be reached
+     */
+    private function missingLocally(ReconciliationRun $run, CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        $found = 0;
+        $page = 1;
+
+        while ($page !== null) {
+            $list = $this->reports->payments($from, $to, $page);
+            $held = array_values(array_filter($list['items'], fn (ProviderPayment $p) => in_array($p->status, self::MONEY_HELD, true)));
+            $known = $held === [] ? [] : PaymentAuthorization::query()
+                ->whereIn('provider_payment_id', array_map(fn (ProviderPayment $p) => $p->id, $held))
+                ->pluck('provider_payment_id')
+                ->all();
+
+            foreach ($held as $remote) {
+                if (in_array($remote->id, $known, true)) {
+                    continue;
+                }
+
+                // Our payment's UUID travels in Moyasar's metadata; it may name a row that never heard back.
+                $ours = $remote->paymentId !== null && Str::isUuid($remote->paymentId)
+                    ? PaymentAuthorization::query()->where('uuid', $remote->paymentId)->first()
+                    : null;
+
+                ReconciliationItem::create([
+                    'reconciliation_run_id' => $run->id,
+                    'payment_authorization_id' => $ours?->id,
+                    'provider_payment_id' => $remote->id,
+                    'mismatch_type' => MismatchType::MissingLocally,
+                    'our_value' => $ours === null ? null : [
+                        'status' => $ours->status->value,
+                        'provider_payment_id' => $ours->provider_payment_id,
+                        'authorized_halalas' => $ours->authorized_amount_halalas,
+                    ],
+                    'provider_value' => [
+                        'status' => $remote->status,
+                        'amount_halalas' => $remote->amountHalalas,
+                        'captured_halalas' => $remote->capturedHalalas,
+                        'refunded_halalas' => $remote->refundedHalalas,
+                        'payment_id' => $remote->paymentId,
+                    ],
+                ]);
+                $found++;
+            }
+
+            $page = $list['next_page'];
+        }
+
+        return $found;
     }
 
     /**

@@ -2528,6 +2528,55 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
 
+  /admin/payments/{payment_id}/void:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    post:
+      tags: [Admin payments]
+      operationId: adminRequestManualVoid
+      summary: Ask to release a hold Moyasar still keeps
+      description: |
+        For a hold that no longer counts here but that Moyasar still keeps
+        (reconciliation's `orphan_hold` and `stuck_void`): the payment is
+        `failed`, `capture_failed`, `expired` or `voided`, or `authorized`
+        with a rejection reason, and no capture is under way. Opens a
+        `manual_void` approval request; once a second admin with the finance
+        role approves it, the void is sent after the commit with the key
+        `void:{payment id}:{approval id}`. Every try asks Moyasar first and
+        voids only while Moyasar shows the payment authorized. A hold that
+        still counts for a campaign is released by cancelling the
+        participation or the campaign, never this way. There is no manual
+        capture: captures go through closing the campaign, which issues the
+        order and the invoice.
+      x-epic: E15
+      x-status: live
+      x-permission: payments.void
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReasonInput'}
+      responses:
+        '201':
+          description: The approval request (an existing one if it is already waiting).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/ApprovalRequest'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`not_voidable`: the hold still counts, its capture is under way, or it never reached Moyasar.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
   /admin/refunds:
     get:
       tags: [Admin refunds and approvals]
@@ -3589,6 +3638,206 @@ paths:
 
         '422':
           $ref: '#/components/responses/ValidationFailed'
+  /admin/ledger/accounts:
+    get:
+      tags: [Admin finance]
+      operationId: adminListLedgerAccounts
+      summary: Ledger accounts with their balances
+      description: Every account of the chart, with debits, credits and the balance (debits minus credits).
+      x-epic: E15
+      x-status: live
+      x-permission: ledger.view
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: Accounts in chart order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/LedgerAccountBalance'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/ledger/transactions:
+    get:
+      tags: [Admin finance]
+      operationId: adminListLedgerTransactions
+      summary: Ledger postings
+      description: Newest first, each with its balanced lines. Filter by type, or by an account one of its lines touches.
+      x-epic: E15
+      x-status: live
+      x-permission: ledger.view
+      security: [{adminToken: []}]
+      parameters:
+        - name: account
+          in: query
+          schema: {$ref: '#/components/schemas/LedgerAccountCode'}
+        - name: type
+          in: query
+          schema: {$ref: '#/components/schemas/LedgerTransactionType'}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Postings, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/LedgerTransaction'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /admin/ledger/adjustments:
+    get:
+      tags: [Admin finance]
+      operationId: adminListLedgerAdjustments
+      summary: Hand-made postings and reversals
+      x-epic: E15
+      x-status: live
+      x-permission: ledger.view
+      security: [{adminToken: []}]
+      parameters:
+        - name: status
+          in: query
+          schema: {type: string, enum: [pending, posted, rejected]}
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Adjustments, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/LedgerAdjustment'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+    post:
+      tags: [Admin finance]
+      operationId: adminRequestLedgerAdjustment
+      summary: Ask for a ledger adjustment or reversal
+      description: |
+        Either balanced `lines` to post (debits equal credits), or the ID of
+        a posting to reverse in full. Opens a `ledger_adjustment` approval
+        request; nothing reaches the ledger until a second admin with the
+        finance role approves it, and then it is posted in that decision.
+        Postings are never changed: a wrong adjustment is fixed by reversing
+        it. A posting is reversed at most once, and reversals are not
+        reversed.
+      x-epic: E15
+      x-status: live
+      x-permission: ledger.adjust
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LedgerAdjustmentInput'}
+      responses:
+        '201':
+          description: Waiting for approval.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/LedgerAdjustment'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: '`already_reversed`, or `invalid_transition` for a reversal of a reversal.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422':
+          description: '`ledger_unbalanced` on `lines`, or invalid input.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ValidationError'}
+  /admin/settlements:
+    get:
+      tags: [Admin finance]
+      operationId: adminListSettlements
+      summary: Moyasar payouts to the bank
+      description: |
+        Imported daily by `payments:settlements`, each posted to the ledger
+        (bank, payment fees and recoverable VAT against Moyasar clearing).
+        `unmatched_count` counts lines for payments we do not know.
+      x-epic: E15
+      x-status: live
+      x-permission: ledger.view
+      security: [{adminToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Settlements, newest import first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/MoyasarSettlement'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+  /admin/settlements/{settlement_id}/lines:
+    parameters:
+      - name: settlement_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      tags: [Admin finance]
+      operationId: adminListSettlementLines
+      summary: What one settlement paid out
+      x-epic: E15
+      x-status: live
+      x-permission: ledger.view
+      security: [{adminToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Lines in Moyasar's order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/MoyasarSettlementLine'}
+                  meta: {$ref: '#/components/schemas/CursorMeta'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
 components:
   securitySchemes:
     customerToken:
@@ -4277,6 +4526,7 @@ components:
         - campaigns.close
         - payments.view
         - refunds.request
+        - payments.void
         - approvals.view
         - approvals.decide
         - orders.view
@@ -4286,6 +4536,8 @@ components:
         - reconciliation.view
         - reconciliation.resolve
         - audit.view
+        - ledger.view
+        - ledger.adjust
         - admins.manage
 
     AdminUser:
@@ -4788,7 +5040,7 @@ components:
 
     AdminPayment:
       type: object
-      required: [id, participation_id, campaign, provider_payment_id, source_type, scheme, card_last4, status, rejection_reason, authorized_amount, captured_amount, refunded_amount, expires_at, capture_cutoff_at, authorized_at, captured_at, voided_at, provider_status, last_synced_at, transactions]
+      required: [id, participation_id, campaign, provider_payment_id, source_type, scheme, card_last4, status, rejection_reason, authorized_amount, captured_amount, refunded_amount, expires_at, capture_cutoff_at, authorized_at, captured_at, voided_at, provider_status, last_synced_at, void_requestable, transactions]
       properties:
         id: {type: string, format: uuid}
         participation_id: {type: string, format: uuid}
@@ -4817,6 +5069,10 @@ components:
         voided_at: {type: string, format: date-time, nullable: true}
         provider_status: {type: string, nullable: true, description: Last status seen at Moyasar.}
         last_synced_at: {type: string, format: date-time, nullable: true}
+        void_requestable:
+          type: boolean
+          nullable: true
+          description: Whether a hold Moyasar still keeps may be released (`POST /admin/payments/{id}/void`). Null in lists.
         transactions:
           type: array
           description: Every call to Moyasar, oldest first. Empty in list responses.
@@ -5222,6 +5478,136 @@ components:
           nullable: true
         resolved_at: {type: string, format: date-time, nullable: true}
         resolution_note: {type: string, nullable: true}
+
+    LedgerAccountCode:
+      type: string
+      enum: [moyasar_clearing, bank, inventory_in_transit, customer_prepayments, vat_output_payable, supplier_payable, sales_revenue, payment_fees, vat_input_recoverable]
+
+    LedgerTransactionType:
+      type: string
+      enum: [capture, refund, revenue_recognition, adjustment, reversal, settlement]
+
+    LedgerAccountBalance:
+      type: object
+      required: [code, name, type, debits, credits, balance]
+      properties:
+        code: {$ref: '#/components/schemas/LedgerAccountCode'}
+        name: {type: string, example: Moyasar clearing}
+        type: {type: string, enum: [asset, liability, revenue, expense, equity]}
+        debits: {$ref: '#/components/schemas/Money'}
+        credits: {$ref: '#/components/schemas/Money'}
+        balance: {allOf: [{$ref: '#/components/schemas/Money'}], description: Debits minus credits; negative for a credit balance.}
+
+    LedgerLine:
+      type: object
+      required: [account, account_name, direction, amount]
+      properties:
+        account: {$ref: '#/components/schemas/LedgerAccountCode'}
+        account_name: {type: string}
+        direction: {type: string, enum: [D, C]}
+        amount: {$ref: '#/components/schemas/Money'}
+
+    LedgerTransaction:
+      type: object
+      required: [id, type, reference, description, order, approval_request_id, reverses_transaction_id, entries, actor, occurred_at]
+      properties:
+        id: {type: string, format: uuid}
+        type: {$ref: '#/components/schemas/LedgerTransactionType'}
+        reference: {type: string, example: 'capture:9b1c…', description: 'Unique per type: what the posting is for.'}
+        description: {type: string}
+        order:
+          type: object
+          nullable: true
+          required: [id, number]
+          properties:
+            id: {type: string, format: uuid}
+            number: {type: string}
+        approval_request_id: {type: string, format: uuid, nullable: true}
+        reverses_transaction_id: {type: string, format: uuid, nullable: true}
+        entries:
+          type: array
+          items: {$ref: '#/components/schemas/LedgerLine'}
+        actor: {$ref: '#/components/schemas/Actor'}
+        occurred_at: {type: string, format: date-time}
+
+    LedgerAdjustmentInput:
+      type: object
+      required: [description]
+      description: Either `lines` or `reverses_transaction_id`.
+      properties:
+        description: {type: string, minLength: 3, maxLength: 255}
+        lines:
+          type: array
+          nullable: true
+          minItems: 2
+          maxItems: 20
+          items:
+            type: object
+            required: [account, direction, amount_halalas]
+            properties:
+              account: {$ref: '#/components/schemas/LedgerAccountCode'}
+              direction: {type: string, enum: [D, C]}
+              amount_halalas: {type: integer, format: int64, minimum: 1}
+        reverses_transaction_id: {type: string, format: uuid, nullable: true}
+
+    LedgerAdjustment:
+      type: object
+      required: [id, description, lines, reverses, status, approval_request_id, ledger_transaction_id, requested_by, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        description: {type: string}
+        lines:
+          type: array
+          nullable: true
+          description: Null for a reversal.
+          items: {$ref: '#/components/schemas/LedgerLine'}
+        reverses:
+          type: object
+          nullable: true
+          description: The posting it reverses; null for lines.
+          required: [id, type, reference, description]
+          properties:
+            id: {type: string, format: uuid}
+            type: {$ref: '#/components/schemas/LedgerTransactionType'}
+            reference: {type: string}
+            description: {type: string}
+        status: {type: string, enum: [pending, posted, rejected]}
+        approval_request_id: {type: string, format: uuid, nullable: true}
+        ledger_transaction_id: {type: string, format: uuid, nullable: true, description: The posting once approved.}
+        requested_by:
+          type: object
+          allOf: [{$ref: '#/components/schemas/Actor'}]
+          nullable: true
+        created_at: {type: string, format: date-time}
+
+    MoyasarSettlement:
+      type: object
+      required: [id, provider_settlement_id, gross, fee, fee_vat, net, settled_at, line_count, unmatched_count, ledger_transaction_id, imported_at]
+      properties:
+        id: {type: string, format: uuid}
+        provider_settlement_id: {type: string}
+        gross: {allOf: [{$ref: '#/components/schemas/Money'}], description: Net plus fee.}
+        fee: {allOf: [{$ref: '#/components/schemas/Money'}], description: "Moyasar's fee, VAT included."}
+        fee_vat: {$ref: '#/components/schemas/Money'}
+        net: {allOf: [{$ref: '#/components/schemas/Money'}], description: Paid into the bank.}
+        settled_at: {type: string, format: date-time, nullable: true}
+        line_count: {type: integer}
+        unmatched_count: {type: integer, description: Lines for payments we do not know.}
+        ledger_transaction_id: {type: string, format: uuid, nullable: true, description: Null only when every amount is zero.}
+        imported_at: {type: string, format: date-time}
+
+    MoyasarSettlementLine:
+      type: object
+      required: [type, provider_payment_id, payment_id, amount, fee, fee_vat, payment_amount, transacted_at]
+      properties:
+        type: {type: string, example: payment, description: "Moyasar's line type: payment, refund, void, fee, chargeback, …"}
+        provider_payment_id: {type: string, nullable: true}
+        payment_id: {type: string, format: uuid, nullable: true, description: Null when we have no such payment.}
+        amount: {allOf: [{$ref: '#/components/schemas/Money'}], description: Net of the fee; negative for money going back.}
+        fee: {$ref: '#/components/schemas/Money'}
+        fee_vat: {$ref: '#/components/schemas/Money'}
+        payment_amount: {type: object, nullable: true, allOf: [{$ref: '#/components/schemas/Money'}]}
+        transacted_at: {type: string, format: date-time, nullable: true}
 
     AuditLogEntry:
       type: object
