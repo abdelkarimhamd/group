@@ -10,6 +10,7 @@ use App\Modules\Fulfillment\Console\TrackShipmentsCommand;
 use App\Modules\Identity\Models\OtpChallenge;
 use App\Modules\Notifications\Console\DispatchDueNotificationsCommand;
 use App\Modules\Orders\Console\RenderInvoicePdfsCommand;
+use App\Modules\Orders\Console\ZatcaReportCommand;
 use App\Modules\Payments\Console\ExpireHoldsCommand;
 use App\Modules\Payments\Console\RequeueWebhooksCommand;
 use App\Modules\Supplier\Console\ExpireQuotationsCommand;
@@ -51,6 +52,11 @@ Schedule::command(DispatchDueNotificationsCommand::class)->everyMinute()->withou
 
 // Invoice and credit note PDFs whose job ran out of tries or was lost.
 Schedule::command(RenderInvoicePdfsCommand::class)->everyTenMinutes()->withoutOverlapping()->onOneServer();
+
+// E-invoices (ZATCA phase 2) still to sign or report are queued again, and
+// any close to ZATCA's 24-hour limit raise an alert. Nothing to do while
+// phase 2 has never been on.
+Schedule::command(ZatcaReportCommand::class)->everyTenMinutes()->withoutOverlapping()->onOneServer();
 
 // Approved refunds and campaign cancellations whose job ran out of tries or
 // was lost are queued again; PostgreSQL remembers what is still owed.

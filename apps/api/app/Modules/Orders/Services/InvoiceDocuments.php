@@ -33,6 +33,11 @@ final class InvoiceDocuments
             return $invoice->pdf_s3_key;
         }
 
+        // Its QR code comes with the e-invoice signature (ZATCA phase 2).
+        if ($invoice->zatcaStamp()->whereNull('signed_at')->exists()) {
+            throw new RuntimeException("The PDF of {$invoice->invoice_number} waits for its e-invoice signature.");
+        }
+
         $path = self::pdfPath($invoice);
 
         if (! Storage::disk(self::disk())->put($path, $this->pdf->render($invoice))) {
@@ -115,7 +120,9 @@ final class InvoiceDocuments
     {
         $before = ($now ?? CarbonImmutable::now())->subMinutes((int) config('groupbuy.invoices.pdf_requeue_after_minutes'));
 
-        return Invoice::query()->whereNull('pdf_s3_key')->where('created_at', '<=', $before);
+        // An invoice still waiting for its e-invoice signature gets its PDF once signed.
+        return Invoice::query()->whereNull('pdf_s3_key')->where('created_at', '<=', $before)
+            ->whereDoesntHave('zatcaStamp', fn ($query) => $query->whereNull('signed_at'));
     }
 
     private static function windowStart(?CarbonImmutable $now): CarbonImmutable

@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * A VAT invoice or credit note. Issued once: a database trigger refuses any
@@ -37,6 +38,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CarbonImmutable $updated_at
  * @property-read CustomerOrder $order
  * @property-read Invoice|null $original The invoice a credit note is against.
+ * @property-read ZatcaInvoiceStamp|null $zatcaStamp Its e-invoice, when issued while ZATCA phase 2 was on.
  */
 class Invoice extends Model
 {
@@ -89,5 +91,15 @@ class Invoice extends Model
     public function original(): BelongsTo
     {
         return $this->belongsTo(Invoice::class, 'original_invoice_id');
+    }
+
+    /**
+     * Its e-invoice (ZATCA phase 2), when it was issued while that was on.
+     *
+     * @return HasOne<ZatcaInvoiceStamp, $this>
+     */
+    public function zatcaStamp(): HasOne
+    {
+        return $this->hasOne(ZatcaInvoiceStamp::class);
     }
 }

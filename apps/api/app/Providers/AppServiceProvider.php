@@ -46,6 +46,8 @@ use App\Modules\Orders\Models\Invoice;
 use App\Modules\Orders\Models\OrderReturn;
 use App\Modules\Orders\Models\PurchaseOrderDocument;
 use App\Modules\Orders\Models\SupplierPurchaseOrder;
+use App\Modules\Orders\Models\ZatcaDevice;
+use App\Modules\Orders\Models\ZatcaInvoiceStamp;
 use App\Modules\Payments\Gateway\FakeMoyasarGateway;
 use App\Modules\Payments\Gateway\MoyasarGateway;
 use App\Modules\Payments\Gateway\PaymentGateway;
@@ -174,6 +176,8 @@ class AppServiceProvider extends ServiceProvider
             'approval_request' => ApprovalRequest::class,
             'customer_order' => CustomerOrder::class,
             'invoice' => Invoice::class,
+            'zatca_device' => ZatcaDevice::class,
+            'zatca_invoice_stamp' => ZatcaInvoiceStamp::class,
             'refund' => Refund::class,
             'supplier_purchase_order' => SupplierPurchaseOrder::class,
             'purchase_order_document' => PurchaseOrderDocument::class,

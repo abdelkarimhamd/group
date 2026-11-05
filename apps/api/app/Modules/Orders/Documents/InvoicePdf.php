@@ -57,7 +57,7 @@ final class InvoicePdf
      */
     public function data(Invoice $invoice): array
     {
-        $invoice->loadMissing('order', 'original');
+        $invoice->loadMissing('order', 'original', 'zatcaStamp');
         $seller = $invoice->seller_snapshot;
         $creditNote = $invoice->type === InvoiceType::CreditNote;
 
@@ -92,7 +92,8 @@ final class InvoicePdf
             'net' => self::amount($invoice->net_halalas),
             'vat' => self::amount($invoice->vat_halalas),
             'total' => self::amount($invoice->total_halalas),
-            'qr' => $invoice->qr_payload,
+            // The phase 2 QR code once the e-invoice is signed, else phase 1's.
+            'qr' => $invoice->zatcaStamp?->qr ?? $invoice->qr_payload,
         ];
     }
 

@@ -11,6 +11,7 @@ use App\Modules\Campaign\Services\CampaignCancellations;
 use App\Modules\Campaign\Services\Closing;
 use App\Modules\Orders\Services\Invoices;
 use App\Modules\Orders\Services\Orders;
+use App\Modules\Orders\Services\ZatcaReporting;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
 use App\Modules\Payments\Enums\TransactionStatus;
@@ -68,9 +69,10 @@ class Captures
 
         // Each capture issues a tax invoice that can never change, so in
         // production no money is taken while the seller of record is still
-        // the placeholder. The job retries, and the closing sweep sends it
-        // again, until the settings are fixed.
-        if (app()->isProduction() && ($problem = Invoices::sellerProblem()) !== null) {
+        // the placeholder, or while ZATCA phase 2 is on without an onboarded
+        // EGS unit to sign it. The job retries, and the closing sweep sends
+        // it again, until the settings are fixed.
+        if (app()->isProduction() && ($problem = Invoices::sellerProblem() ?? ZatcaReporting::problem()) !== null) {
             Log::critical('payments.capture.seller_not_configured', ['payment' => $payment->uuid]);
 
             throw new LogicException($problem);
