@@ -1,0 +1,3 @@
+# Filled-in environment files hold secrets: only the templates are committed.
+*.env
+!*.example

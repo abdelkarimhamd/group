@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\SetLocaleFromRequest;
+use App\Support\Database\GrantAppRoleCommand;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -39,6 +40,7 @@ return Application::configure(basePath: dirname(__DIR__))
         __DIR__.'/../app/Modules/Orders/Console',
         __DIR__.'/../app/Modules/Payments/Console',
         __DIR__.'/../app/Modules/Supplier/Console',
+        GrantAppRoleCommand::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // Trusted proxies must run first, so the request ID middleware records the

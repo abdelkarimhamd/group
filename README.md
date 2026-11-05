@@ -117,4 +117,4 @@ npm start         # then press i, a, or scan the QR code with Expo Go
 
 See [apps/mobile/README.md](apps/mobile/README.md) for pointing it at Laravel, the fake payment form and the checks CI runs.
 
-More detail: [docs/architecture.md](docs/architecture.md).
+More detail: [docs/architecture.md](docs/architecture.md). Deploying and running it: [docs/runbook.md](docs/runbook.md).

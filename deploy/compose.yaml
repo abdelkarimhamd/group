@@ -1,0 +1,110 @@
+# Production on one server with Docker Compose (docs/runbook.md).
+#
+#   cd deploy
+#   cp env/*.example to env/*.env and fill them in (never commit them)
+#   docker compose run --rm migrate
+#   docker compose up -d
+#
+# Images are built by .github/workflows/images.yml and pulled from
+# ${REGISTRY}; TAG picks the release (a git commit SHA). Managed PostgreSQL and
+# Redis are recommended: the bundled ones start only with --profile local-data.
+
+name: groupbuy
+
+x-api: &api
+  image: ${REGISTRY:-ghcr.io/abdelkarimhamd}/groupbuy-api:${TAG:?Set TAG to the release to run}
+  env_file: [env/api.env]
+  restart: unless-stopped
+  stop_grace_period: 60s
+  logging: &logging
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  # TLS for every public host, then routing (Caddyfile).
+  edge:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    env_file: [env/edge.env]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [api, web, admin, realtime]
+    logging: *logging
+
+  api:
+    <<: *api
+    environment: { ROLE: web }
+
+  worker:
+    <<: *api
+    environment: { ROLE: worker }
+    # Two workers; raise with --scale worker=N. A job never outlives QUEUE_TIMEOUT.
+    deploy: { replicas: 2 }
+    healthcheck: { disable: true }
+
+  # Exactly one.
+  scheduler:
+    <<: *api
+    environment: { ROLE: scheduler }
+    healthcheck: { disable: true }
+
+  # Run before each release: docker compose run --rm migrate
+  migrate:
+    <<: *api
+    env_file: [env/api.env, env/api-owner.env]
+    environment: { ROLE: migrate }
+    restart: "no"
+    profiles: [migrate]
+    healthcheck: { disable: true }
+
+  realtime:
+    image: ${REGISTRY:-ghcr.io/abdelkarimhamd}/groupbuy-realtime:${TAG}
+    env_file: [env/realtime.env]
+    restart: unless-stopped
+    ulimits: { nofile: { soft: 65535, hard: 65535 } }
+    logging: *logging
+
+  web:
+    image: ${REGISTRY:-ghcr.io/abdelkarimhamd}/groupbuy-web:${TAG}
+    env_file: [env/web.env]
+    restart: unless-stopped
+    logging: *logging
+
+  admin:
+    image: ${REGISTRY:-ghcr.io/abdelkarimhamd}/groupbuy-admin:${TAG}
+    restart: unless-stopped
+    logging: *logging
+
+  # Only for a single-server setup without managed services:
+  #   docker compose --profile local-data up -d
+  # Back the volume up (docs/runbook.md, Backups).
+  postgres:
+    image: postgres:16
+    profiles: [local-data]
+    restart: unless-stopped
+    env_file: [env/postgres.env]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 10s
+      retries: 10
+    logging: *logging
+
+  redis:
+    image: redis:7
+    profiles: [local-data]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: [redis-data:/data]
+    logging: *logging
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  redis-data:

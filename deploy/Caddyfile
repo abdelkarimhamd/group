@@ -1,0 +1,62 @@
+# The edge: TLS for every public host (Let's Encrypt, automatic) and routing
+# to the containers in compose.yaml. Host names come from env/edge.env.
+
+# Caddy replaces any X-Forwarded-For a client sends with the address it saw,
+# and the API trusts it only from the private network (TRUSTED_PROXIES).
+
+{
+	email {$ACME_EMAIL}
+}
+
+(common) {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	log {
+		output stderr
+		format json
+	}
+}
+
+# The customer website, and the API on the same origin (/api/v1, including
+# Moyasar's webhook at /api/v1/webhooks/moyasar).
+{$SITE_HOST} {
+	import common
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
+
+# The admin portal, which calls /api/v1 on its own origin.
+{$ADMIN_HOST} {
+	import common
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy admin:8080
+	}
+}
+
+# Live campaign progress: browsers and the app open wss://{$REALTIME_HOST}/app/{key}.
+# Reverb's HTTP API (/apps/*) stays private: the API posts to http://realtime:8080.
+{$REALTIME_HOST} {
+	import common
+
+	handle /app/* {
+		reverse_proxy realtime:8080
+	}
+
+	handle {
+		respond 404
+	}
+}

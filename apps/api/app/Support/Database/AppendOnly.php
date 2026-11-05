@@ -53,6 +53,24 @@ final class AppendOnly
             SQL);
     }
 
+    /**
+     * Every table protect() guards in the current schema, by name.
+     *
+     * @return list<string>
+     */
+    public static function tables(): array
+    {
+        return collect(DB::select(<<<'SQL'
+            SELECT DISTINCT event_object_table AS name
+            FROM information_schema.triggers
+            WHERE trigger_schema = current_schema() AND trigger_name LIKE '%\_append\_only\_rows'
+            ORDER BY 1
+            SQL))
+            ->pluck('name')
+            ->values()
+            ->all();
+    }
+
     public static function release(string $table): void
     {
         self::assertSafeIdentifier($table);

@@ -1,0 +1,8 @@
+*
+!apps/realtime/
+apps/realtime/.env
+apps/realtime/.env.*
+apps/realtime/vendor/
+apps/realtime/node_modules/
+apps/realtime/storage/
+apps/realtime/bootstrap/cache/*.php
