@@ -1,0 +1,13 @@
+# Context is the repository root: only the API and its deploy files go in.
+*
+!apps/api/
+!deploy/api/
+apps/api/.env
+apps/api/.env.*
+apps/api/vendor/
+apps/api/node_modules/
+apps/api/tests/
+apps/api/phpunit*.xml
+apps/api/.phpunit.cache/
+apps/api/storage/
+apps/api/bootstrap/cache/*.php

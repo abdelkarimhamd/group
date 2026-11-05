@@ -1,0 +1,2 @@
+# This server's compose settings, such as COMPOSE_PROFILES.
+.env

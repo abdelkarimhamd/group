@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { isLocale, type Locale } from "@/i18n/config";
-import { createApi, unwrap } from "@/lib/api/server";
+import { requestApi, unwrap } from "@/lib/api/server";
 import { toActionFailure, type ActionFailure } from "@/lib/api/errors";
 import type { Address, AddressInput, User } from "@/lib/api/types";
 import { getToken } from "@/lib/session";
@@ -11,7 +11,7 @@ async function authed(localeValue: string) {
   const locale: Locale = isLocale(localeValue) ? localeValue : "ar";
   const token = await getToken();
   if (!token) return { locale, api: null };
-  return { locale, api: createApi(locale, token) };
+  return { locale, api: await requestApi(locale, token) };
 }
 
 const signedOut: ActionFailure = { ok: false, status: 401, code: "unauthenticated" };
