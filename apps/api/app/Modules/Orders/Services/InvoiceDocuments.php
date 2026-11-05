@@ -6,6 +6,7 @@ use App\Modules\Orders\Documents\InvoicePdf;
 use App\Modules\Orders\Jobs\RenderInvoicePdf;
 use App\Modules\Orders\Models\Invoice;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -63,17 +64,18 @@ final class InvoiceDocuments
 
     /**
      * Queue the PDF of every invoice still without one this long after it
-     * was issued: its job ran out of tries or was lost. Returns how many.
+     * was issued: its job ran out of tries or was lost. Only invoices from
+     * the last `invoices.pdf_requeue_within_days`, unless `$all`: an older
+     * one keeps failing and waits for its cause to be fixed. A copy of a
+     * job still holding its unique lock is dropped. Returns how many were
+     * asked for.
      */
-    public function requeueMissing(?CarbonImmutable $now = null): int
+    public function requeueMissing(?CarbonImmutable $now = null, bool $all = false): int
     {
-        $before = ($now ?? CarbonImmutable::now())->subMinutes((int) config('groupbuy.invoices.pdf_requeue_after_minutes'));
         $queued = 0;
 
-        Invoice::query()
-            ->whereNull('pdf_s3_key')
-            ->where('created_at', '<=', $before)
-            ->orderBy('id')
+        $this->missing($now)
+            ->when(! $all, fn ($query) => $query->where('created_at', '>', self::windowStart($now)))
             ->select('id')
             ->chunkById(500, function ($invoices) use (&$queued): void {
                 foreach ($invoices as $invoice) {
@@ -86,11 +88,39 @@ final class InvoiceDocuments
     }
 
     /**
-     * invoices/2026/INV-2026-000123.pdf
+     * Invoices older than the requeue window that still have no PDF.
+     */
+    public function countStale(?CarbonImmutable $now = null): int
+    {
+        return $this->missing($now)->where('created_at', '<=', self::windowStart($now))->count();
+    }
+
+    /**
+     * invoices/2026/INV-2026-000123.pdf: the folder is the year in the
+     * number (Riyadh time), not the UTC year of issue.
      */
     public static function pdfPath(Invoice $invoice): string
     {
-        return sprintf('invoices/%s/%s.pdf', $invoice->issued_at->format('Y'), $invoice->invoice_number);
+        $year = preg_match('/^[A-Z]+-(\d{4})-/', $invoice->invoice_number, $m) === 1
+            ? $m[1]
+            : $invoice->issued_at->setTimezone((string) config('groupbuy.display_timezone'))->format('Y');
+
+        return sprintf('invoices/%s/%s.pdf', $year, $invoice->invoice_number);
+    }
+
+    /**
+     * @return Builder<Invoice>
+     */
+    private function missing(?CarbonImmutable $now): Builder
+    {
+        $before = ($now ?? CarbonImmutable::now())->subMinutes((int) config('groupbuy.invoices.pdf_requeue_after_minutes'));
+
+        return Invoice::query()->whereNull('pdf_s3_key')->where('created_at', '<=', $before);
+    }
+
+    private static function windowStart(?CarbonImmutable $now): CarbonImmutable
+    {
+        return ($now ?? CarbonImmutable::now())->subDays((int) config('groupbuy.invoices.pdf_requeue_within_days'));
     }
 
     private static function disk(): string

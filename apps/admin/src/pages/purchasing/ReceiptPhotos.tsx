@@ -8,9 +8,9 @@ import { toApiError } from '../../api/errors';
 import type { InboundReceipt } from '../../api/types';
 import { Can } from '../../auth/AuthProvider';
 import { apiErrorMessage } from '../../components/ApiErrorAlert';
+import { MAX_IMAGE_BYTES } from '../../lib/uploads';
 
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
 /** Photos of the goods as they arrived: evidence, so they are added and never removed. */
 export function ReceiptPhotos({ receipt }: { receipt: InboundReceipt }) {
@@ -21,7 +21,7 @@ export function ReceiptPhotos({ receipt }: { receipt: InboundReceipt }) {
 
   const upload = async (file: File) => {
     if (!PHOTO_TYPES.includes(file.type)) return void message.error(t('purchasing.photoType'));
-    if (file.size > MAX_PHOTO_BYTES) return void message.error(t('purchasing.photoTooLarge'));
+    if (file.size > MAX_IMAGE_BYTES) return void message.error(t('purchasing.photoTooLarge'));
     setUploading(true);
     try {
       await api.POST('/admin/inbound-receipts/{receipt_id}/photos', {

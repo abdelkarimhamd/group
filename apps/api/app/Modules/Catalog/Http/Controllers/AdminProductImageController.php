@@ -16,7 +16,6 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Throwable;
 
 /**
  * Product photos. Files go to the media disk (config groupbuy.media.disk):
@@ -42,14 +41,8 @@ final class AdminProductImageController extends AdminController
 
         $disk = (string) config('groupbuy.media.disk');
         $uuid = (string) Str::uuid7();
-        $path = $request->file('file')->storeAs(
-            "products/{$parent->uuid}",
-            $uuid.'.'.$request->file('file')->extension(),
-            $disk,
-        );
-
-        try {
-            $image = DB::transaction(function () use ($request, $parent, $variantId, $disk, $uuid, $path): ProductImage {
+        $image = StoredFiles::storeThen($request->file('file'), "products/{$parent->uuid}", $disk,
+            fn (string $path): ProductImage => DB::transaction(function () use ($request, $parent, $variantId, $disk, $uuid, $path): ProductImage {
                 $image = new ProductImage($request->safe()->only(['alt_ar', 'alt_en', 'sort_order']));
                 $image->uuid = $uuid;
                 $image->product_id = $parent->id;
@@ -64,12 +57,9 @@ final class AdminProductImageController extends AdminController
                 ]);
 
                 return $image;
-            });
-        } catch (Throwable $e) {
-            StoredFiles::deleteQuietly($disk, $path);
-
-            throw $e;
-        }
+            }),
+            $uuid,
+        );
 
         return AdminImageResource::make($image->load('variant'))->response()->setStatusCode(201);
     }

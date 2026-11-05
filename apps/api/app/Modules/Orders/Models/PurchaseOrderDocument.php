@@ -51,6 +51,15 @@ class PurchaseOrderDocument extends Model
     }
 
     /**
+     * Within `media.document_removal_hours` of its upload, to correct a
+     * wrong file; after that the paper is kept as evidence.
+     */
+    public function isRemovable(): bool
+    {
+        return $this->created_at->addHours((int) config('groupbuy.media.document_removal_hours'))->isFuture();
+    }
+
+    /**
      * @return BelongsTo<SupplierPurchaseOrder, $this>
      */
     public function purchaseOrder(): BelongsTo

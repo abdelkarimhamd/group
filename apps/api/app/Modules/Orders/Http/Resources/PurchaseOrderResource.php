@@ -62,6 +62,7 @@ class PurchaseOrderResource extends JsonResource
                 ),
                 'uploaded_by' => ActorJson::admin($document->uploadedBy),
                 'uploaded_at' => $document->created_at->toIso8601ZuluString(),
+                'removable' => $document->isRemovable(),
             ])->all(),
         ];
     }

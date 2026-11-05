@@ -24,8 +24,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use Throwable;
 
 /**
  * Supplier quotes and their landed cost. The server works out the landed cost
@@ -120,11 +118,8 @@ final class AdminQuotationController extends AdminController
     {
         $parent = SupplierQuotation::query()->where('uuid', $quotation)->firstOrFail();
         $disk = (string) config('groupbuy.media.documents_disk');
-        $file = $request->file('file');
-        $path = $file->storeAs("quotations/{$parent->uuid}", Str::uuid7().'.'.$file->extension(), $disk);
-
-        try {
-            [$updated, $previous] = DB::transaction(function () use ($request, $quotation, $disk, $path): array {
+        [$updated, $previous] = StoredFiles::storeThen($request->file('file'), "quotations/{$parent->uuid}", $disk,
+            fn (string $path): array => DB::transaction(function () use ($request, $quotation, $disk, $path): array {
                 $model = $this->lockEditable($quotation);
                 $previous = $model->attachment_path === null ? null : [$model->attachment_disk, $model->attachment_path];
 
@@ -138,12 +133,8 @@ final class AdminQuotationController extends AdminController
                 );
 
                 return [$model, $previous];
-            });
-        } catch (Throwable $e) {
-            StoredFiles::deleteQuietly($disk, $path);
-
-            throw $e;
-        }
+            }),
+        );
 
         // The old file is no longer referenced; remove it after the commit.
         if ($previous !== null) {

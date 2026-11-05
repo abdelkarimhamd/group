@@ -104,6 +104,30 @@ class DocumentsTest extends TestCase
         $this->travel(20)->minutes();
         $this->artisan('invoices:render-pdfs')->expectsOutput('Queued 1 invoice PDFs.')->assertSuccessful();
         Bus::assertDispatched(RenderInvoicePdf::class, fn (RenderInvoicePdf $job) => $job->invoiceId === $invoice->id);
+
+        // A week on, a render that keeps failing is no longer queued on its
+        // own: the sweep counts it, and --all queues it once fixed.
+        Bus::fake([RenderInvoicePdf::class]);
+        $this->travel(8)->days();
+        $this->artisan('invoices:render-pdfs')
+            ->expectsOutput('Queued 0 invoice PDFs.')
+            ->expectsOutputToContain('1 older invoices still have no PDF')
+            ->assertSuccessful();
+        Bus::assertNotDispatched(RenderInvoicePdf::class);
+        $this->artisan('invoices:render-pdfs --all')
+            ->expectsOutput('Queued 1 invoice PDFs.')
+            ->doesntExpectOutputToContain('older invoices')
+            ->assertSuccessful();
+        Bus::assertDispatched(RenderInvoicePdf::class, fn (RenderInvoicePdf $job) => $job->invoiceId === $invoice->id);
+    }
+
+    #[Test]
+    public function the_pdf_folder_is_the_year_in_the_invoice_number(): void
+    {
+        // 2026-12-31 22:30 UTC is already 2027 in Riyadh, where the number's year comes from.
+        $invoice = new Invoice(['invoice_number' => 'INV-2027-000500']);
+        $invoice->issued_at = CarbonImmutable::parse('2026-12-31 22:30:00', 'UTC');
+        $this->assertSame('invoices/2027/INV-2027-000500.pdf', InvoiceDocuments::pdfPath($invoice));
     }
 
     #[Test]
@@ -154,6 +178,14 @@ class DocumentsTest extends TestCase
         config(['groupbuy.media.documents_per_purchase_order' => 1]);
         $this->upload($order, 'payment_receipt', UploadedFile::fake()->image('receipt.png'))->assertStatus(409)->assertJsonPath('code', 'document_limit_reached');
         $this->assertSame([$document->path], $disk->allFiles("purchase-orders/{$order->uuid}"));
+
+        // Removable only within a day of the upload; then it is the record.
+        $this->admin('get', "/api/v1/admin/purchase-orders/{$order->uuid}")->assertOk()->assertJsonPath('data.documents.0.removable', true);
+        $this->travel(25)->hours();
+        $this->admin('get', "/api/v1/admin/purchase-orders/{$order->uuid}")->assertOk()->assertJsonPath('data.documents.0.removable', false);
+        $this->admin('delete', "/api/v1/admin/purchase-orders/{$order->uuid}/documents/{$document->uuid}")->assertStatus(409)->assertJsonPath('code', 'document_locked');
+        $this->assertTrue($disk->exists($document->path));
+        $this->travel(-25)->hours();
 
         $this->admin('delete', "/api/v1/admin/purchase-orders/{$order->uuid}/documents/{$document->uuid}")
             ->assertOk()

@@ -3044,7 +3044,10 @@ paths:
       tags: [Admin purchasing]
       operationId: adminRemovePurchaseOrderDocument
       summary: Remove a paper uploaded by mistake
-      description: The file is deleted and the removal is audited.
+      description: |
+        The file is deleted and the removal is audited. Only within 24 hours
+        of the upload (the document's `removable`); after that the paper is
+        kept as a record of what was ordered and paid (409 `document_locked`).
       x-epic: E12
       x-status: live
       x-permission: purchasing.edit
@@ -3062,6 +3065,7 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
 
   /admin/purchase-orders/{purchase_order_id}/receipts:
     parameters:
@@ -4714,7 +4718,7 @@ components:
 
     PurchaseOrderDocument:
       type: object
-      required: [id, kind, file_name, size_bytes, url, uploaded_by, uploaded_at]
+      required: [id, kind, file_name, size_bytes, url, uploaded_by, uploaded_at, removable]
       properties:
         id: {type: string, format: uuid}
         kind: {$ref: '#/components/schemas/PurchaseOrderDocumentKind'}
@@ -4723,6 +4727,7 @@ components:
         url: {type: string, format: uri, description: Signed link that works for 30 minutes.}
         uploaded_by: {$ref: '#/components/schemas/Actor'}
         uploaded_at: {type: string, format: date-time}
+        removable: {type: boolean, description: 'True within 24 hours of the upload; after that the paper is kept as a record.'}
 
     InboundReceiptInput:
       type: object

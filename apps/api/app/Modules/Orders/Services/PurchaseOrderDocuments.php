@@ -13,8 +13,6 @@ use App\Support\Files\StoredFiles;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use RuntimeException;
-use Throwable;
 
 /**
  * Papers kept with a supplier purchase order (spec, E12). The file is
@@ -28,20 +26,15 @@ final class PurchaseOrderDocuments
     public function attach(string $purchaseOrderUuid, UploadedFile $file, PurchaseOrderDocumentKind $kind, AdminUser $by): PurchaseOrderDocument
     {
         $parent = SupplierPurchaseOrder::query()->where('uuid', $purchaseOrderUuid)->firstOrFail();
+        // A cheap look first, so a full order costs no upload; the count
+        // that decides is taken again under the lock.
+        self::assertRoom($parent);
         $disk = (string) config('groupbuy.media.documents_disk');
-        $path = $file->storeAs("purchase-orders/{$parent->uuid}", Str::uuid7().'.'.$file->extension(), $disk);
 
-        if ($path === false) {
-            throw new RuntimeException("Could not store a document for purchase order {$parent->po_number}.");
-        }
-
-        try {
-            return DB::transaction(function () use ($purchaseOrderUuid, $file, $kind, $by, $disk, $path): PurchaseOrderDocument {
+        return StoredFiles::storeThen($file, "purchase-orders/{$parent->uuid}", $disk,
+            fn (string $path): PurchaseOrderDocument => DB::transaction(function () use ($purchaseOrderUuid, $file, $kind, $by, $disk, $path): PurchaseOrderDocument {
                 $order = SupplierPurchaseOrder::query()->where('uuid', $purchaseOrderUuid)->lockForUpdate()->firstOrFail();
-
-                if ($order->documents()->count() >= (int) config('groupbuy.media.documents_per_purchase_order')) {
-                    throw new ApiException(409, 'document_limit_reached');
-                }
+                self::assertRoom($order);
 
                 $document = PurchaseOrderDocument::create([
                     'supplier_purchase_order_id' => $order->id,
@@ -59,14 +52,15 @@ final class PurchaseOrderDocuments
                 ]);
 
                 return $document;
-            });
-        } catch (Throwable $e) {
-            StoredFiles::deleteQuietly($disk, $path);
-
-            throw $e;
-        }
+            }),
+        );
     }
 
+    /**
+     * Only a paper uploaded by mistake is removed: once
+     * `media.document_removal_hours` have passed it is evidence of what was
+     * ordered and paid, and stays (409 `document_locked`).
+     */
     public function remove(string $purchaseOrderUuid, string $documentUuid, AdminUser $by): void
     {
         $document = DB::transaction(function () use ($purchaseOrderUuid, $documentUuid, $by): PurchaseOrderDocument {
@@ -75,6 +69,10 @@ final class PurchaseOrderDocuments
                 ->where('supplier_purchase_order_id', $order->id)
                 ->where('uuid', $documentUuid)
                 ->firstOrFail();
+
+            if (! $document->isRemovable()) {
+                throw new ApiException(409, 'document_locked');
+            }
 
             $document->delete();
             $this->audit->record(Actor::admin($by->id), 'purchase_order.document_remove', $order, [
@@ -87,6 +85,13 @@ final class PurchaseOrderDocuments
         });
 
         StoredFiles::deleteQuietly($document->disk, $document->path);
+    }
+
+    private static function assertRoom(SupplierPurchaseOrder $order): void
+    {
+        if ($order->documents()->count() >= (int) config('groupbuy.media.documents_per_purchase_order')) {
+            throw new ApiException(409, 'document_limit_reached');
+        }
     }
 
     /**

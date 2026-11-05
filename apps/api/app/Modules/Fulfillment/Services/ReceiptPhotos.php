@@ -10,9 +10,6 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Files\StoredFiles;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use RuntimeException;
-use Throwable;
 
 /**
  * Photos of goods as they reached the warehouse (spec, E13), kept as
@@ -27,24 +24,19 @@ final class ReceiptPhotos
     public function add(string $receiptUuid, UploadedFile $file, AdminUser $by): InboundReceipt
     {
         $receipt = InboundReceipt::query()->where('uuid', $receiptUuid)->firstOrFail();
-        $disk = (string) config('groupbuy.media.documents_disk');
-        $path = $file->storeAs("receipts/{$receipt->uuid}", Str::uuid7().'.'.$file->extension(), $disk);
+        // A cheap look first, so a full receipt costs no upload; the count
+        // that decides is taken again under the lock.
+        self::assertRoom($receipt);
 
-        if ($path === false) {
-            throw new RuntimeException("Could not store a photo for receipt {$receipt->uuid}.");
-        }
-
-        try {
-            return DB::transaction(function () use ($receiptUuid, $by, $path): InboundReceipt {
+        // Keys carry no disk: a receipt's photos are read from the configured
+        // documents disk, which therefore stays the same once files are kept
+        // (docs/architecture.md, Files).
+        return StoredFiles::storeThen($file, "receipts/{$receipt->uuid}", (string) config('groupbuy.media.documents_disk'),
+            fn (string $path): InboundReceipt => DB::transaction(function () use ($receiptUuid, $by, $path): InboundReceipt {
                 $receipt = InboundReceipt::query()->where('uuid', $receiptUuid)->lockForUpdate()->firstOrFail();
+                self::assertRoom($receipt);
+
                 $photos = $receipt->photo_s3_keys;
-
-                if (count($photos) >= (int) config('groupbuy.media.photos_per_receipt')) {
-                    throw new ApiException(409, 'photo_limit_reached');
-                }
-
-                // The disk is the documents disk at upload; keys carry no disk,
-                // so a receipt's photos are always read from the configured one.
                 $photos[] = $path;
                 $receipt->photo_s3_keys = $photos;
                 $receipt->save();
@@ -54,11 +46,14 @@ final class ReceiptPhotos
                 ]);
 
                 return $receipt;
-            });
-        } catch (Throwable $e) {
-            StoredFiles::deleteQuietly($disk, $path);
+            }),
+        );
+    }
 
-            throw $e;
+    private static function assertRoom(InboundReceipt $receipt): void
+    {
+        if (count($receipt->photo_s3_keys) >= (int) config('groupbuy.media.photos_per_receipt')) {
+            throw new ApiException(409, 'photo_limit_reached');
         }
     }
 }

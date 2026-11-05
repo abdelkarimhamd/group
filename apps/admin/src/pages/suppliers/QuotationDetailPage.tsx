@@ -17,9 +17,9 @@ import { QueryState } from '../../components/Results';
 import { StatusTag } from '../../components/StatusTag';
 import { useBilingual } from '../../i18n/LocaleProvider';
 import { QuotationFormModal } from './QuotationFormModal';
+import { MAX_ATTACHMENT_BYTES } from '../../lib/uploads';
 
 const ATTACHMENT_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
-const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const BREAKDOWN_KEYS = [
   'product',
   'freight',

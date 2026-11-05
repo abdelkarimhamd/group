@@ -27,6 +27,7 @@ const document = {
   url: 'https://files.example.sa/po/1.pdf?signature=x',
   uploaded_by: { type: 'admin' as const, id: operations.id, name: operations.name },
   uploaded_at: '2026-11-12T10:00:00Z',
+  removable: true,
 };
 
 function serve(po: PurchaseOrder) {
@@ -51,6 +52,16 @@ describe('purchase order files', () => {
       receipt.photo_urls[0],
     );
     expect(screen.getByRole('button', { name: /Add photo/ })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+
+  it('offers no removal once a paper is kept as the record', async () => {
+    const po = purchaseOrder({ documents: [{ ...document, removable: false }] });
+    serve(po);
+    renderApp(`/purchase-orders/${po.id}`, { admin: operations });
+
+    await screen.findByRole('link', { name: /Alibaba invoice 7781\.pdf/ });
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
   });
 
   it('uploads a paper with the chosen type', async () => {

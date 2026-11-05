@@ -9,9 +9,9 @@ import type { PurchaseOrder, PurchaseOrderDocumentKind } from '../../api/types';
 import { Can } from '../../auth/AuthProvider';
 import { apiErrorMessage } from '../../components/ApiErrorAlert';
 import { ActorText, DateTimeText, Ltr } from '../../components/format';
+import { MAX_ATTACHMENT_BYTES } from '../../lib/uploads';
 
 const DOCUMENT_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
-const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 export const DOCUMENT_KINDS: PurchaseOrderDocumentKind[] = [
   'alibaba_invoice',
   'payment_receipt',
@@ -41,7 +41,8 @@ export function PurchaseOrderDocuments({ po }: { po: PurchaseOrder }) {
   const upload = async (file: File) => {
     if (!DOCUMENT_TYPES.includes(file.type))
       return void message.error(t('purchasing.documentType'));
-    if (file.size > MAX_DOCUMENT_BYTES) return void message.error(t('purchasing.documentTooLarge'));
+    if (file.size > MAX_ATTACHMENT_BYTES)
+      return void message.error(t('purchasing.documentTooLarge'));
     setUploading(true);
     try {
       await api.POST('/admin/purchase-orders/{purchase_order_id}/documents', {
@@ -146,25 +147,27 @@ export function PurchaseOrderDocuments({ po }: { po: PurchaseOrder }) {
             {
               key: 'remove',
               align: 'end',
-              render: (_, d) => (
-                <Can permission="purchasing.edit">
-                  <Popconfirm
-                    title={t('purchasing.removeDocumentConfirm')}
-                    okText={t('purchasing.removeDocument')}
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => remove(d.id)}
-                  >
-                    <Button
-                      size="small"
-                      type="text"
-                      danger
-                      icon={<DeleteOutlined />}
-                      loading={removing === d.id}
-                      aria-label={t('purchasing.removeDocument')}
-                    />
-                  </Popconfirm>
-                </Can>
-              ),
+              // After a day a paper is the record of the order and stays.
+              render: (_, d) =>
+                d.removable && (
+                  <Can permission="purchasing.edit">
+                    <Popconfirm
+                      title={t('purchasing.removeDocumentConfirm')}
+                      okText={t('purchasing.removeDocument')}
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => remove(d.id)}
+                    >
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        loading={removing === d.id}
+                        aria-label={t('purchasing.removeDocument')}
+                      />
+                    </Popconfirm>
+                  </Can>
+                ),
             },
           ]}
         />

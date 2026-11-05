@@ -1678,7 +1678,9 @@ export interface paths {
         post?: never;
         /**
          * Remove a paper uploaded by mistake
-         * @description The file is deleted and the removal is audited.
+         * @description The file is deleted and the removal is audited. Only within 24 hours
+         *     of the upload (the document's `removable`); after that the paper is
+         *     kept as a record of what was ordered and paid (409 `document_locked`).
          */
         delete: operations["adminRemovePurchaseOrderDocument"];
         options?: never;
@@ -2995,6 +2997,8 @@ export interface components {
             uploaded_by: components["schemas"]["Actor"];
             /** Format: date-time */
             uploaded_at: string;
+            /** @description True within 24 hours of the upload; after that the paper is kept as a record. */
+            removable: boolean;
         };
         InboundReceiptInput: {
             warehouse_name: string;
@@ -6147,6 +6151,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     adminRecordInboundReceipt: {

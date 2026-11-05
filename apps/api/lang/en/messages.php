@@ -71,6 +71,7 @@ return [
         'already_resolved' => 'This mismatch was already resolved.',
         'purchase_order_incomplete' => 'Record the Alibaba order number and the exchange rate first, and a freight tracking reference before shipping.',
         'document_limit_reached' => 'This purchase order already has as many documents as it can keep. Remove one first.',
+        'document_locked' => 'This paper is kept as a record of the order and can no longer be removed.',
         'photo_limit_reached' => 'This receipt already has as many photos as it can keep.',
         'shipment_exists' => 'This order already has a shipment.',
         'event_before_shipment' => 'An update cannot be dated before the courier picked up the order.',
