@@ -7,23 +7,60 @@ use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 /**
- * The QR code a simplified tax invoice must carry (ZATCA e-invoicing,
- * phase 1 fields): seller name, VAT number, time of issue, total with VAT
- * and the VAT, each as tag-length-value, base64 encoded. Phase 2 adds the
- * invoice hash and signature when the Fatoora integration is built.
+ * The QR code a simplified tax invoice must carry (ZATCA e-invoicing):
+ * seller name, VAT number, time of issue, total with VAT and the VAT, each
+ * as tag-length-value, base64 encoded. Phase 2 (integration) adds the
+ * invoice hash, its signature, our public key and the CA's signature on
+ * our certificate, so a reader can check the invoice offline.
  */
 final class ZatcaQr
 {
     public static function encode(string $sellerName, string $vatNumber, CarbonImmutable $issuedAt, Money $total, Money $vat): string
     {
-        $fields = [
+        return self::tlv([
             1 => $sellerName,
             2 => $vatNumber,
             3 => $issuedAt->utc()->format('Y-m-d\TH:i:s\Z'),
             4 => self::amount($total),
             5 => self::amount($vat),
-        ];
+        ]);
+    }
 
+    /**
+     * Tags 1 to 9 of a signed simplified invoice. The time is the issue
+     * date and time as written in the XML; the hash and the signature go
+     * in as their base64 text, the public key (DER) and the CA's signature
+     * as bytes.
+     */
+    public static function phaseTwo(
+        string $sellerName,
+        string $vatNumber,
+        string $timestamp,
+        Money $total,
+        Money $vat,
+        string $invoiceHash,
+        string $signature,
+        string $publicKey,
+        string $caSignature,
+    ): string {
+        return self::tlv([
+            1 => $sellerName,
+            2 => $vatNumber,
+            3 => $timestamp,
+            4 => self::amount($total),
+            5 => self::amount($vat),
+            6 => $invoiceHash,
+            7 => $signature,
+            8 => $publicKey,
+            9 => $caSignature,
+        ]);
+    }
+
+    /**
+     * @param  array<int, string>  $fields
+     */
+    private static function tlv(array $fields): string
+    {
         $tlv = '';
 
         foreach ($fields as $tag => $value) {

@@ -21,8 +21,9 @@ use LogicException;
  * rounding rule and the invoice totals are the sums of its lines.
  *
  * The Arabic and English PDF is rendered on the queue after the commit
- * (RenderInvoicePdf); the ZATCA XML and reporting to Fatoora come with the
- * e-invoicing integration, so zatca_status stays pending until then.
+ * (RenderInvoicePdf). While ZATCA phase 2 is on, the invoice is signed and
+ * reported to Fatoora after the commit (ZatcaReporting), and its PDF waits
+ * for the signature, which its QR code carries.
  */
 final class Invoices
 {
@@ -40,6 +41,7 @@ final class Invoices
     public function __construct(
         private readonly DocumentNumbers $numbers,
         private readonly StatusHistory $history,
+        private readonly ZatcaReporting $zatca,
     ) {}
 
     /**
@@ -86,7 +88,10 @@ final class Invoices
             'qr_payload' => ZatcaQr::encode($seller['legal_name_ar'], $seller['vat_number'], $issuedAt, $total, $vat),
         ]);
         $this->history->record($invoice, null, 'issued', $actor);
-        RenderInvoicePdf::dispatch($invoice->id)->afterCommit();
+
+        if (! $this->zatca->open($invoice)) {
+            RenderInvoicePdf::dispatch($invoice->id)->afterCommit();
+        }
 
         return $invoice;
     }
@@ -167,7 +172,10 @@ final class Invoices
             'qr_payload' => ZatcaQr::encode($seller['legal_name_ar'], $seller['vat_number'], $issuedAt, $total, $vat),
         ]);
         $this->history->record($note, null, 'issued', $actor);
-        RenderInvoicePdf::dispatch($note->id)->afterCommit();
+
+        if (! $this->zatca->open($note)) {
+            RenderInvoicePdf::dispatch($note->id)->afterCommit();
+        }
 
         return $note;
     }
@@ -195,9 +203,11 @@ final class Invoices
     }
 
     /**
-     * @return array{legal_name_ar: string, legal_name_en: string, vat_number: string, cr_number: string|null, address_ar: string, address_en: string}
+     * The seller of record as an invoice keeps it: today's settings.
+     *
+     * @return array{legal_name_ar: string, legal_name_en: string, vat_number: string, cr_number: string|null, address_ar: string, address_en: string, street: string, building_number: string, district: string, city: string, postal_code: string}
      */
-    private static function seller(): array
+    public static function seller(): array
     {
         $seller = (array) config('groupbuy.seller');
 
@@ -208,6 +218,11 @@ final class Invoices
             'cr_number' => $seller['cr_number'] === null ? null : (string) $seller['cr_number'],
             'address_ar' => (string) $seller['address_ar'],
             'address_en' => (string) $seller['address_en'],
+            'street' => (string) ($seller['street'] ?? ''),
+            'building_number' => (string) ($seller['building_number'] ?? ''),
+            'district' => (string) ($seller['district'] ?? ''),
+            'city' => (string) ($seller['city'] ?? ''),
+            'postal_code' => (string) ($seller['postal_code'] ?? ''),
         ];
     }
 }

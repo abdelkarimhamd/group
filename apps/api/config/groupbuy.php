@@ -211,6 +211,13 @@ return [
         'cr_number' => env('GROUPBUY_SELLER_CR_NUMBER'),
         'address_ar' => env('GROUPBUY_SELLER_ADDRESS_AR', 'الرياض، المملكة العربية السعودية'),
         'address_en' => env('GROUPBUY_SELLER_ADDRESS_EN', 'Riyadh, Saudi Arabia'),
+        // The national address in parts, as the e-invoice XML (ZATCA phase 2)
+        // carries it: a 4-digit building number and a 5-digit postal code.
+        'street' => env('GROUPBUY_SELLER_STREET', ''),
+        'building_number' => env('GROUPBUY_SELLER_BUILDING_NUMBER', ''),
+        'district' => env('GROUPBUY_SELLER_DISTRICT', ''),
+        'city' => env('GROUPBUY_SELLER_CITY', 'Riyadh'),
+        'postal_code' => env('GROUPBUY_SELLER_POSTAL_CODE', ''),
     ],
 
     'auth' => [
@@ -283,6 +290,39 @@ return [
         // (their render keeps failing): the sweep warns, and
         // `invoices:render-pdfs --all` queues them once the cause is fixed.
         'pdf_requeue_within_days' => 7,
+    ],
+
+    // ZATCA e-invoicing phase 2 (integration): each invoice and credit note
+    // is signed by our EGS unit and reported to Fatoora within 24 hours.
+    // Off until the EGS unit is onboarded (`php artisan zatca:onboard`);
+    // phase 1 QR codes are printed meanwhile. Whether and when phase 2
+    // applies to the company is set by ZATCA's wave notice.
+    'zatca' => [
+        'enabled' => (bool) env('ZATCA_ENABLED', false),
+        // developer-portal (sandbox, any OTP), simulation, or core (production).
+        'environment' => env('ZATCA_ENV', 'simulation'),
+        'base_urls' => [
+            'developer-portal' => 'https://gw-fatoora.zatca.gov.sa/e-invoicing/developer-portal',
+            'simulation' => 'https://gw-fatoora.zatca.gov.sa/e-invoicing/simulation',
+            'core' => 'https://gw-fatoora.zatca.gov.sa/e-invoicing/core',
+        ],
+        'timeout_seconds' => 30,
+        // The EGS unit (this system) as its CSR names it.
+        'egs' => [
+            'solution_name' => env('ZATCA_SOLUTION_NAME', 'GroupBuy'),
+            'model' => env('ZATCA_EGS_MODEL', 'API'),
+            // The branch name, or the 10-digit TIN for a VAT group member.
+            'organization_unit' => env('ZATCA_ORGANIZATION_UNIT', 'Main Branch'),
+            // Where the unit is: a short address or city.
+            'location' => env('ZATCA_LOCATION', 'Riyadh'),
+            'industry' => env('ZATCA_INDUSTRY', 'Retail'),
+        ],
+        // ZATCA wants each simplified invoice reported within 24 hours of
+        // issue; past this many hours unreported, the sweep raises an alert.
+        'report_alert_after_hours' => 20,
+        // zatca:report queues again an invoice still unsigned or unreported
+        // this long after issue (its job ran out of tries or was lost).
+        'requeue_after_minutes' => 10,
     ],
 
 ];
