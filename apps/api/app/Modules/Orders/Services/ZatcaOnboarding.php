@@ -10,6 +10,7 @@ use App\Modules\Orders\Zatca\ZatcaDocument;
 use App\Modules\Orders\Zatca\ZatcaSigner;
 use App\Support\Actor;
 use App\Support\Audit\AuditLogger;
+use App\Support\Money\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -57,6 +58,26 @@ final class ZatcaOnboarding
             'private_key' => $csr['private_key'],
             'csr' => $csr['csr'],
         ]);
+    }
+
+    /**
+     * Drop the units still being onboarded in this environment, so the next
+     * device() starts over with a new CSR. Their keys are never used again.
+     *
+     * @return int how many were dropped
+     */
+    public function abandon(string $environment): int
+    {
+        return DB::transaction(function () use ($environment): int {
+            $open = ZatcaDevice::query()->where('environment', $environment)->where('status', ZatcaDevice::ONBOARDING)->lockForUpdate()->get();
+
+            foreach ($open as $device) {
+                $device->forceFill(['status' => ZatcaDevice::RETIRED, 'retired_at' => CarbonImmutable::now()])->save();
+                $this->audit->record(Actor::system(), 'zatca.device.abandon', $device, ['status' => ZatcaDevice::ONBOARDING], ['status' => ZatcaDevice::RETIRED]);
+            }
+
+            return $open->count();
+        });
     }
 
     public function needsOtp(ZatcaDevice $device): bool
@@ -154,6 +175,15 @@ final class ZatcaOnboarding
     private static function sample(string $type, int $icv, string $previousHash): ZatcaDocument
     {
         $note = $type !== ZatcaDocument::INVOICE;
+        // Prices include VAT and are split as on real invoices. 115.04 is a
+        // total whose VAT (15.01) is a halala off its net x 15% (15.00), so
+        // ZATCA's checks show here, not on a customer's invoice, whether it
+        // accepts that split (BR-KSA-50).
+        $lines = array_map(function (int $total): array {
+            $split = Money::sar($total)->splitVatInclusive((int) config('groupbuy.vat_rate_bp'));
+
+            return ['description_ar' => 'منتج تجريبي', 'description_en' => 'Sample item', 'qty' => 1, 'net_halalas' => $split['net']->minor, 'vat_halalas' => $split['vat']->minor, 'total_halalas' => $total];
+        }, [11500, 11504]);
 
         return new ZatcaDocument(
             number: sprintf('CMPL-%s-%d', CarbonImmutable::now()->format('Ymd'), $icv),
@@ -161,11 +191,11 @@ final class ZatcaOnboarding
             typeCode: $type,
             issuedAt: CarbonImmutable::now(),
             seller: Invoices::seller(),
-            lines: [['description_ar' => 'منتج تجريبي', 'description_en' => 'Sample item', 'qty' => 1, 'net_halalas' => 10000, 'vat_halalas' => 1500, 'total_halalas' => 11500]],
-            netHalalas: 10000,
-            vatHalalas: 1500,
-            totalHalalas: 11500,
-            vatRateBp: 1500,
+            lines: $lines,
+            netHalalas: array_sum(array_column($lines, 'net_halalas')),
+            vatHalalas: array_sum(array_column($lines, 'vat_halalas')),
+            totalHalalas: array_sum(array_column($lines, 'total_halalas')),
+            vatRateBp: (int) config('groupbuy.vat_rate_bp'),
             icv: $icv,
             previousHash: $previousHash,
             billingReference: $note ? sprintf('CMPL-%s-1', CarbonImmutable::now()->format('Ymd')) : null,

@@ -43,7 +43,17 @@ class SubmitInvoiceToZatca implements ShouldBeUnique, ShouldQueue
     public function handle(ZatcaReporting $zatca): void
     {
         $stamp = $zatca->sign($this->stampId);
-        $zatca->afterSigning($stamp);
+
+        try {
+            $zatca->afterSigning($stamp);
+        } catch (Throwable $e) {
+            // ZATCA's 24 hours do not wait for storage: report, then let the
+            // retry store the XML and render the PDF (report is a no-op then).
+            $zatca->report($stamp->id);
+
+            throw $e;
+        }
+
         $zatca->report($stamp->id);
     }
 

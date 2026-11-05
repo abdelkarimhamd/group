@@ -128,6 +128,22 @@ class ZatcaSigningTest extends TestCase
         $this->assertTrue($again->validTo->isFuture());
     }
 
+    #[Test]
+    public function a_long_certificate_serial_is_written_in_decimal(): void
+    {
+        // ZATCA's serials run to about 150 bits, where OpenSSL gives hex.
+        $certificate = Certificate::fromBase64((string) file_get_contents(base_path('tests/Fixtures/zatca/large-serial.pem')));
+        $key = (string) file_get_contents(base_path('tests/Fixtures/zatca/large-serial.key'));
+
+        $this->assertSame('148433760045349177002444173467528991025267737332', $certificate->serial);
+
+        $signed = (new ZatcaSigner)->sign($this->document(), $key, $certificate, CarbonImmutable::parse('2026-11-05 11:00:00', 'UTC'));
+        $dom = UblInvoice::load($signed->xml);
+
+        $this->assertSame('148433760045349177002444173467528991025267737332', UblInvoice::xpath($dom)->evaluate('string(//ds:X509SerialNumber)'));
+        $this->assertTrue(ZatcaSigner::verify($signed->hash, $signed->signature, $certificate));
+    }
+
     private function document(string $type = ZatcaDocument::INVOICE, int $icv = 7): ZatcaDocument
     {
         $note = $type !== ZatcaDocument::INVOICE;

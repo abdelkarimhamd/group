@@ -69,11 +69,29 @@ final class ZatcaReporting
             return $address;
         }
 
-        if (! ZatcaDevice::query()->active()->exists()) {
-            return 'ZATCA phase 2 is on but no EGS unit is onboarded for '.config('groupbuy.zatca.environment').': run php artisan zatca:onboard --otp=<OTP>.';
+        $environment = (string) config('groupbuy.zatca.environment');
+
+        // Simulation answers "accepted" too, but reports nothing to ZATCA.
+        if (app()->isProduction() && $environment !== 'core') {
+            return "ZATCA phase 2 is on in production but reports to {$environment}: set ZATCA_ENV=core and onboard with an OTP from the Fatoora portal.";
+        }
+
+        $device = ZatcaDevice::query()->active()->first();
+
+        if ($device === null) {
+            return "ZATCA phase 2 is on but no EGS unit is onboarded for {$environment}: run php artisan zatca:onboard --otp=<OTP>.";
+        }
+
+        if (self::expired($device)) {
+            return "The EGS unit's ZATCA certificate expired on {$device->certificate_expires_at?->toDateString()}: onboard a new unit with php artisan zatca:onboard --fresh --otp=<OTP>.";
         }
 
         return null;
+    }
+
+    private static function expired(ZatcaDevice $device, ?CarbonImmutable $now = null): bool
+    {
+        return $device->certificate_expires_at !== null && $device->certificate_expires_at->lessThanOrEqualTo($now ?? CarbonImmutable::now());
     }
 
     /**
@@ -129,6 +147,11 @@ final class ZatcaReporting
 
             if ($device === null) {
                 throw new RuntimeException('No active ZATCA EGS unit for '.config('groupbuy.zatca.environment').'; run zatca:onboard.');
+            }
+
+            // ZATCA refuses what an expired certificate signs; wait for a new unit.
+            if (self::expired($device)) {
+                throw new RuntimeException("The ZATCA certificate of EGS unit {$device->uuid} has expired; run zatca:onboard --fresh.");
             }
 
             $invoice = Invoice::query()->whereKey($stamp->invoice_id)->lockForUpdate()->firstOrFail();
@@ -245,11 +268,34 @@ final class ZatcaReporting
                 }
             });
 
+        // Reported, but the XML never reached storage (its job ran out of tries).
+        ZatcaInvoiceStamp::query()
+            ->whereNotNull('signed_at')
+            ->whereNotNull('reported_at')
+            ->where('signed_at', '<=', $now->subMinutes((int) config('groupbuy.zatca.requeue_after_minutes')))
+            ->whereHas('invoice', fn ($query) => $query->whereNull('xml_s3_key'))
+            ->select('id')
+            ->chunkById(500, function ($stamps) use (&$queued): void {
+                foreach ($stamps as $stamp) {
+                    SubmitInvoiceToZatca::dispatch($stamp->id);
+                    $queued++;
+                }
+            });
+
         $late = fn () => $open()->whereHas('invoice', fn ($query) => $query->where('issued_at', '<=', $now->subHours((int) config('groupbuy.zatca.report_alert_after_hours'))));
         $overdue = $late()->count();
 
         if ($overdue > 0) {
             Log::critical('zatca.report.overdue', ['count' => $overdue, 'invoices' => $late()->with('invoice:id,invoice_number')->limit(20)->get()->pluck('invoice.invoice_number')->all()]);
+        }
+
+        $device = self::enabled() ? ZatcaDevice::query()->active()->first() : null;
+
+        if ($device?->certificate_expires_at !== null && $device->certificate_expires_at->lessThanOrEqualTo($now->addDays((int) config('groupbuy.zatca.certificate_alert_days')))) {
+            Log::log(self::expired($device, $now) ? 'critical' : 'warning', 'zatca.certificate.expiring', [
+                'device' => $device->uuid,
+                'expires_at' => $device->certificate_expires_at->toIso8601String(),
+            ]);
         }
 
         return [

@@ -323,6 +323,9 @@ return [
         // zatca:report queues again an invoice still unsigned or unreported
         // this long after issue (its job ran out of tries or was lost).
         'requeue_after_minutes' => 10,
+        // Warn this many days before the EGS unit's certificate runs out
+        // (onboard a new unit in time: zatca:onboard --fresh).
+        'certificate_alert_days' => 30,
     ],
 
 ];

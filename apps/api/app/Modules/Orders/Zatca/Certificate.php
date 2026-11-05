@@ -78,12 +78,44 @@ final class Certificate
         return new self(
             $base64,
             self::name($issuer['value']),
-            (string) $parsed['serialNumber'],
+            self::decimal((string) ($parsed['serialNumberHex'] ?? '')),
             (string) $publicKey,
             // A BIT STRING starts with its count of unused bits (0 here).
             substr($parts[2]['value'], 1),
             CarbonImmutable::createFromTimestampUTC((int) $parsed['validTo_time_t']),
         );
+    }
+
+    /**
+     * The serial as a decimal integer, as XAdES's X509SerialNumber wants it.
+     * OpenSSL's serialNumber is hex text ("0x…") once the serial passes 64
+     * bits, and ZATCA's are about 150, so this always starts from the hex.
+     */
+    private static function decimal(string $hex): string
+    {
+        if (! preg_match('/^[0-9A-Fa-f]+$/', $hex)) {
+            throw new InvalidArgumentException('The certificate has no readable serial number.');
+        }
+
+        // Long multiplication on decimal digits (least significant first):
+        // no bcmath or gmp needed.
+        $digits = [0];
+
+        foreach (str_split(strtolower($hex)) as $nibble) {
+            $carry = (int) hexdec($nibble);
+
+            foreach ($digits as $i => $digit) {
+                $value = $digit * 16 + $carry;
+                $digits[$i] = $value % 10;
+                $carry = intdiv($value, 10);
+            }
+
+            for (; $carry > 0; $carry = intdiv($carry, 10)) {
+                $digits[] = $carry % 10;
+            }
+        }
+
+        return ltrim(implode('', array_reverse($digits)), '0') ?: '0';
     }
 
     /**

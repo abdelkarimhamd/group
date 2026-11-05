@@ -12,12 +12,17 @@ use Illuminate\Console\Command;
 /**
  * Registers this system as an EGS unit with ZATCA (e-invoicing phase 2),
  * in ZATCA_ENV: CSR, compliance CSID (with the OTP from the Fatoora
- * portal), ZATCA's compliance checks, production CSID. Run it again with
- * a new OTP to replace the unit (before its certificate expires, say).
+ * portal), ZATCA's compliance checks, production CSID. It resumes a unit
+ * still being onboarded; --fresh drops that one and starts over with a new
+ * CSR, after the seller's details or the EGS settings were wrong. Once a
+ * unit is active, running it again with a new OTP onboards its
+ * replacement (before the certificate expires, say).
  */
 final class ZatcaOnboardCommand extends Command
 {
-    protected $signature = 'zatca:onboard {--otp= : One-time password from the Fatoora portal (any 6 digits on the developer portal)}';
+    protected $signature = 'zatca:onboard
+        {--otp= : One-time password from the Fatoora portal (any 6 digits on the developer portal)}
+        {--fresh : Drop the unit still being onboarded and start over with a new CSR (needs a new OTP)}';
 
     protected $description = 'Onboard this system with ZATCA as an e-invoicing (EGS) unit';
 
@@ -29,6 +34,10 @@ final class ZatcaOnboardCommand extends Command
             $this->error($problem);
 
             return self::FAILURE;
+        }
+
+        if ($this->option('fresh') && ($dropped = $onboarding->abandon($environment)) > 0) {
+            $this->line("Dropped {$dropped} unit(s) still being onboarded.");
         }
 
         $device = $onboarding->device($environment);
@@ -59,13 +68,18 @@ final class ZatcaOnboardCommand extends Command
             }
 
             if (! ZatcaOnboarding::passed($results)) {
-                $this->error('The compliance checks did not pass; fix the errors above and run zatca:onboard again (no new OTP needed).');
+                $this->error('The compliance checks did not pass. Errors in the invoice itself: fix them and run zatca:onboard again (no new OTP needed). Errors about the seller (VAT number, name) or the certificate: fix the settings and run zatca:onboard --fresh with a new OTP.');
 
                 return self::FAILURE;
             }
 
             $onboarding->activate($device);
-        } catch (FatooraRefused|FatooraUnavailable $e) {
+        } catch (FatooraRefused $e) {
+            $this->error($e->getMessage());
+            $this->line('If the seller\'s details or the EGS settings were wrong, fix them and run zatca:onboard --fresh with a new OTP.');
+
+            return self::FAILURE;
+        } catch (FatooraUnavailable $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;

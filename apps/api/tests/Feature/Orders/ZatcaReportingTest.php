@@ -27,12 +27,15 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
 use Tests\Concerns\ClosesCampaigns;
 use Tests\Fakes\ZatcaTestCa;
 use Tests\TestCase;
+use Throwable;
 
 /**
  * ZATCA e-invoicing phase 2: each invoice and credit note issued while it
@@ -172,7 +175,11 @@ class ZatcaReportingTest extends TestCase
         $this->assertStringContainsString('503', (string) $stamps[3]->last_error);
 
         // The sweep: nothing while the first job may still hold its unique
-        // lock; then only the open one, never the rejected one.
+        // lock; then only the open one, never the rejected one (the reported
+        // ones get their XML stored here, as their job would).
+        foreach ([0, 2] as $i) {
+            $zatca->afterSigning($stamps[$i]->refresh());
+        }
         Bus::fake([SubmitInvoiceToZatca::class]);
         $this->artisan('zatca:report')->expectsOutput('E-invoices queued: 0, overdue: 0, rejected: 1.')->assertSuccessful();
         $this->travel(2)->hours();
@@ -222,6 +229,69 @@ class ZatcaReportingTest extends TestCase
         $this->assertSame(0, app(InvoiceDocuments::class)->requeueMissing());
         $this->expectExceptionMessage('waits for its e-invoice signature');
         app(InvoiceDocuments::class)->storePdf($invoice);
+    }
+
+    #[Test]
+    public function production_reports_only_to_zatca_itself_and_only_with_a_valid_certificate(): void
+    {
+        $device = $this->activeDevice();
+        $this->assertNull(ZatcaReporting::problem());
+
+        // The simulation gateway answers "accepted" too, but nothing reaches ZATCA.
+        $this->app['env'] = 'production';
+        $this->assertStringContainsString('ZATCA_ENV=core', (string) ZatcaReporting::problem());
+        $this->app['env'] = 'testing';
+
+        Log::spy();
+        $device->forceFill(['certificate_expires_at' => now()->addDays(10)])->save();
+        app(ZatcaReporting::class)->sweep();
+        Log::shouldHaveReceived('log')->with('warning', 'zatca.certificate.expiring', Mockery::any())->once();
+
+        $device->forceFill(['certificate_expires_at' => now()->subMinute()])->save();
+        $this->assertStringContainsString('zatca:onboard --fresh', (string) ZatcaReporting::problem());
+        app(ZatcaReporting::class)->sweep();
+        Log::shouldHaveReceived('log')->with('critical', 'zatca.certificate.expiring', Mockery::any())->once();
+
+        Bus::fake([SubmitInvoiceToZatca::class]);
+        $this->paidJoin($this->campaign, 3);
+        $this->captureAll($this->campaign);
+        $this->expectExceptionMessage('has expired');
+        app(ZatcaReporting::class)->sign(ZatcaInvoiceStamp::query()->sole()->id);
+    }
+
+    #[Test]
+    public function a_storage_outage_does_not_hold_up_reporting(): void
+    {
+        $this->activeDevice();
+        Http::fake([self::REPORTING => Http::response(['validationResults' => ['status' => 'PASS', 'warningMessages' => [], 'errorMessages' => []], 'reportingStatus' => 'REPORTED'])]);
+        Bus::fake([SubmitInvoiceToZatca::class]);
+        $this->paidJoin($this->campaign, 3);
+        $this->captureAll($this->campaign);
+        $stamp = ZatcaInvoiceStamp::query()->sole();
+
+        $documents = (string) config('groupbuy.media.documents_disk');
+        config(['filesystems.disks.unreachable' => ['driver' => 'local', 'root' => '/proc/groupbuy-unreachable', 'throw' => true], 'groupbuy.media.documents_disk' => 'unreachable']);
+
+        try {
+            app()->call([new SubmitInvoiceToZatca($stamp->id), 'handle']);
+            $this->fail('The storage failure reaches the queue, which tries again.');
+        } catch (Throwable) {
+            // Reported all the same.
+        }
+
+        $this->assertNotNull($stamp->refresh()->reported_at);
+        $this->assertSame('accepted', Invoice::query()->sole()->zatca_status->value);
+        $this->assertNull(Invoice::query()->sole()->xml_s3_key);
+
+        // Its retries ran out: the sweep sends it back to store the XML, without reporting it again.
+        config(['groupbuy.media.documents_disk' => $documents]);
+        $this->travel(15)->minutes();
+        $this->artisan('zatca:report')->expectsOutput('E-invoices queued: 1, overdue: 0, rejected: 0.')->assertSuccessful();
+        Bus::assertDispatched(SubmitInvoiceToZatca::class, fn (SubmitInvoiceToZatca $job) => $job->stampId === $stamp->id);
+        app()->call([new SubmitInvoiceToZatca($stamp->id), 'handle']);
+
+        $this->assertNotNull(Invoice::query()->sole()->xml_s3_key);
+        Http::assertSentCount(1);
     }
 
     #[Test]

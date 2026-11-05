@@ -25,7 +25,7 @@ class ZatcaOnboardingTest extends TestCase
 
     private const BASE = 'https://gw-fatoora.zatca.gov.sa/e-invoicing/developer-portal';
 
-    /** @var list<array{type: string, icv: string, pih: string, hash: string}> */
+    /** @var list<array{type: string, icv: string, pih: string, hash: string, lines: list<array{0: string, 1: string}>}> */
     private array $checked = [];
 
     private int $csidCalls = 0;
@@ -119,8 +119,43 @@ class ZatcaOnboardingTest extends TestCase
     #[Test]
     public function a_refused_otp_is_reported(): void
     {
-        $this->artisan('zatca:onboard', ['--otp' => '000000'])->expectsOutputToContain('Fatoora refused the compliance CSID (400)')->assertFailed();
+        $this->artisan('zatca:onboard', ['--otp' => '000000'])
+            ->expectsOutputToContain('Fatoora refused the compliance CSID (400)')
+            ->expectsOutputToContain('zatca:onboard --fresh')
+            ->assertFailed();
         $this->assertSame('onboarding', ZatcaDevice::query()->sole()->status);
+    }
+
+    #[Test]
+    public function onboarding_starts_over_with_a_new_csr_after_the_seller_is_corrected(): void
+    {
+        // ZATCA issued the compliance CSID, but for a mistyped VAT number.
+        $this->answers = [1 => 400, 2 => 400, 3 => 400];
+        $this->artisan('zatca:onboard', ['--otp' => '123345'])->assertFailed();
+        $first = ZatcaDevice::query()->sole();
+
+        // Resuming would send the same CSR again; --fresh makes a new one.
+        config(['groupbuy.seller.vat_number' => '310123456700013']);
+        $this->answers = [];
+        $this->checked = [];
+        $this->artisan('zatca:onboard', ['--otp' => '123345', '--fresh' => true])
+            ->expectsOutputToContain('Dropped 1 unit(s) still being onboarded.')
+            ->expectsOutputToContain('EGS unit active')
+            ->assertSuccessful();
+
+        $this->assertSame(['retired', 'active'], ZatcaDevice::query()->orderBy('id')->pluck('status')->all());
+        $this->assertNotSame($first->csr, ZatcaDevice::query()->where('status', 'active')->sole()->csr);
+        $this->assertSame(2, $this->csidCalls);
+        $this->assertSame(1, AuditLog::query()->where('action', 'zatca.device.abandon')->count());
+    }
+
+    #[Test]
+    public function the_samples_include_a_total_whose_vat_is_a_halala_off(): void
+    {
+        $this->artisan('zatca:onboard', ['--otp' => '123345'])->assertSuccessful();
+
+        // 115.04 splits into 100.03 and 15.01, where 100.03 x 15% is 15.00.
+        $this->assertSame([['100.00', '15.00'], ['100.03', '15.01']], $this->checked[0]['lines']);
     }
 
     private function fakeFatoora(): void
@@ -156,6 +191,10 @@ class ZatcaOnboardingTest extends TestCase
                     'icv' => $x->evaluate("string(//cac:AdditionalDocumentReference[cbc:ID='ICV']/cbc:UUID)"),
                     'pih' => $x->evaluate("string(//cac:AdditionalDocumentReference[cbc:ID='PIH']//cbc:EmbeddedDocumentBinaryObject)"),
                     'hash' => (string) $request['invoiceHash'],
+                    'lines' => array_map(fn ($line) => [
+                        $x->evaluate('string(cbc:LineExtensionAmount)', $line),
+                        $x->evaluate('string(cac:TaxTotal/cbc:TaxAmount)', $line),
+                    ], iterator_to_array($x->query('//cac:InvoiceLine'))),
                 ];
                 $status = $this->answers[count($this->checked)] ?? 200;
 
