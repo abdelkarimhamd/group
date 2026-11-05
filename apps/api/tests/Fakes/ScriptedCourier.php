@@ -8,6 +8,7 @@ use App\Modules\Fulfillment\Couriers\CourierGateway;
 use App\Modules\Fulfillment\Couriers\CourierRefused;
 use App\Modules\Fulfillment\Couriers\CourierUnavailable;
 use App\Modules\Fulfillment\Couriers\TrackingUpdate;
+use Closure;
 
 /**
  * A courier whose answers a test sets: refuse or go quiet on bookings, and
@@ -26,6 +27,9 @@ final class ScriptedCourier implements CourierGateway
 
     public bool $trackingDown = false;
 
+    /** Runs while a booking is out with the courier, before it answers. */
+    public ?Closure $whileBooking = null;
+
     /** @var list<TrackingUpdate> */
     public array $updates = [];
 
@@ -42,6 +46,10 @@ final class ScriptedCourier implements CourierGateway
     public function book(BookingRequest $request): Booking
     {
         $this->booked[] = $request;
+
+        if ($this->whileBooking !== null) {
+            ($this->whileBooking)();
+        }
 
         return match ($this->onBook) {
             'refuse' => throw new CourierRefused('Consignee city is not served (fake).'),

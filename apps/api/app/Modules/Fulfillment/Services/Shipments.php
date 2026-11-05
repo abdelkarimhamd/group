@@ -19,6 +19,8 @@ use App\Modules\Notifications\Enums\NotificationTemplate;
 use App\Modules\Notifications\Services\Notifier;
 use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Models\CustomerOrder;
+use App\Modules\Payments\Enums\PaymentStatus;
+use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Support\Actor;
 use App\Support\Audit\AuditLogger;
 use App\Support\Audit\StatusHistory;
@@ -49,8 +51,17 @@ final class Shipments
         private readonly AuditLogger $audit,
         private readonly Notifier $notifier,
         private readonly Ledger $ledger,
-        private readonly CourierGateway $courier,
     ) {}
+
+    /**
+     * Resolved only when booking: a courier set up wrongly (missing
+     * credentials, the fake driver in production) must not stop refunds or
+     * approvals, which also use this class.
+     */
+    private function courier(): CourierGateway
+    {
+        return app(CourierGateway::class);
+    }
 
     /**
      * Hand a ready order to the courier by hand: the shipment starts
@@ -101,18 +112,20 @@ final class Shipments
      */
     public function book(string $orderUuid, array $input, AdminUser $by): Shipment
     {
-        if (! $this->courier->books()) {
+        $courier = $this->courier();
+
+        if (! $courier->books()) {
             throw new ApiException(409, 'courier_api_off');
         }
 
-        return DB::transaction(function () use ($orderUuid, $input, $by): Shipment {
+        return DB::transaction(function () use ($orderUuid, $input, $by, $courier): Shipment {
             [, $order] = $this->lockOrder($orderUuid);
             self::assertShippable($order);
 
             $actor = Actor::admin($by->id);
             $shipment = Shipment::create([
                 'customer_order_id' => $order->id,
-                'courier' => (string) $this->courier->name(),
+                'courier' => (string) $courier->name(),
                 'tracking_number' => null,
                 'shipping_cost_halalas' => $input['shipping_cost_halalas'] ?? null,
                 'status' => ShipmentStatus::Pending,
@@ -216,9 +229,8 @@ final class Shipments
      * Tracking read from the courier for one shipment. Each update is
      * recorded once (by the courier's key); its code becomes a status
      * through `$codes`, codes in `$ignore` are not movements, and any other
-     * code means the parcel moved: `picked_up` if the courier had not
-     * collected it yet, otherwise `in_transit`. Returns how many updates
-     * were new.
+     * code after the pickup means the parcel moved (`in_transit`). Returns
+     * how many updates were new.
      *
      * @param  list<TrackingUpdate>  $updates
      * @param  array<string, string>  $codes
@@ -247,7 +259,15 @@ final class Shipments
 
                 if ($status === null) {
                     Log::info('courier.unmapped_code', ['courier' => $shipment->courier, 'code' => $update->code, 'description' => $update->description]);
-                    $status = $shipment->status === ShipmentStatus::Pending ? ShipmentStatus::PickedUp : ShipmentStatus::InTransit;
+
+                    // Only a known code says the courier has the parcel: a scan
+                    // before pickup must not tell the customer it shipped, nor
+                    // be read as a movement once the pickup is known.
+                    if ($shipment->status === ShipmentStatus::Pending || ($shipment->shipped_at !== null && $update->occurredAt < $shipment->shipped_at)) {
+                        continue;
+                    }
+
+                    $status = ShipmentStatus::InTransit;
                 }
 
                 $this->apply($campaign, $order, $shipment, $status, $update->description, $update->location, $update->occurredAt, Actor::system(), 'courier_api', $update->raw, $update->key());
@@ -259,6 +279,49 @@ final class Shipments
 
             return $recorded;
         });
+    }
+
+    /**
+     * The order is closing (refunded in full) before the courier collected
+     * its parcel, so every shipment not yet collected is called off. One
+     * whose booking is out with the courier right now is left: its answer
+     * cancels it (CourierBookings). A parcel already booked must also be
+     * cancelled in the courier's portal, which is logged for staff. Call
+     * with the campaign and order locked.
+     */
+    public function cancelForClosedOrder(CustomerOrder $order, Actor $actor): void
+    {
+        $open = Shipment::query()
+            ->where('customer_order_id', $order->id)
+            ->where('status', ShipmentStatus::Pending)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($open as $shipment) {
+            if ($shipment->booking_status === BookingStatus::Requested && $shipment->booking_sent_at !== null) {
+                Log::critical('courier.booking_out_for_closed_order', ['shipment' => $shipment->uuid, 'order' => $order->order_number, 'reference' => $shipment->booking_key]);
+
+                continue;
+            }
+
+            if ($shipment->booking_status === BookingStatus::Requested) {
+                $shipment->booking_status = BookingStatus::Failed;
+                $shipment->booking_error = 'Called off before it was sent: the order was refunded.';
+                $this->history->record($shipment, BookingStatus::Requested, BookingStatus::Failed, $actor, 'order_closed', ['field' => 'booking_status']);
+            }
+
+            $shipment->status = ShipmentStatus::Cancelled;
+            $shipment->save();
+            $this->history->record($shipment, ShipmentStatus::Pending, ShipmentStatus::Cancelled, $actor, 'order_closed');
+            $this->audit->record($actor, 'shipment.cancel', $shipment, ['status' => ShipmentStatus::Pending->value], [
+                'status' => ShipmentStatus::Cancelled->value,
+                'reason' => 'order_closed',
+            ]);
+
+            if ($shipment->booking_status === BookingStatus::Booked) {
+                Log::critical('courier.cancel_in_portal', ['shipment' => $shipment->uuid, 'order' => $order->order_number, 'tracking_number' => $shipment->tracking_number, 'reference' => $shipment->booking_key]);
+            }
+        }
     }
 
     /**
@@ -375,7 +438,7 @@ final class Shipments
         }
 
         if ($shipment->status === ShipmentStatus::Returned && $from !== ShipmentStatus::Returned) {
-            $this->returnedToSender($order, $shipment, $actor);
+            $this->returnedToSender($campaign, $order, $shipment, $actor);
         }
     }
 
@@ -421,11 +484,21 @@ final class Shipments
     /**
      * The courier could not deliver and brought the parcel back: the goods
      * are in the warehouse again and the order is ready to ship, for a new
-     * shipment or a refund.
+     * shipment or a refund. An order already refunded in full is cancelled
+     * instead (Refunds leaves a shipped order to the courier).
      */
-    private function returnedToSender(CustomerOrder $order, Shipment $shipment, Actor $actor): void
+    private function returnedToSender(Campaign $campaign, CustomerOrder $order, Shipment $shipment, Actor $actor): void
     {
         if ($order->status !== OrderStatus::Shipped) {
+            return;
+        }
+
+        if (PaymentAuthorization::query()->whereKey($order->payment_authorization_id)->value('status') === PaymentStatus::Refunded) {
+            $order->status = OrderStatus::Cancelled;
+            $order->save();
+            $this->history->record($order, OrderStatus::Shipped, OrderStatus::Cancelled, $actor, 'returned_after_refund');
+            $this->completeCampaignIfSettled($campaign, $actor);
+
             return;
         }
 

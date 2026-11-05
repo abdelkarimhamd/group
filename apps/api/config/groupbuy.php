@@ -149,6 +149,11 @@ return [
         // A booking still unanswered this long after it was asked for (its
         // job was lost) is queued again by shipments:track.
         'booking_requeue_after_minutes' => 30,
+        // A booking sent this long ago with no answer recorded is cancelled
+        // for staff to check in the courier's portal. Longer than the
+        // booking job can run (BookShipment::$timeout), so a slow answer is
+        // never thrown away.
+        'booking_answer_within_minutes' => 15,
         // Parcels read per run of shipments:track (every thirty minutes) and
         // per call to the courier.
         'track_per_run' => 500,

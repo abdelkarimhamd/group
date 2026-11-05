@@ -11,6 +11,7 @@ use App\Modules\Fulfillment\Enums\BookingStatus;
 use App\Modules\Fulfillment\Enums\ShipmentStatus;
 use App\Modules\Fulfillment\Jobs\BookShipment;
 use App\Modules\Fulfillment\Models\Shipment;
+use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Support\Actor;
 use App\Support\Audit\AuditLogger;
@@ -71,20 +72,24 @@ final class CourierBookings
     }
 
     /**
-     * Bookings still waiting for their answer this long after they were
-     * asked for. One that never went out (its job was lost) is queued
-     * again; one that went out but whose answer was never recorded is
-     * cancelled for staff to check. Returns how many of each.
+     * Bookings still waiting for their answer. One that never went out this
+     * long after it was asked for (its job was lost) is queued again; one
+     * that went out longer ago than any job can run, with no answer
+     * recorded, is cancelled for staff to check. Returns how many of each.
      *
      * @return array{requeued: int, abandoned: int}
      */
     public function sweep(?CarbonImmutable $now = null): array
     {
-        $before = ($now ?? CarbonImmutable::now())->subMinutes((int) config('groupbuy.couriers.booking_requeue_after_minutes'));
+        $now ??= CarbonImmutable::now();
+        $askedBefore = $now->subMinutes((int) config('groupbuy.couriers.booking_requeue_after_minutes'));
+        $sentBefore = $now->subMinutes((int) config('groupbuy.couriers.booking_answer_within_minutes'));
         $stale = Shipment::query()
             ->where('status', ShipmentStatus::Pending)
             ->where('booking_status', BookingStatus::Requested)
-            ->where('booking_requested_at', '<=', $before)
+            ->where(fn ($query) => $query
+                ->where(fn ($query) => $query->whereNull('booking_sent_at')->where('booking_requested_at', '<=', $askedBefore))
+                ->orWhere('booking_sent_at', '<=', $sentBefore))
             ->orderBy('id')
             ->get(['id', 'uuid', 'booking_key', 'booking_sent_at']);
         $result = ['requeued' => 0, 'abandoned' => 0];
@@ -104,7 +109,8 @@ final class CourierBookings
 
     /**
      * Step 1: take the booking if it is still waiting and has never gone
-     * out, and mark it as going out.
+     * out, and mark it as going out. One whose order closed meanwhile (a
+     * full refund) is called off without being sent.
      */
     private function claim(int $shipmentId): ?Shipment
     {
@@ -115,9 +121,15 @@ final class CourierBookings
         }
 
         return DB::transaction(function () use ($uuid): ?Shipment {
-            [, , $shipment] = $this->shipments->lockShipment($uuid);
+            [, $order, $shipment] = $this->shipments->lockShipment($uuid);
 
             if ($shipment->status !== ShipmentStatus::Pending || $shipment->booking_status !== BookingStatus::Requested || $shipment->booking_sent_at !== null) {
+                return null;
+            }
+
+            if ($order->status !== OrderStatus::ReadyToShip) {
+                $this->shipments->cancelForClosedOrder($order, Actor::system());
+
                 return null;
             }
 
@@ -182,16 +194,25 @@ final class CourierBookings
                 return;
             }
 
+            $actor = Actor::system();
             $shipment->tracking_number = mb_substr($booking->trackingNumber, 0, 100);
             $shipment->tracking_url = Shipments::trackingUrl($shipment->courier, $shipment->tracking_number);
             $shipment->booking_status = BookingStatus::Booked;
             $shipment->label_path = $labelPath;
             $shipment->save();
-            $this->audit->record(Actor::system(), 'shipment.booked', $shipment, ['booking_status' => BookingStatus::Requested->value], [
+            $this->history->record($shipment, BookingStatus::Requested, BookingStatus::Booked, $actor, 'booking_booked', ['field' => 'booking_status']);
+            $this->audit->record($actor, 'shipment.booked', $shipment, ['booking_status' => BookingStatus::Requested->value], [
                 'booking_status' => BookingStatus::Booked->value,
                 'order' => $order->order_number,
                 'tracking_number' => $shipment->tracking_number,
             ]);
+
+            // The order was refunded in full while the booking was out: keep
+            // the waybill for the record, call the parcel off here, and tell
+            // staff to cancel it in the courier's portal.
+            if ($order->status !== OrderStatus::ReadyToShip) {
+                $this->shipments->cancelForClosedOrder($order, $actor);
+            }
         });
     }
 
@@ -213,6 +234,7 @@ final class CourierBookings
             $shipment->booking_error = $error;
             $shipment->status = ShipmentStatus::Cancelled;
             $shipment->save();
+            $this->history->record($shipment, BookingStatus::Requested, BookingStatus::Failed, $actor, 'booking_failed', ['field' => 'booking_status']);
             $this->history->record($shipment, ShipmentStatus::Pending, ShipmentStatus::Cancelled, $actor, 'booking_failed');
             $this->audit->record($actor, 'shipment.booking_failed', $shipment, ['booking_status' => BookingStatus::Requested->value], [
                 'booking_status' => BookingStatus::Failed->value,

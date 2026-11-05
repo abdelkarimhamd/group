@@ -1402,6 +1402,9 @@ export interface paths {
      *     `method` is `void` for a full refund within 2 hours of capture
      *     (`groupbuy.payments.void_after_capture_minutes`), otherwise `refund`.
      *     Without `customer_order_id` the refund is linked to the payment's order.
+     *     Refunding everything left on an order that is `ready_to_ship` closes
+     *     the order, so it is refused while a shipment the courier has not
+     *     collected is open: cancel the shipment first.
      */
     post: operations['adminRequestRefund'];
     delete?: never;
@@ -6160,6 +6163,15 @@ export interface operations {
       };
       401: components['responses']['Unauthenticated'];
       403: components['responses']['Forbidden'];
+      /** @description `shipment_open`: a full refund of an order whose parcel is booked or waiting for the courier. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Error'];
+        };
+      };
       /** @description `refund_exceeds_captured`, `payment_not_captured`, `payment_not_found`, `order_not_for_payment`, or invalid input. */
       422: {
         headers: {

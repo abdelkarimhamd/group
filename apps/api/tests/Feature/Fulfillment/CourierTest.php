@@ -12,10 +12,13 @@ use App\Modules\Fulfillment\Models\ShipmentEvent;
 use App\Modules\Fulfillment\Services\CourierBookings;
 use App\Modules\Identity\Enums\AdminRole;
 use App\Modules\Orders\Models\CustomerOrder;
+use App\Modules\Payments\Models\PaymentAuthorization;
+use App\Modules\Payments\Services\Refunds;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
@@ -118,7 +121,7 @@ class CourierTest extends TestCase
             ShipmentEvent::query()->orderBy('occurred_at')->get()->map(fn (ShipmentEvent $event) => [$event->status->value, $event->source])->all(),
         );
         $this->assertSame(
-            [[null, 'pending'], ['pending', 'picked_up'], ['picked_up', 'in_transit'], ['in_transit', 'out_for_delivery'], ['out_for_delivery', 'delivered']],
+            [[null, 'pending'], ['requested', 'booked'], ['pending', 'picked_up'], ['picked_up', 'in_transit'], ['in_transit', 'out_for_delivery'], ['out_for_delivery', 'delivered']],
             StatusTransition::query()->where('subject_type', 'shipment')->orderBy('id')->get()->map(fn (StatusTransition $row) => [$row->from_status, $row->to_status])->all(),
         );
         // Delivered parcels are not read again; the campaign is complete.
@@ -264,6 +267,149 @@ class CourierTest extends TestCase
         $this->assertSame(2, CustomerOrder::query()->whereKey($order->id)->firstOrFail()->shipments()->count());
     }
 
+    #[Test]
+    public function a_booking_sent_late_by_its_job_is_given_time_to_answer(): void
+    {
+        $this->useScripted();
+        [$order] = $this->readyOrders($this->campaign, [3]);
+        Bus::fake([BookShipment::class]);
+        $this->book($order)->assertStatus(202);
+        $shipment = Shipment::query()->sole();
+
+        // The queue was slow: the job sent it just before the sweep came by.
+        $this->travel(29)->minutes();
+        DB::table('shipments')->where('id', $shipment->id)->update(['booking_sent_at' => now()]);
+        $this->travel(2)->minutes();
+        $this->artisan('shipments:track')->expectsOutputToContain('Bookings queued again: 0, cancelled for checking: 0')->assertSuccessful();
+        $this->assertSame('requested', $shipment->refresh()->booking_status->value);
+
+        // Still no answer long after any job could run.
+        $this->travel(15)->minutes();
+        $this->artisan('shipments:track')->expectsOutputToContain('Bookings queued again: 0, cancelled for checking: 1')->assertSuccessful();
+        $this->assertSame(['cancelled', 'failed'], [$shipment->refresh()->status->value, $shipment->booking_status->value]);
+        $this->assertSame(
+            [[null, 'pending', 'booking_requested'], ['requested', 'failed', 'booking_failed'], ['pending', 'cancelled', 'booking_failed']],
+            $this->shipmentHistory($shipment),
+        );
+    }
+
+    #[Test]
+    public function a_full_refund_waits_for_the_parcel_to_be_called_off(): void
+    {
+        $courier = $this->useScripted();
+        [$order] = $this->readyOrders($this->campaign, [3]);
+        Bus::fake([BookShipment::class]);
+        $first = $this->book($order)->assertStatus(202)->json('data.id');
+
+        // Refunding everything closes the order, so the parcel is called off first.
+        $this->refund($order)->assertStatus(409)->assertJsonPath('code', 'shipment_open');
+        (new BookShipment(Shipment::query()->where('uuid', $first)->value('id')))->handle(app(CourierBookings::class));
+        $this->refund($order)->assertStatus(409)->assertJsonPath('code', 'shipment_open');
+        $this->cancel($first, body: ['reason' => 'Customer cancelled'])->assertOk();
+        $approval = $this->refund($order)->assertCreated()->json('data.approval_request_id');
+
+        // Booked again before finance decided: the refund calls it off before it goes out.
+        $second = Shipment::query()->where('uuid', $this->book($order)->assertStatus(202)->json('data.id'))->sole();
+        $this->asAdmin('post', "/api/v1/admin/approval-requests/{$approval}/approve", role: AdminRole::Finance)->assertOk();
+        $this->assertSame('cancelled', $order->refresh()->status->value);
+        $second->refresh();
+        $this->assertSame(['cancelled', 'failed'], [$second->status->value, $second->booking_status->value]);
+        $this->assertStringContainsString('the order was refunded', (string) $second->booking_error);
+        $this->assertSame(
+            [[null, 'pending', 'booking_requested'], ['requested', 'failed', 'order_closed'], ['pending', 'cancelled', 'order_closed']],
+            $this->shipmentHistory($second),
+        );
+        (new BookShipment($second->id))->handle(app(CourierBookings::class));
+        $this->assertCount(1, $courier->booked);
+    }
+
+    #[Test]
+    public function a_booking_answered_after_the_order_closed_is_called_off(): void
+    {
+        $courier = $this->useScripted();
+        [$order, $other] = $this->readyOrders($this->campaign, [3, 1]);
+        $approval = $this->refund($order)->assertCreated()->json('data.approval_request_id');
+        Bus::fake([BookShipment::class]);
+        $this->book($order)->assertStatus(202);
+        $shipment = Shipment::query()->where('customer_order_id', $order->id)->sole();
+
+        // Finance approves while the booking is out with the courier: the
+        // refund leaves it, and its answer calls it off.
+        $courier->whileBooking = function () use ($approval, $shipment): void {
+            Log::spy();
+            $this->asAdmin('post', "/api/v1/admin/approval-requests/{$approval}/approve", role: AdminRole::Finance)->assertOk();
+            $this->assertSame('pending', $shipment->refresh()->status->value);
+            Log::shouldHaveReceived('critical')->with('courier.booking_out_for_closed_order', \Mockery::any())->once();
+        };
+        (new BookShipment($shipment->id))->handle(app(CourierBookings::class));
+
+        $this->assertSame('cancelled', $order->refresh()->status->value);
+        $shipment->refresh();
+        $this->assertSame(['cancelled', 'booked', 'SCR1'], [$shipment->status->value, $shipment->booking_status->value, $shipment->tracking_number]);
+        $this->assertSame(
+            [[null, 'pending', 'booking_requested'], ['requested', 'booked', 'booking_booked'], ['pending', 'cancelled', 'order_closed']],
+            $this->shipmentHistory($shipment),
+        );
+        Log::shouldHaveReceived('critical')->with('courier.cancel_in_portal', \Mockery::any())->once();
+
+        // A booking whose order closed some other way before its job ran is never sent.
+        $this->book($other)->assertStatus(202);
+        DB::table('customer_orders')->where('id', $other->id)->update(['status' => 'cancelled']);
+        $waiting = Shipment::query()->where('customer_order_id', $other->id)->sole();
+        (new BookShipment($waiting->id))->handle(app(CourierBookings::class));
+        $this->assertCount(1, $courier->booked);
+        $this->assertSame(['cancelled', 'failed'], [$waiting->refresh()->status->value, $waiting->booking_status->value]);
+    }
+
+    #[Test]
+    public function a_parcel_brought_back_after_a_full_refund_closes_the_order(): void
+    {
+        [$order] = $this->readyOrders($this->campaign, [3]);
+        $shipment = $this->asAdmin('post', "/api/v1/admin/orders/{$order->uuid}/shipment", ['courier' => 'SMSA', 'tracking_number' => 'SMSA-7'])->assertCreated()->json('data.id');
+
+        // Refunded while on its way: the order stays with the courier.
+        $approval = $this->refund($order)->assertCreated()->json('data.approval_request_id');
+        $this->asAdmin('post', "/api/v1/admin/approval-requests/{$approval}/approve", role: AdminRole::Finance)->assertOk();
+        $this->assertSame(['shipped', 'refunded'], [$order->refresh()->status->value, PaymentAuthorization::query()->whereKey($order->payment_authorization_id)->value('status')->value]);
+
+        $this->asAdmin('post', "/api/v1/admin/shipments/{$shipment}/events", ['status' => 'returned', 'occurred_at' => now()->toIso8601ZuluString()])->assertCreated();
+        $last = StatusTransition::query()->where('subject_type', 'customer_order')->where('subject_id', $order->id)->latest('id')->firstOrFail();
+        $this->assertSame(['shipped', 'cancelled', 'returned_after_refund'], [$last->from_status, $last->to_status, $last->reason]);
+        $this->assertSame('completed', $this->campaign->refresh()->status->value);
+    }
+
+    #[Test]
+    public function a_scan_before_the_courier_collects_the_parcel_is_not_a_pickup(): void
+    {
+        $courier = $this->useScripted();
+        [$order] = $this->readyOrders($this->campaign, [3]);
+        $this->book($order)->assertStatus(202);
+        $shipment = Shipment::query()->sole();
+
+        $courier->updates = [new TrackingUpdate('SCR1', 'ZZ1', 'Label scanned at hub', 'Riyadh', now()->addMinutes(30))];
+        $this->travel(1)->hours();
+        $this->artisan('shipments:track')->expectsOutputToContain('Parcels read: 1, new updates: 0')->assertSuccessful();
+        $this->assertSame(['pending', 'ready_to_ship'], [$shipment->refresh()->status->value, $order->refresh()->status->value]);
+
+        // Once collected, the earlier scan is still not a movement.
+        $courier->updates[] = new TrackingUpdate('SCR1', 'PU', 'Picked up', 'Riyadh', now());
+        $this->travel(1)->hours();
+        $this->artisan('shipments:track')->expectsOutputToContain('new updates: 1')->assertSuccessful();
+        $this->artisan('shipments:track')->expectsOutputToContain('new updates: 0')->assertSuccessful();
+        $this->assertSame(['picked_up', 'shipped'], [$shipment->refresh()->status->value, $order->refresh()->status->value]);
+    }
+
+    #[Test]
+    public function a_courier_set_up_wrongly_does_not_stop_refunds(): void
+    {
+        config(['services.courier.driver' => 'aramex', 'services.courier.aramex' => []]);
+        $this->app->forgetInstance(CourierGateway::class);
+
+        $this->assertInstanceOf(Refunds::class, app(Refunds::class));
+        [$order] = $this->readyOrders($this->campaign, [3]);
+        $this->refund($order)->assertCreated();
+    }
+
     private function useCourier(string $driver): void
     {
         config(['services.courier.driver' => $driver]);
@@ -293,5 +439,30 @@ class CourierTest extends TestCase
     private function cancel(string $shipment, AdminRole $role = AdminRole::Operations, array $body = []): TestResponse
     {
         return $this->asAdmin('post', "/api/v1/admin/shipments/{$shipment}/cancel", $body, $role);
+    }
+
+    private function refund(CustomerOrder $order, ?int $halalas = null): TestResponse
+    {
+        $payment = PaymentAuthorization::query()->whereKey($order->payment_authorization_id)->sole();
+
+        return $this->asAdmin('post', '/api/v1/admin/refunds', [
+            'payment_id' => $payment->uuid,
+            'amount_halalas' => $halalas ?? $payment->captured_amount_halalas,
+            'reason' => 'customer_cancellation',
+        ], AdminRole::Support);
+    }
+
+    /**
+     * @return list<array{string|null, string, string|null}>
+     */
+    private function shipmentHistory(Shipment $shipment): array
+    {
+        return StatusTransition::query()
+            ->where('subject_type', 'shipment')
+            ->where('subject_id', $shipment->id)
+            ->orderBy('id')
+            ->get()
+            ->map(fn (StatusTransition $row) => [$row->from_status, $row->to_status, $row->reason])
+            ->all();
     }
 }

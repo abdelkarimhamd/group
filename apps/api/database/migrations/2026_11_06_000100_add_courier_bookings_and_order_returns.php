@@ -77,6 +77,12 @@ return new class extends Migration
         DB::statement("ALTER TABLE refunds ADD CONSTRAINT refunds_reason_check CHECK (reason IN ('customer_cancellation', 'delivery_delay', 'defective', 'shortage', 'campaign_cancelled_after_capture', 'customer_return', 'other'))");
     }
 
+    /**
+     * Only runs cleanly before the features were used: once a refund has
+     * reason customer_return, an order has a second shipment, or a shipment
+     * has no waybill or ship date yet, the old constraints no longer hold and
+     * Postgres refuses them. Roll forward with a fix instead in that case.
+     */
     public function down(): void
     {
         DB::statement('ALTER TABLE refunds DROP CONSTRAINT refunds_reason_check');
