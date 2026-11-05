@@ -1639,6 +1639,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/purchase-orders/{purchase_order_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep a paper with a purchase order
+         * @description The Alibaba invoice, a payment receipt, shipping or customs papers.
+         *     Private: each document's `url` is a signed link that works for 30
+         *     minutes. At most 50 per order (409 `document_limit_reached`).
+         */
+        post: operations["adminAttachPurchaseOrderDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/purchase-orders/{purchase_order_id}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+                document_id: components["parameters"]["DocumentId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a paper uploaded by mistake
+         * @description The file is deleted and the removal is audited.
+         */
+        delete: operations["adminRemovePurchaseOrderDocument"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/purchase-orders/{purchase_order_id}/receipts": {
         parameters: {
             query?: never;
@@ -1660,6 +1707,30 @@ export interface paths {
          *     damaged units stay `processing` for the admin to refund.
          */
         post: operations["adminRecordInboundReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/inbound-receipts/{receipt_id}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receipt_id: components["parameters"]["ReceiptId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a photo of the goods as they arrived
+         * @description Evidence of damage or shortfalls: photos are added, never removed.
+         *     Private: `photo_urls` are signed links that work for 30 minutes. At
+         *     most 30 per receipt (409 `photo_limit_reached`).
+         */
+        post: operations["adminAddReceiptPhoto"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2190,7 +2261,7 @@ export interface components {
             total: components["schemas"]["Money"];
             /**
              * Format: uri
-             * @description Short-lived signed link. Null until the PDF is rendered and stored (comes with the storage integration).
+             * @description The Arabic and English PDF, with the ZATCA QR code: a signed link that works for 30 minutes. Null for the moment between issue and the queued render.
              */
             pdf_url: string | null;
         };
@@ -2904,6 +2975,26 @@ export interface components {
             eta: string | null;
             /** @description Warehouse receipts (fulfilment, E13); empty until then. */
             receipts: components["schemas"]["InboundReceipt"][];
+            /** @description Papers kept with the order, oldest first. */
+            documents: components["schemas"]["PurchaseOrderDocument"][];
+        };
+        /** @enum {string} */
+        PurchaseOrderDocumentKind: "alibaba_invoice" | "payment_receipt" | "shipping_document" | "customs_document" | "other";
+        PurchaseOrderDocument: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["PurchaseOrderDocumentKind"];
+            /** @description The name the file had when it was uploaded. */
+            file_name: string;
+            size_bytes: number;
+            /**
+             * Format: uri
+             * @description Signed link that works for 30 minutes.
+             */
+            url: string;
+            uploaded_by: components["schemas"]["Actor"];
+            /** Format: date-time */
+            uploaded_at: string;
         };
         InboundReceiptInput: {
             warehouse_name: string;
@@ -2934,7 +3025,7 @@ export interface components {
                 /** @description Expected but not received. */
                 qty_missing: number;
             }[];
-            /** @description Empty until file storage is connected. */
+            /** @description Photos of the goods as they arrived, oldest first; signed links that work for 30 minutes. */
             photo_urls: string[];
         };
         ReconciliationRun: {
@@ -3090,6 +3181,8 @@ export interface components {
         QuotationId: string;
         ApprovalRequestId: string;
         PurchaseOrderId: string;
+        DocumentId: string;
+        ReceiptId: string;
     };
     requestBodies: never;
     headers: {
@@ -5988,6 +6081,74 @@ export interface operations {
             422: components["responses"]["ValidationFailed"];
         };
     };
+    adminAttachPurchaseOrderDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description PDF, JPEG or PNG, up to 20 MB.
+                     */
+                    file: string;
+                    kind: components["schemas"]["PurchaseOrderDocumentKind"];
+                };
+            };
+        };
+        responses: {
+            /** @description Kept. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PurchaseOrder"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminRemovePurchaseOrderDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                purchase_order_id: components["parameters"]["PurchaseOrderId"];
+                document_id: components["parameters"]["DocumentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PurchaseOrder"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     adminRecordInboundReceipt: {
         parameters: {
             query?: never;
@@ -6018,6 +6179,45 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidTransition"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    adminAddReceiptPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                receipt_id: components["parameters"]["ReceiptId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description JPEG, PNG or WebP, up to 10 MB.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["InboundReceipt"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
         };
     };

@@ -36,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
         __DIR__.'/../app/Modules/Fulfillment/Console',
         __DIR__.'/../app/Modules/Identity/Console',
         __DIR__.'/../app/Modules/Notifications/Console',
+        __DIR__.'/../app/Modules/Orders/Console',
         __DIR__.'/../app/Modules/Payments/Console',
         __DIR__.'/../app/Modules/Supplier/Console',
     ])

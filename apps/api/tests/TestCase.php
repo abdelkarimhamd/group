@@ -4,6 +4,7 @@ namespace Tests;
 
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
 use Tests\Contract\OpenApiContract;
@@ -27,6 +28,17 @@ abstract class TestCase extends BaseTestCase
         }
 
         return $app;
+    }
+
+    /**
+     * Private files (invoice PDFs, purchase order papers, receipt photos)
+     * go to a throwaway disk that starts empty in every test.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Storage::fake((string) config('groupbuy.media.documents_disk'));
     }
 
     /**

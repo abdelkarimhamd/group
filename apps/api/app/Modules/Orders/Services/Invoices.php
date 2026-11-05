@@ -3,6 +3,7 @@
 namespace App\Modules\Orders\Services;
 
 use App\Modules\Orders\Enums\InvoiceType;
+use App\Modules\Orders\Jobs\RenderInvoicePdf;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
 use App\Modules\Orders\Support\ZatcaQr;
@@ -19,9 +20,9 @@ use LogicException;
  * made. Lines are VAT-inclusive; each line's VAT is split with the spec's
  * rounding rule and the invoice totals are the sums of its lines.
  *
- * Rendering the Arabic and English PDF and the ZATCA XML, and reporting to
- * Fatoora, come with the integrations; until then the files are empty and
- * zatca_status stays pending.
+ * The Arabic and English PDF is rendered on the queue after the commit
+ * (RenderInvoicePdf); the ZATCA XML and reporting to Fatoora come with the
+ * e-invoicing integration, so zatca_status stays pending until then.
  */
 final class Invoices
 {
@@ -85,6 +86,7 @@ final class Invoices
             'qr_payload' => ZatcaQr::encode($seller['legal_name_ar'], $seller['vat_number'], $issuedAt, $total, $vat),
         ]);
         $this->history->record($invoice, null, 'issued', $actor);
+        RenderInvoicePdf::dispatch($invoice->id)->afterCommit();
 
         return $invoice;
     }
@@ -165,6 +167,7 @@ final class Invoices
             'qr_payload' => ZatcaQr::encode($seller['legal_name_ar'], $seller['vat_number'], $issuedAt, $total, $vat),
         ]);
         $this->history->record($note, null, 'issued', $actor);
+        RenderInvoicePdf::dispatch($note->id)->afterCommit();
 
         return $note;
     }

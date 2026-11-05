@@ -2995,6 +2995,74 @@ paths:
         '409': {$ref: '#/components/responses/InvalidTransition'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
 
+  /admin/purchase-orders/{purchase_order_id}/documents:
+    parameters:
+      - $ref: '#/components/parameters/PurchaseOrderId'
+    post:
+      tags: [Admin purchasing]
+      operationId: adminAttachPurchaseOrderDocument
+      summary: Keep a paper with a purchase order
+      description: |
+        The Alibaba invoice, a payment receipt, shipping or customs papers.
+        Private: each document's `url` is a signed link that works for 30
+        minutes. At most 50 per order (409 `document_limit_reached`).
+      x-epic: E12
+      x-status: live
+      x-permission: purchasing.edit
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, kind]
+              properties:
+                file: {type: string, format: binary, description: 'PDF, JPEG or PNG, up to 20 MB.'}
+                kind: {$ref: '#/components/schemas/PurchaseOrderDocumentKind'}
+      responses:
+        '201':
+          description: Kept.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/PurchaseOrder'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/purchase-orders/{purchase_order_id}/documents/{document_id}:
+    parameters:
+      - $ref: '#/components/parameters/PurchaseOrderId'
+      - $ref: '#/components/parameters/DocumentId'
+    delete:
+      tags: [Admin purchasing]
+      operationId: adminRemovePurchaseOrderDocument
+      summary: Remove a paper uploaded by mistake
+      description: The file is deleted and the removal is audited.
+      x-epic: E12
+      x-status: live
+      x-permission: purchasing.edit
+      security: [{adminToken: []}]
+      responses:
+        '200':
+          description: Removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/PurchaseOrder'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
   /admin/purchase-orders/{purchase_order_id}/receipts:
     parameters:
       - $ref: '#/components/parameters/PurchaseOrderId'
@@ -3032,6 +3100,46 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/InvalidTransition'}
+        '422': {$ref: '#/components/responses/ValidationFailed'}
+
+  /admin/inbound-receipts/{receipt_id}/photos:
+    parameters:
+      - $ref: '#/components/parameters/ReceiptId'
+    post:
+      tags: [Admin fulfilment]
+      operationId: adminAddReceiptPhoto
+      summary: Add a photo of the goods as they arrived
+      description: |
+        Evidence of damage or shortfalls: photos are added, never removed.
+        Private: `photo_urls` are signed links that work for 30 minutes. At
+        most 30 per receipt (409 `photo_limit_reached`).
+      x-epic: E13
+      x-status: live
+      x-permission: fulfilment.edit
+      security: [{adminToken: []}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary, description: 'JPEG, PNG or WebP, up to 10 MB.'}
+      responses:
+        '201':
+          description: Added.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {$ref: '#/components/schemas/InboundReceipt'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
 
   # ---------------------------------------------------------------- Admin finance and audit
@@ -3291,6 +3399,16 @@ components:
       schema: {type: string, format: uuid}
     PurchaseOrderId:
       name: purchase_order_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    DocumentId:
+      name: document_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ReceiptId:
+      name: receipt_id
       in: path
       required: true
       schema: {type: string, format: uuid}
@@ -3778,7 +3896,7 @@ components:
         invoice_number: {type: string, example: INV-2026-000123}
         issued_at: {type: string, format: date-time}
         total: {$ref: '#/components/schemas/Money'}
-        pdf_url: {type: string, format: uri, nullable: true, description: Short-lived signed link. Null until the PDF is rendered and stored (comes with the storage integration).}
+        pdf_url: {type: string, format: uri, nullable: true, description: 'The Arabic and English PDF, with the ZATCA QR code: a signed link that works for 30 minutes. Null for the moment between issue and the queued render.'}
 
     ShipmentStatus:
       type: string
@@ -4534,7 +4652,7 @@ components:
 
     PurchaseOrder:
       type: object
-      required: [id, po_number, campaign, supplier, supplier_quotation_id, alibaba_order_ref, total, fx_rate_to_sar, total_sar, status, lines, placed_at, supplier_confirmed_at, paid_at, shipped_at, freight_forwarder, freight_tracking_ref, eta, receipts]
+      required: [id, po_number, campaign, supplier, supplier_quotation_id, alibaba_order_ref, total, fx_rate_to_sar, total_sar, status, lines, placed_at, supplier_confirmed_at, paid_at, shipped_at, freight_forwarder, freight_tracking_ref, eta, receipts, documents]
       properties:
         id: {type: string, format: uuid}
         po_number: {type: string, example: PO-2611-0007}
@@ -4585,6 +4703,26 @@ components:
           type: array
           description: Warehouse receipts (fulfilment, E13); empty until then.
           items: {$ref: '#/components/schemas/InboundReceipt'}
+        documents:
+          type: array
+          description: Papers kept with the order, oldest first.
+          items: {$ref: '#/components/schemas/PurchaseOrderDocument'}
+
+    PurchaseOrderDocumentKind:
+      type: string
+      enum: [alibaba_invoice, payment_receipt, shipping_document, customs_document, other]
+
+    PurchaseOrderDocument:
+      type: object
+      required: [id, kind, file_name, size_bytes, url, uploaded_by, uploaded_at]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {$ref: '#/components/schemas/PurchaseOrderDocumentKind'}
+        file_name: {type: string, description: The name the file had when it was uploaded.}
+        size_bytes: {type: integer}
+        url: {type: string, format: uri, description: Signed link that works for 30 minutes.}
+        uploaded_by: {$ref: '#/components/schemas/Actor'}
+        uploaded_at: {type: string, format: date-time}
 
     InboundReceiptInput:
       type: object
@@ -4626,7 +4764,7 @@ components:
               qty_missing: {type: integer, description: Expected but not received.}
         photo_urls:
           type: array
-          description: Empty until file storage is connected.
+          description: Photos of the goods as they arrived, oldest first; signed links that work for 30 minutes.
           items: {type: string, format: uri}
 
     ReconciliationRun:

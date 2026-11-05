@@ -70,6 +70,8 @@ return [
         'same_admin' => 'A second admin has to decide this request, not the one who asked for it.',
         'already_resolved' => 'This mismatch was already resolved.',
         'purchase_order_incomplete' => 'Record the Alibaba order number and the exchange rate first, and a freight tracking reference before shipping.',
+        'document_limit_reached' => 'This purchase order already has as many documents as it can keep. Remove one first.',
+        'photo_limit_reached' => 'This receipt already has as many photos as it can keep.',
         'shipment_exists' => 'This order already has a shipment.',
         'event_before_shipment' => 'An update cannot be dated before the courier picked up the order.',
         'receipt_lines_mismatch' => 'Count every variant on the purchase order exactly once, and nothing else.',

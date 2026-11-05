@@ -4,20 +4,27 @@ namespace App\Modules\Orders\Http\Controllers;
 
 use App\Http\Controllers\AdminController;
 use App\Http\Resources\CursorPage;
+use App\Modules\Orders\Enums\PurchaseOrderDocumentKind;
 use App\Modules\Orders\Enums\PurchaseOrderStatus;
 use App\Modules\Orders\Http\Requests\AdminListPurchaseOrdersRequest;
 use App\Modules\Orders\Http\Requests\AdvancePurchaseOrderRequest;
+use App\Modules\Orders\Http\Requests\PurchaseOrderDocumentRequest;
 use App\Modules\Orders\Http\Requests\PurchaseOrderRequest;
 use App\Modules\Orders\Http\Resources\PurchaseOrderResource;
 use App\Modules\Orders\Models\SupplierPurchaseOrder;
+use App\Modules\Orders\Services\PurchaseOrderDocuments;
 use App\Modules\Orders\Services\PurchaseOrders;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 final class AdminPurchaseOrderController extends AdminController
 {
-    public function __construct(private readonly PurchaseOrders $purchaseOrders) {}
+    public function __construct(
+        private readonly PurchaseOrders $purchaseOrders,
+        private readonly PurchaseOrderDocuments $documents,
+    ) {}
 
     /**
      * Newest first.
@@ -56,6 +63,25 @@ final class AdminPurchaseOrderController extends AdminController
             $request->validated('note'),
             $this->admin($request),
         );
+
+        return $this->resource($purchaseOrder);
+    }
+
+    public function attachDocument(PurchaseOrderDocumentRequest $request, string $purchaseOrder): JsonResponse
+    {
+        $this->documents->attach(
+            $purchaseOrder,
+            $request->file('file'),
+            PurchaseOrderDocumentKind::from($request->validated('kind')),
+            $this->admin($request),
+        );
+
+        return $this->resource($purchaseOrder)->response()->setStatusCode(201);
+    }
+
+    public function removeDocument(Request $request, string $purchaseOrder, string $document): PurchaseOrderResource
+    {
+        $this->documents->remove($purchaseOrder, $document, $this->admin($request));
 
         return $this->resource($purchaseOrder);
     }

@@ -183,9 +183,12 @@ Route::prefix('v1')->name('v1.')->group(function () {
             Route::get('purchase-orders/{purchaseOrder}', [AdminPurchaseOrderController::class, 'show'])->whereUuid('purchaseOrder')->can('purchasing.view')->name('purchase-orders.show');
             Route::patch('purchase-orders/{purchaseOrder}', [AdminPurchaseOrderController::class, 'update'])->whereUuid('purchaseOrder')->can('purchasing.edit')->name('purchase-orders.update');
             Route::post('purchase-orders/{purchaseOrder}/status', [AdminPurchaseOrderController::class, 'advance'])->whereUuid('purchaseOrder')->can('purchasing.edit')->name('purchase-orders.advance');
+            Route::post('purchase-orders/{purchaseOrder}/documents', [AdminPurchaseOrderController::class, 'attachDocument'])->whereUuid('purchaseOrder')->can('purchasing.edit')->name('purchase-orders.documents.store');
+            Route::delete('purchase-orders/{purchaseOrder}/documents/{document}', [AdminPurchaseOrderController::class, 'removeDocument'])->whereUuid(['purchaseOrder', 'document'])->can('purchasing.edit')->name('purchase-orders.documents.destroy');
 
             // Warehouse and last mile (E13)
             Route::post('purchase-orders/{purchaseOrder}/receipts', [AdminFulfilmentController::class, 'receive'])->whereUuid('purchaseOrder')->can('fulfilment.edit')->name('purchase-orders.receipts.store');
+            Route::post('inbound-receipts/{receipt}/photos', [AdminFulfilmentController::class, 'addPhoto'])->whereUuid('receipt')->can('fulfilment.edit')->name('inbound-receipts.photos.store');
             Route::post('orders/{order}/shipment', [AdminFulfilmentController::class, 'ship'])->whereUuid('order')->can('fulfilment.edit')->name('orders.shipment.store');
             Route::post('shipments/{shipment}/events', [AdminFulfilmentController::class, 'track'])->whereUuid('shipment')->can('fulfilment.edit')->name('shipments.events.store');
 

@@ -13,6 +13,8 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.0",
+        "mpdf/mpdf": "^8.2",
+        "mpdf/qrcode": "^1.2",
         "pusher/pusher-php-server": "^7.3",
         "sentry/sentry-laravel": "^4.29",
         "spatie/laravel-permission": "^8.3"

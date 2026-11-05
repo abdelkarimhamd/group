@@ -198,13 +198,25 @@ return [
     ],
 
     'media' => [
-        // Product photos are public. Supplier quotation files are private and
+        // Product photos are public. Supplier quotation files, purchase order
+        // papers, warehouse receipt photos and invoice PDFs are private and
         // shown through short-lived signed links.
         'disk' => env('MEDIA_DISK', 'public'),
         'documents_disk' => env('DOCUMENTS_DISK', 'local'),
         'image_max_kb' => 10240,
         'attachment_max_kb' => 20480,
         'attachment_url_minutes' => 30,
+        // Limits that keep one record's files reviewable on one screen.
+        'documents_per_purchase_order' => 50,
+        'photos_per_receipt' => 30,
+    ],
+
+    'invoices' => [
+        // Each invoice and credit note gets an Arabic and English PDF,
+        // rendered on the queue once it is issued. invoices:render-pdfs
+        // queues again any still missing this long after issue (a job that
+        // ran out of tries or was lost).
+        'pdf_requeue_after_minutes' => 10,
     ],
 
 ];

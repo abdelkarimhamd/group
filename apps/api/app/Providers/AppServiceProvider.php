@@ -37,6 +37,7 @@ use App\Modules\Notifications\Sms\TaqnyatSmsSender;
 use App\Modules\Notifications\Sms\UnifonicSmsSender;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
+use App\Modules\Orders\Models\PurchaseOrderDocument;
 use App\Modules\Orders\Models\SupplierPurchaseOrder;
 use App\Modules\Payments\Gateway\FakeMoyasarGateway;
 use App\Modules\Payments\Gateway\MoyasarGateway;
@@ -152,6 +153,7 @@ class AppServiceProvider extends ServiceProvider
             'invoice' => Invoice::class,
             'refund' => Refund::class,
             'supplier_purchase_order' => SupplierPurchaseOrder::class,
+            'purchase_order_document' => PurchaseOrderDocument::class,
             'inbound_receipt' => InboundReceipt::class,
             'shipment' => Shipment::class,
             'ledger_transaction' => LedgerTransaction::class,

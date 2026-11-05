@@ -5,6 +5,7 @@ import type {
   ApprovalRequest,
   MarginReport,
   Money,
+  PurchaseOrder,
   Supplier,
 } from '../api/types';
 import type { Permission } from '../auth/permissions';
@@ -150,6 +151,32 @@ export function role(
 }
 
 /** A cursor page in the API's envelope. */
+export function purchaseOrder(overrides: Partial<PurchaseOrder> = {}): PurchaseOrder {
+  return {
+    id: '66666666-6666-4666-8666-000000000001',
+    po_number: 'PO-2611-0007',
+    campaign: { id: '11111111-1111-4111-8111-111111111111', code: 'GB-2611-0007' },
+    supplier: { id: '22222222-2222-4222-8222-222222222222', name: 'Shenzhen Audio Co.' },
+    supplier_quotation_id: '33333333-3333-4333-8333-333333333333',
+    alibaba_order_ref: 'ALI-7781',
+    total: { amount_minor: 20000, currency: 'USD', formatted: '200.00 USD' },
+    fx_rate_to_sar: '3.75000000',
+    total_sar: sar(75000),
+    status: 'received',
+    lines: [],
+    placed_at: '2026-11-10T09:00:00Z',
+    supplier_confirmed_at: null,
+    paid_at: null,
+    shipped_at: '2026-11-12T09:00:00Z',
+    freight_forwarder: null,
+    freight_tracking_ref: 'MAEU-1',
+    eta: null,
+    receipts: [],
+    documents: [],
+    ...overrides,
+  };
+}
+
 export function page<T>(data: T[], next_cursor: string | null = null) {
   return { data, meta: { next_cursor, per_page: 25 } };
 }

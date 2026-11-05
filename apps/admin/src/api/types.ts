@@ -66,6 +66,8 @@ export type ShipmentEventInput = S['ShipmentEventInput'];
 export type PurchaseOrder = S['PurchaseOrder'];
 export type PurchaseOrderStatus = S['PurchaseOrderStatus'];
 export type PurchaseOrderInput = S['PurchaseOrderInput'];
+export type PurchaseOrderDocument = S['PurchaseOrderDocument'];
+export type PurchaseOrderDocumentKind = S['PurchaseOrderDocumentKind'];
 export type InboundReceipt = S['InboundReceipt'];
 export type InboundReceiptInput = S['InboundReceiptInput'];
 
