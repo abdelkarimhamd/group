@@ -11,6 +11,7 @@ use App\Modules\Campaign\Models\CampaignEvent;
 use App\Modules\Campaign\Services\CampaignCancellations;
 use App\Modules\Campaign\Services\CampaignEvents;
 use App\Modules\Campaign\Services\CampaignLifecycle;
+use App\Modules\Finance\Services\Ledger;
 use App\Modules\Identity\Models\AdminUser;
 use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Orders\Enums\PurchaseOrderStatus;
@@ -30,8 +31,9 @@ use LogicException;
 /**
  * Supplier purchase orders (spec, E12): one per successful campaign, for
  * the captured units, recorded and moved forward by hand as the Alibaba
- * order goes through. Lock order: campaign, then purchase order, then
- * customer orders.
+ * order goes through. Once it is paid, its SAR value is in the ledger
+ * (Ledger::postSupplierPayment). Lock order: campaign, then purchase order,
+ * then customer orders.
  */
 final class PurchaseOrders
 {
@@ -40,6 +42,7 @@ final class PurchaseOrders
         private readonly CampaignLifecycle $lifecycle,
         private readonly StatusHistory $history,
         private readonly AuditLogger $audit,
+        private readonly Ledger $ledger,
     ) {}
 
     /**
@@ -174,6 +177,11 @@ final class PurchaseOrders
             $order->save();
             $this->audit->record(Actor::admin($by->id), 'purchase_order.update', $order, $before, $after);
 
+            // A paid order whose value changed: the ledger posts the difference.
+            if (self::isPaid($order)) {
+                $this->ledger->postSupplierPayment($order, Actor::admin($by->id));
+            }
+
             return $order;
         });
     }
@@ -227,6 +235,12 @@ final class PurchaseOrders
                 $this->startProcessingOrders($campaign, $actor);
             }
 
+            // Paid now (or shipped without the payment step recorded): the
+            // money left the bank for goods on their way.
+            if (self::isPaid($order)) {
+                $this->ledger->postSupplierPayment($order, $actor);
+            }
+
             if ($to === PurchaseOrderStatus::Shipped) {
                 $this->lifecycle->startFulfilling($campaign, $actor, [
                     'purchase_order_id' => $order->uuid,
@@ -236,6 +250,17 @@ final class PurchaseOrders
 
             return $order;
         });
+    }
+
+    /**
+     * Whether the supplier has been paid: the order reached `paid` or a later
+     * step, and was not cancelled. Steps may be skipped, so a shipped order
+     * counts as paid.
+     */
+    private static function isPaid(SupplierPurchaseOrder $order): bool
+    {
+        return $order->status !== PurchaseOrderStatus::Cancelled
+            && $order->status->rank() >= PurchaseOrderStatus::Paid->rank();
     }
 
     /**

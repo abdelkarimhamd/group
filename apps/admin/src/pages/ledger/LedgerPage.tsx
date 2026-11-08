@@ -29,6 +29,7 @@ const TYPES: LedgerTransactionType[] = [
   'adjustment',
   'reversal',
   'settlement',
+  'supplier_payment',
 ];
 
 function Lines({ lines }: { lines: LedgerLine[] }) {
@@ -40,7 +41,11 @@ function Lines({ lines }: { lines: LedgerLine[] }) {
       pagination={false}
       dataSource={lines}
       columns={[
-        { title: t('ledger.account'), dataIndex: 'account_name' },
+        {
+          title: t('ledger.account'),
+          dataIndex: 'account',
+          render: (code: LedgerAccountCode) => t(`ledger.accounts.${code}`),
+        },
         {
           title: t('ledger.debits'),
           key: 'd',
@@ -70,7 +75,11 @@ function Balances() {
         scroll={{ x: 'max-content' }}
         dataSource={accounts.data.data}
         columns={[
-          { title: t('ledger.account'), dataIndex: 'name' },
+          {
+            title: t('ledger.account'),
+            dataIndex: 'code',
+            render: (code: LedgerAccountCode) => t(`ledger.accounts.${code}`),
+          },
           {
             title: t('ledger.accountType'),
             dataIndex: 'type',
@@ -133,7 +142,7 @@ function Postings({ onReverse }: { onReverse: (tx: LedgerTransaction) => void })
           placeholder={t('ledger.account')}
           value={query.account}
           onChange={(v?: string) => filter('account', v)}
-          options={LEDGER_ACCOUNTS.map((v) => ({ value: v, label: v }))}
+          options={LEDGER_ACCOUNTS.map((v) => ({ value: v, label: t(`ledger.accounts.${v}`) }))}
           style={{ width: 240 }}
         />
       </Space>
@@ -266,12 +275,8 @@ export function LedgerPage() {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') ?? 'balances';
-  const accounts = $api.useQuery('get', '/admin/ledger/accounts');
   const [adjusting, setAdjusting] = useState(false);
   const [reversing, setReversing] = useState<LedgerTransaction | null>(null);
-  const accountNames = Object.fromEntries(
-    (accounts.data?.data ?? []).map((a) => [a.code, a.name]),
-  ) as Partial<Record<LedgerAccountCode, string>>;
 
   return (
     <>
@@ -301,9 +306,7 @@ export function LedgerPage() {
           ]}
         />
       </Card>
-      {adjusting && (
-        <LedgerAdjustmentModal accountNames={accountNames} onClose={() => setAdjusting(false)} />
-      )}
+      {adjusting && <LedgerAdjustmentModal onClose={() => setAdjusting(false)} />}
       {reversing && (
         <ReverseTransactionModal transaction={reversing} onClose={() => setReversing(null)} />
       )}

@@ -20,4 +20,7 @@ enum LedgerTransactionType: string
 
     /** Moyasar paid out to the bank, less its fees and their VAT. */
     case Settlement = 'settlement';
+
+    /** A campaign's bulk order was paid for: goods bought, out of the bank. */
+    case SupplierPayment = 'supplier_payment';
 }

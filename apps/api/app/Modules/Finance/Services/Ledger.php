@@ -10,6 +10,7 @@ use App\Modules\Finance\Models\LedgerTransaction;
 use App\Modules\Orders\Enums\InvoiceType;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
+use App\Modules\Orders\Models\SupplierPurchaseOrder;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use App\Modules\Payments\Models\Refund;
 use App\Support\Actor;
@@ -33,8 +34,12 @@ use LogicException;
  *    out of Moyasar clearing (Settlements imports them).
  *  - adjustment and reversal: by hand, once a second admin approved
  *    (LedgerAdjustments).
+ *  - supplier payment: a campaign's purchase order was paid; its SAR value
+ *    leaves the bank and is held as goods in transit. A later change to
+ *    that value posts the difference.
  *
- * Supplier payments are not posted yet; their accounts exist.
+ * What the goods cost is not yet moved out of goods in transit: how import
+ * VAT and customs enter it waits for the tax adviser (spec, P1 and Q10).
  */
 final class Ledger
 {
@@ -123,6 +128,49 @@ final class Ledger
             [LedgerAccountCode::VatInputRecoverable, 'D', $feeVat],
             [LedgerAccountCode::MoyasarClearing, 'C', $gross],
         ]), $actor);
+    }
+
+    /**
+     * A purchase order that is paid for: what its SAR value says, less what
+     * was posted for it before, leaves the bank as goods in transit (or goes
+     * back, when the value went down). The first posting is the payment,
+     * each later one a correction. Returns null when nothing changed. Call
+     * with the purchase order locked.
+     */
+    public function postSupplierPayment(SupplierPurchaseOrder $order, Actor $actor): ?LedgerTransaction
+    {
+        if ($order->total_halalas === null) {
+            throw new LogicException("Purchase order {$order->po_number} has no SAR value to post.");
+        }
+
+        $reference = 'purchase_order:'.$order->uuid;
+        $postings = LedgerTransaction::query()
+            ->where('type', LedgerTransactionType::SupplierPayment)
+            ->where(fn ($query) => $query->where('reference', $reference)->orWhere('reference', 'like', $reference.':%'));
+        $count = (clone $postings)->count();
+
+        $sums = LedgerEntry::query()
+            ->whereIn('ledger_transaction_id', (clone $postings)->select('id'))
+            ->where('ledger_account_id', $this->accountId(LedgerAccountCode::InventoryInTransit))
+            ->selectRaw("COALESCE(SUM(amount_halalas) FILTER (WHERE direction = 'D'), 0) AS debits, COALESCE(SUM(amount_halalas) FILTER (WHERE direction = 'C'), 0) AS credits")
+            ->first();
+        $posted = Money::sar((int) $sums->getAttribute('debits'))->minus(Money::sar((int) $sums->getAttribute('credits')));
+        $difference = Money::sar($order->total_halalas)->minus($posted);
+
+        if ($difference->isZero()) {
+            return null;
+        }
+
+        return $this->post(
+            LedgerTransactionType::SupplierPayment,
+            $count === 0 ? $reference : $reference.':'.($count + 1),
+            ($count === 0 ? 'Supplier payment for ' : 'Supplier payment correction for ').$order->po_number,
+            self::signed([
+                [LedgerAccountCode::InventoryInTransit, 'D', $difference],
+                [LedgerAccountCode::Bank, 'C', $difference],
+            ]),
+            $actor,
+        );
     }
 
     /**

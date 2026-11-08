@@ -5538,7 +5538,8 @@ components:
 
     LedgerTransactionType:
       type: string
-      enum: [capture, refund, revenue_recognition, adjustment, reversal, settlement]
+      description: '`supplier_payment` moves a paid purchase order''s SAR value from the bank to goods in transit; a later change to that value posts the difference.'
+      enum: [capture, refund, revenue_recognition, adjustment, reversal, settlement, supplier_payment]
 
     LedgerAccountBalance:
       type: object
