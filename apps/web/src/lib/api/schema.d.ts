@@ -3541,8 +3541,11 @@ export interface components {
         };
         /** @enum {string} */
         LedgerAccountCode: "moyasar_clearing" | "bank" | "inventory_in_transit" | "customer_prepayments" | "vat_output_payable" | "supplier_payable" | "sales_revenue" | "payment_fees" | "vat_input_recoverable";
-        /** @enum {string} */
-        LedgerTransactionType: "capture" | "refund" | "revenue_recognition" | "adjustment" | "reversal" | "settlement";
+        /**
+         * @description `supplier_payment` moves a paid purchase order's SAR value from the bank to goods in transit; a later change to that value posts the difference.
+         * @enum {string}
+         */
+        LedgerTransactionType: "capture" | "refund" | "revenue_recognition" | "adjustment" | "reversal" | "settlement" | "supplier_payment";
         LedgerAccountBalance: {
             code: components["schemas"]["LedgerAccountCode"];
             /** @example Moyasar clearing */

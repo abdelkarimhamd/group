@@ -8,6 +8,10 @@ use App\Modules\Campaign\Models\Campaign;
 use App\Modules\Campaign\Models\CampaignEvent;
 use App\Modules\Campaign\Services\Closing;
 use App\Modules\Catalog\Models\ProductVariant;
+use App\Modules\Finance\Enums\LedgerAccountCode;
+use App\Modules\Finance\Enums\LedgerTransactionType;
+use App\Modules\Finance\Models\LedgerTransaction;
+use App\Modules\Finance\Services\Ledger;
 use App\Modules\Identity\Enums\AdminRole;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\SupplierPurchaseOrder;
@@ -243,6 +247,52 @@ class PurchaseOrdersTest extends TestCase
     }
 
     #[Test]
+    public function paying_the_supplier_is_posted_to_the_ledger_and_later_changes_post_the_difference(): void
+    {
+        $this->paidJoin($this->campaign, 3);
+        $this->captureAll($this->campaign);
+        $order = SupplierPurchaseOrder::query()->sole();
+        $uri = "/api/v1/admin/purchase-orders/{$order->uuid}";
+        $this->admin('patch', $uri, ['alibaba_order_ref' => 'ALI-1', 'total_minor' => 12000])->assertOk();
+        $this->advance($order, ['status' => 'placed'])->assertOk();
+
+        // Nothing is posted before the supplier is paid.
+        $this->assertSame([], $this->supplierPayments());
+
+        // 120.00 USD at 3.75: 450.00 SAR out of the bank, into goods in transit.
+        $this->advance($order, ['status' => 'paid'])->assertOk();
+        $this->assertSame([["purchase_order:{$order->uuid}", [['inventory_in_transit', 'D', 45000], ['bank', 'C', 45000]]]], $this->supplierPayments());
+
+        // The supplier's invoice said 118.00 USD at 3.76: the difference goes back.
+        $this->admin('patch', $uri, ['total_minor' => 11800, 'fx_rate_to_sar' => '3.76'])->assertOk()->assertJsonPath('data.total_sar.amount_minor', 44368);
+        // A change that leaves the SAR value as it is posts nothing.
+        $this->admin('patch', $uri, ['freight_forwarder' => 'DHL'])->assertOk();
+        $this->assertSame([
+            ["purchase_order:{$order->uuid}", [['inventory_in_transit', 'D', 45000], ['bank', 'C', 45000]]],
+            ["purchase_order:{$order->uuid}:2", [['inventory_in_transit', 'C', 632], ['bank', 'D', 632]]],
+        ], $this->supplierPayments());
+        $this->assertSame(44368, app(Ledger::class)->balance(LedgerAccountCode::InventoryInTransit)->minor);
+
+        // Shipping it posts nothing more.
+        $this->admin('patch', $uri, ['freight_tracking_ref' => 'MAEU-1'])->assertOk();
+        $this->advance($order, ['status' => 'shipped'])->assertOk();
+        $this->assertCount(2, $this->supplierPayments());
+    }
+
+    #[Test]
+    public function an_order_shipped_without_the_payment_step_counts_as_paid(): void
+    {
+        $this->paidJoin($this->campaign, 3);
+        $this->captureAll($this->campaign);
+        $order = SupplierPurchaseOrder::query()->sole();
+        $this->admin('patch', "/api/v1/admin/purchase-orders/{$order->uuid}", ['alibaba_order_ref' => 'ALI-1', 'freight_tracking_ref' => 'MAEU-1'])->assertOk();
+
+        $this->advance($order, ['status' => 'shipped'])->assertOk();
+
+        $this->assertSame([["purchase_order:{$order->uuid}", [['inventory_in_transit', 'D', $order->fresh()->total_halalas], ['bank', 'C', $order->fresh()->total_halalas]]]], $this->supplierPayments());
+    }
+
+    #[Test]
     public function purchase_orders_need_their_permissions_and_an_open_order(): void
     {
         $this->paidJoin($this->campaign, 3);
@@ -299,6 +349,23 @@ class PurchaseOrdersTest extends TestCase
         $this->forgetAuthenticatedUsers();
 
         return $response;
+    }
+
+    /**
+     * @return list<array{string, list<array{string, string, int}>}>
+     */
+    private function supplierPayments(): array
+    {
+        return LedgerTransaction::query()
+            ->where('type', LedgerTransactionType::SupplierPayment)
+            ->with('entries.account')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (LedgerTransaction $transaction) => [
+                $transaction->reference,
+                $transaction->entries->sortBy('id')->map(fn ($entry) => [$entry->account->code, $entry->direction, $entry->amount_halalas])->values()->all(),
+            ])
+            ->all();
     }
 
     /**

@@ -48,13 +48,7 @@ function totals(lines: LineValues[] | undefined): { debits: number; credits: num
 }
 
 /** Balanced lines to post once a second admin with the finance role approves. */
-export function LedgerAdjustmentModal({
-  accountNames,
-  onClose,
-}: {
-  accountNames: Partial<Record<LedgerAccountCode, string>>;
-  onClose: () => void;
-}) {
+export function LedgerAdjustmentModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const refresh = useRefreshLedger();
@@ -93,7 +87,7 @@ export function LedgerAdjustmentModal({
 
   const accountOptions = LEDGER_ACCOUNTS.map((code) => ({
     value: code,
-    label: accountNames[code] ?? code,
+    label: t(`ledger.accounts.${code}`),
   }));
 
   return (

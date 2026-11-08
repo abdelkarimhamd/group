@@ -55,7 +55,7 @@ async function CampaignView({ params }: { params: PageProps<"/[locale]/campaigns
 
   return (
     <LiveCampaignProvider campaignId={campaign.id} initial={campaign.progress}>
-      <nav aria-label="breadcrumb" className="mb-4 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+      <nav aria-label={t.common.breadcrumb} className="mb-4 flex flex-wrap items-center gap-2 text-sm text-slate-500">
         <Link href={`/${locale}/campaigns`} className="hover:text-slate-900 hover:underline">
           {t.nav.campaigns}
         </Link>

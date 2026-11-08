@@ -88,7 +88,11 @@ class LedgerTest extends TestCase
         }
         $again = DB::transaction(fn () => $ledger->recogniseRevenue($order->refresh(), Actor::system()));
         $this->assertSame(LedgerTransaction::query()->where('type', 'revenue_recognition')->value('id'), $again?->id);
-        $this->assertSame(3, LedgerTransaction::count());
+        // Shipping the supplier's order on the way to delivery posted its payment.
+        $this->assertSame(
+            ['capture', 'refund', 'revenue_recognition', 'supplier_payment'],
+            LedgerTransaction::query()->pluck('type')->map->value->sort()->values()->all(),
+        );
     }
 
     #[Test]

@@ -41,6 +41,7 @@ export const en: Dictionary = {
     delete: "Delete",
     loadMore: "Show more",
     viewAll: "View all",
+    breadcrumb: "Breadcrumb",
     optional: "Optional",
     vatIncluded: "VAT included",
     perUnit: "per unit",
@@ -566,23 +567,23 @@ export const en: Dictionary = {
       },
       {
         heading: "What we collect",
-        body: "Your mobile number, your name and email if you add them, delivery addresses, and the record of your joins, orders and payments. We keep only the card type and its last 4 digits; full card details are handled by our payment provider. We log IP addresses and browser type for security.",
+        body: "Your mobile number, your name and email if you add them, delivery addresses, and the record of your joins, orders and payments. We keep only the card type and its last 4 digits; full card details are handled by our payment provider. If you use the app and allow notifications, we keep a notification token for your device. We log IP addresses and browser type for security.",
       },
       {
         heading: "Why we use it",
-        body: "To create your account and sign you in by SMS code, run campaigns, holds, charges and refunds, deliver your orders and send updates about them, issue tax invoices and meet legal duties, and prevent fraud.",
+        body: "To create your account and sign you in by SMS code, run campaigns, holds, charges and refunds, deliver your orders and send updates about them by SMS and app notification, issue tax invoices and meet legal duties, and prevent fraud.",
       },
       {
         heading: "Who we share it with",
-        body: "Our payment provider, SMS provider, warehouse and couriers, and government authorities when the law requires it. We don't sell your data.",
+        body: "Our payment provider, SMS provider, the services that deliver app notifications, warehouse and couriers, and government authorities when the law requires it. We don't sell your data.",
       },
       {
         heading: "How long we keep it",
-        body: "As long as your account is open, and order and invoice records for as long as the law requires.",
+        body: "As long as your account is open. When you delete your account we erase your name, email, mobile number, saved addresses and app devices, and keep order, payment and invoice records without them for as long as the law requires.",
       },
       {
         heading: "Your rights",
-        body: "Under the Personal Data Protection Law you can see your data, ask us to correct or delete it, and withdraw your consent. Contact us to use these rights.",
+        body: "Under the Personal Data Protection Law you can see your data, ask us to correct or delete it, and withdraw your consent. You can delete your account yourself on your account page or in the app, once none of your holds, payments or orders is still in progress. Contact us to use the other rights.",
       },
       {
         heading: "Changes",
