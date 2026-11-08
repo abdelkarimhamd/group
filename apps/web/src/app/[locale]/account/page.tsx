@@ -7,7 +7,7 @@ import { getDictionary } from "@/i18n/dictionaries";
 import { formatDate, interpolate } from "@/i18n/format";
 import { isLocale } from "@/i18n/config";
 import { accountApi, loadOrRedirect } from "@/lib/account";
-import { PrivacyStatus, ProfileForm } from "@/components/profile-forms";
+import { DeleteAccount, PrivacyStatus, ProfileForm } from "@/components/profile-forms";
 import { Button, Card, Skeleton } from "@/components/ui";
 
 export async function generateMetadata({ params }: PageProps<"/[locale]/account">): Promise<Metadata> {
@@ -70,6 +70,10 @@ async function Overview() {
               {t.nav.signOut}
             </Button>
           </form>
+          <Card id="delete-account">
+            <h2 className="mb-3 text-lg font-bold text-slate-900">{t.account.deleteTitle}</h2>
+            <DeleteAccount />
+          </Card>
         </div>
       </div>
     </div>

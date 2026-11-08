@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 
 import { api } from '@/api/endpoints';
 
-import { PUSH_CHANNEL_ID, registerForPush } from '..';
+import { isPrivateTarget, PUSH_CHANNEL_ID, pushTarget, registerForPush } from '..';
 
 const constants: { expoConfig: { extra?: { eas?: { projectId?: string } } } | null } = {
   expoConfig: { extra: { eas: { projectId: 'eas-project-1' } } },
@@ -66,6 +66,16 @@ describe('registerForPush', () => {
     expect(register).toHaveBeenCalledWith('android', 'ExponentPushToken[abc]');
   });
 
+  it('at launch, only refreshes a token the customer already allowed', async () => {
+    await registerForPush({ prompt: false });
+    expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    expect(register).not.toHaveBeenCalled();
+
+    Notifications.getPermissionsAsync.mockResolvedValueOnce({ status: 'granted' });
+    await registerForPush({ prompt: false });
+    expect(register).toHaveBeenCalledWith('ios', 'ExponentPushToken[abc]');
+  });
+
   it('registers nothing when the customer says no', async () => {
     Notifications.requestPermissionsAsync.mockResolvedValueOnce({ status: 'denied' });
 
@@ -101,5 +111,37 @@ describe('registerForPush', () => {
     register.mockRejectedValueOnce(new Error('500'));
     await expect(registerForPush()).resolves.toBeUndefined();
     warn.mockRestore();
+  });
+});
+
+describe('pushTarget', () => {
+  const order = 'e1a2b3c4-d5e6-4f70-8a9b-0c1d2e000001';
+  const join = 'c1a2b3c4-d5e6-4f70-8a9b-0c1d2e000001';
+  const deal = '0b8f0e2c-1c55-4a8b-9a0e-6f4f8d1a0001';
+
+  it('opens the order, else the join, else the deal the message is about', () => {
+    const all = { order_id: order, participation_id: join, campaign_id: deal };
+    expect(pushTarget(all)).toEqual({ pathname: '/orders/[id]', params: { id: order } });
+    expect(pushTarget({ participation_id: join, campaign_id: deal })).toEqual({
+      pathname: '/joins/[id]',
+      params: { id: join },
+    });
+    expect(pushTarget({ campaign_id: deal, template: 'extended' })).toEqual({
+      pathname: '/campaign/[id]',
+      params: { id: deal },
+    });
+  });
+
+  it('ignores messages without a target and values that are not IDs', () => {
+    expect(pushTarget({ template: 'joined' })).toBeNull();
+    expect(pushTarget({ order_id: '../../me' })).toBeNull();
+    expect(pushTarget(null)).toBeNull();
+    expect(pushTarget('order')).toBeNull();
+  });
+
+  it('knows which targets need the customer signed in', () => {
+    expect(isPrivateTarget(pushTarget({ order_id: order })!)).toBe(true);
+    expect(isPrivateTarget(pushTarget({ participation_id: join })!)).toBe(true);
+    expect(isPrivateTarget(pushTarget({ campaign_id: deal })!)).toBe(false);
   });
 });

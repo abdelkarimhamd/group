@@ -100,7 +100,20 @@ export interface paths {
         get: operations["getMe"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete the account (PDPL erasure)
+         * @description Erases the customer's name, email, phone number, saved addresses and
+         *     push devices, and signs out every device. The App Store and Google
+         *     Play both require this in the app. Orders, invoices and payment
+         *     records are kept, as Saudi tax law requires, with the delivery details
+         *     on them. Signing in again with the same number starts a new account.
+         *
+         *     Refused with 409 `account_deletion_blocked` while a join waits for
+         *     payment or holds money, an order is not yet `completed`, `cancelled`
+         *     or `returned`, or a hold or refund is still on its way; `blocked_by`
+         *     says which.
+         */
+        delete: operations["deleteMe"];
         options?: never;
         head?: never;
         /** Update name, email or language */
@@ -199,7 +212,10 @@ export interface paths {
          *     token registered from another account moves to that account. Signing
          *     out (`POST /auth/logout`) removes it, so the device stops getting the
          *     account's messages. The customer's 10 most recently seen devices are
-         *     kept. Push messages carry `notification_id` and `template` in their data.
+         *     kept. Push messages carry `notification_id` and `template` in their data,
+         *     and the IDs of what the message is about, where it has them:
+         *     `order_id`, `participation_id` and `campaign_id`. The app opens the
+         *     order, else the join, else the deal when the message is tapped.
          */
         post: operations["registerDeviceToken"];
         delete?: never;
@@ -2261,6 +2277,12 @@ export interface components {
             /** Format: date-time */
             created_at: string;
         };
+        AccountDeletionBlocked: components["schemas"]["Error"] & {
+            /** @enum {string} */
+            code: "account_deletion_blocked";
+            /** @description What is still open: `joins` (waiting for payment or holding money), `orders` (not yet completed, cancelled or returned), `payments` (a hold or refund still on its way). */
+            blocked_by: ("joins" | "orders" | "payments")[];
+        };
         /** @description Saudi National Address fields. */
         AddressInput: {
             recipient_name: string;
@@ -3224,7 +3246,8 @@ export interface components {
                 /** Format: uuid */
                 id: string;
                 name: string | null;
-                phone: components["schemas"]["SaudiMobile"];
+                /** @description Null once the customer deleted their account. */
+                phone: (string & components["schemas"]["SaudiMobile"]) | null;
             };
             /** Format: uuid */
             participation_id: string;
@@ -3313,7 +3336,8 @@ export interface components {
             order_number: string;
             customer: {
                 name: string | null;
-                phone: components["schemas"]["SaudiMobile"];
+                /** @description Null once the customer deleted their account. */
+                phone: (string & components["schemas"]["SaudiMobile"]) | null;
             };
             status: components["schemas"]["ReturnStatus"];
             reason: components["schemas"]["ReturnReason"];
@@ -3962,6 +3986,34 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+        };
+    };
+    deleteMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. Every token of the account stops working. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            /** @description `account_deletion_blocked`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionBlocked"];
+                };
+            };
         };
     };
     updateMe: {

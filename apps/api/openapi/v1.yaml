@@ -303,6 +303,33 @@ paths:
                   data: {$ref: '#/components/schemas/User'}
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '422': {$ref: '#/components/responses/ValidationFailed'}
+    delete:
+      tags: [Account]
+      operationId: deleteMe
+      summary: Delete the account (PDPL erasure)
+      description: |
+        Erases the customer's name, email, phone number, saved addresses and
+        push devices, and signs out every device. The App Store and Google
+        Play both require this in the app. Orders, invoices and payment
+        records are kept, as Saudi tax law requires, with the delivery details
+        on them. Signing in again with the same number starts a new account.
+
+        Refused with 409 `account_deletion_blocked` while a join waits for
+        payment or holds money, an order is not yet `completed`, `cancelled`
+        or `returned`, or a hold or refund is still on its way; `blocked_by`
+        says which.
+      x-epic: E5
+      x-status: live
+      security: [{customerToken: []}]
+      responses:
+        '204':
+          description: Deleted. Every token of the account stops working.
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '409':
+          description: '`account_deletion_blocked`.'
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountDeletionBlocked'}
 
   /me/privacy-consent:
     post:
@@ -454,7 +481,10 @@ paths:
         token registered from another account moves to that account. Signing
         out (`POST /auth/logout`) removes it, so the device stops getting the
         account's messages. The customer's 10 most recently seen devices are
-        kept. Push messages carry `notification_id` and `template` in their data.
+        kept. Push messages carry `notification_id` and `template` in their data,
+        and the IDs of what the message is about, where it has them:
+        `order_id`, `participation_id` and `campaign_id`. The app opens the
+        order, else the join, else the deal when the message is tapped.
       x-epic: E14
       x-status: live
       security: [{customerToken: []}]
@@ -4127,6 +4157,18 @@ components:
         current_privacy_policy_version: {type: string, example: '2026-11'}
         created_at: {type: string, format: date-time}
 
+    AccountDeletionBlocked:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          required: [code, blocked_by]
+          properties:
+            code: {type: string, enum: [account_deletion_blocked]}
+            blocked_by:
+              type: array
+              description: 'What is still open: `joins` (waiting for payment or holding money), `orders` (not yet completed, cancelled or returned), `payments` (a hold or refund still on its way).'
+              items: {type: string, enum: [joins, orders, payments]}
+
     AddressInput:
       type: object
       description: Saudi National Address fields.
@@ -5164,7 +5206,11 @@ components:
               properties:
                 id: {type: string, format: uuid}
                 name: {type: string, nullable: true}
-                phone: {$ref: '#/components/schemas/SaudiMobile'}
+                phone:
+                  type: string
+                  allOf: [{$ref: '#/components/schemas/SaudiMobile'}]
+                  nullable: true
+                  description: Null once the customer deleted their account.
             participation_id: {type: string, format: uuid}
             payment_id: {type: string, format: uuid}
             refunds:
@@ -5253,7 +5299,11 @@ components:
           required: [name, phone]
           properties:
             name: {type: string, nullable: true}
-            phone: {$ref: '#/components/schemas/SaudiMobile'}
+            phone:
+              type: string
+              allOf: [{$ref: '#/components/schemas/SaudiMobile'}]
+              nullable: true
+              description: Null once the customer deleted their account.
         status: {$ref: '#/components/schemas/ReturnStatus'}
         reason: {$ref: '#/components/schemas/ReturnReason'}
         note: {type: string, nullable: true}

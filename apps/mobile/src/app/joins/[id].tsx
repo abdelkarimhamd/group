@@ -16,10 +16,11 @@ import { ErrorState, LoadingState } from '@/components/States';
 import { CampaignStatusPill, ParticipationStatusPill } from '@/components/StatusPills';
 import { Text } from '@/components/Text';
 import { useNow } from '@/components/useNow';
-import { useFormat } from '@/i18n/useFormat';
+import { clock, useFormat } from '@/i18n/useFormat';
 import { campaignPhase } from '@/lib/campaign';
 import { confirmAction } from '@/lib/confirm';
-import { isPast } from '@/lib/time';
+import { savingMinor } from '@/lib/money';
+import { isPast, remainingUntil } from '@/lib/time';
 import { space } from '@/theme/tokens';
 
 const SCHEME_LABELS = { mada: 'mada', visa: 'Visa', mastercard: 'Mastercard' } as const;
@@ -49,9 +50,9 @@ function JoinDetail({
   refreshing: boolean;
   onRefresh: () => void;
 }) {
-  const { t, money, dateTime } = useFormat();
+  const { t, money, minor, date, dateTime } = useFormat();
   const queryClient = useQueryClient();
-  const now = useNow(30_000);
+  const now = useNow(p.status === 'pending_payment' ? 1_000 : 30_000);
 
   const cancel = useMutation({
     mutationFn: () => api.cancelMyParticipation(p.id),
@@ -75,6 +76,9 @@ function JoinDetail({
 
   const canPay = p.status === 'pending_payment' && !isPast(p.reservation_expires_at, now);
   const payment = p.payment;
+  const releasedMinor = p.capture_amount
+    ? savingMinor(p.hold_amount.amount_minor, p.capture_amount.amount_minor)
+    : 0;
 
   return (
     <Screen
@@ -122,6 +126,16 @@ function JoinDetail({
         <Text color="textMuted">{t(`joins.help_${p.status}`)}</Text>
       </Card>
 
+      {canPay ? (
+        <Notice
+          tone="warning"
+          icon="time-outline"
+          message={t('pay.reservedFor', {
+            time: clock(remainingUntil(p.reservation_expires_at, now)),
+          })}
+        />
+      ) : null}
+
       <Card style={styles.gap}>
         <View style={styles.row}>
           <CampaignStatusPill status={p.campaign.status} />
@@ -156,19 +170,41 @@ function JoinDetail({
           <>
             <Divider />
             <DetailRow label={t('joins.captureAmount')} value={money(p.capture_amount)} emphasis />
-            <Text variant="small" color="textMuted">
-              {t('joins.restReleased')}
-            </Text>
+            {releasedMinor > 0 ? (
+              <Text variant="small" color="success" testID="released-rest">
+                {t('joins.releasedAmount', { amount: minor(releasedMinor) })}
+              </Text>
+            ) : null}
           </>
+        ) : p.status === 'authorized' || p.status === 'pending_payment' ? (
+          <Text variant="small" color="textMuted">
+            {t('checkout.maxCharge')}
+          </Text>
         ) : null}
       </Card>
 
       <Card style={styles.gap}>
-        {payment?.card_last4 ? (
-          <DetailRow
-            label={t('joins.card')}
-            value={`${payment.scheme ? SCHEME_LABELS[payment.scheme] : ''} •••• ${payment.card_last4}`.trim()}
-          />
+        {payment ? (
+          <>
+            <Text variant="heading">{t('joins.paymentTitle')}</Text>
+            <DetailRow
+              label={t('joins.paymentStatus')}
+              value={t(`pay.status_${payment.status}`)}
+              testID="payment-status"
+            />
+            {payment.card_last4 ? (
+              <DetailRow
+                label={t('joins.card')}
+                value={`${payment.scheme ? SCHEME_LABELS[payment.scheme] : ''} •••• ${payment.card_last4}`.trim()}
+              />
+            ) : null}
+            {payment.status === 'authorized' ? (
+              <DetailRow label={t('joins.holdExpires')} value={date(payment.expires_at)} />
+            ) : null}
+            {payment.rejection_reason ? (
+              <Notice tone="danger" message={t(`pay.rejection_${payment.rejection_reason}`)} />
+            ) : null}
+          </>
         ) : null}
         <Text variant="small" color="textMuted">
           {t('joins.joinedOn', { date: dateTime(p.created_at) })}

@@ -4,6 +4,7 @@ namespace App\Modules\Identity\Http\Controllers;
 
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
+use App\Modules\Identity\Erasure\AccountErasure;
 use App\Modules\Identity\Http\Requests\PrivacyConsentRequest;
 use App\Modules\Identity\Http\Requests\UpdateProfileRequest;
 use App\Modules\Identity\Http\Resources\UserResource;
@@ -11,9 +12,10 @@ use App\Modules\Identity\Models\PrivacyConsent;
 use App\Modules\Identity\Models\User;
 use App\Support\RequestContext;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 /**
- * The signed-in customer's own profile and privacy consent.
+ * The signed-in customer's own profile, privacy consent and account deletion.
  */
 final class AccountController extends Controller
 {
@@ -55,6 +57,17 @@ final class AccountController extends Controller
         }
 
         return UserResource::make($user->load('latestPrivacyConsent'));
+    }
+
+    /**
+     * Deletes the account: personal data is erased and every device is signed
+     * out. See AccountErasure for what is kept and what blocks it.
+     */
+    public function destroy(Request $request, AccountErasure $erasure): Response
+    {
+        $erasure->erase($this->customer($request));
+
+        return response()->noContent();
     }
 
     private function customer(Request $request): User

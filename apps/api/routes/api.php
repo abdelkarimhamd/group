@@ -63,6 +63,7 @@ Route::prefix('v1')->name('v1.')->group(function () {
 
         Route::get('me', [AccountController::class, 'show'])->name('me.show');
         Route::patch('me', [AccountController::class, 'update'])->name('me.update');
+        Route::delete('me', [AccountController::class, 'destroy'])->name('me.destroy');
         Route::post('me/privacy-consent', [AccountController::class, 'acceptPrivacyPolicy'])->name('me.privacy-consent');
         Route::post('me/device-tokens', [DeviceTokenController::class, 'store'])->name('me.device-tokens.store');
 

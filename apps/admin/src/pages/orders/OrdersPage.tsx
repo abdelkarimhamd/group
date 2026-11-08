@@ -35,7 +35,7 @@ export function OrdersTable({ query }: { query: OrderQuery }) {
             <>
               {o.customer.name ?? '—'}
               <br />
-              <Ltr>{o.customer.phone}</Ltr>
+              {o.customer.phone ? <Ltr>{o.customer.phone}</Ltr> : t('orders.accountDeleted')}
             </>
           ),
         },

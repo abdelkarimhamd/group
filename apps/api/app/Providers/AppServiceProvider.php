@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\AuditLog;
 use App\Models\StatusTransition;
+use App\Modules\Campaign\Erasure\OpenJoins;
 use App\Modules\Campaign\Events\CampaignClosingStarted;
 use App\Modules\Campaign\Events\CampaignProgressChanged;
 use App\Modules\Campaign\Listeners\QueueProgressBroadcast;
@@ -28,6 +29,7 @@ use App\Modules\Fulfillment\Couriers\ManualCourier;
 use App\Modules\Fulfillment\Models\InboundReceipt;
 use App\Modules\Fulfillment\Models\Shipment;
 use App\Modules\Identity\Admins\AdminAccounts;
+use App\Modules\Identity\Erasure\AccountErasure;
 use App\Modules\Identity\Models\Address;
 use App\Modules\Identity\Models\AdminUser;
 use App\Modules\Identity\Models\OtpChallenge;
@@ -41,6 +43,7 @@ use App\Modules\Notifications\Sms\LogSmsSender;
 use App\Modules\Notifications\Sms\SmsSender;
 use App\Modules\Notifications\Sms\TaqnyatSmsSender;
 use App\Modules\Notifications\Sms\UnifonicSmsSender;
+use App\Modules\Orders\Erasure\OpenOrders;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Orders\Models\Invoice;
 use App\Modules\Orders\Models\OrderReturn;
@@ -48,6 +51,7 @@ use App\Modules\Orders\Models\PurchaseOrderDocument;
 use App\Modules\Orders\Models\SupplierPurchaseOrder;
 use App\Modules\Orders\Models\ZatcaDevice;
 use App\Modules\Orders\Models\ZatcaInvoiceStamp;
+use App\Modules\Payments\Erasure\MoneyInFlight;
 use App\Modules\Payments\Gateway\FakeMoyasarGateway;
 use App\Modules\Payments\Gateway\MoyasarGateway;
 use App\Modules\Payments\Gateway\PaymentGateway;
@@ -101,6 +105,10 @@ class AppServiceProvider extends ServiceProvider
 
         // The Supplier module asks which campaigns use a quotation; the Campaign module answers.
         $this->app->bind(QuotationUsage::class, CampaignQuotationUsage::class);
+
+        // What keeps a customer from deleting their account; each module answers for its own records.
+        $this->app->tag([OpenJoins::class, OpenOrders::class, MoneyInFlight::class], 'identity.erasure_blockers');
+        $this->app->when(AccountErasure::class)->needs('$blockers')->giveTagged('identity.erasure_blockers');
 
         $this->app->singleton(SmsSender::class, fn ($app) => match ($driver = config('services.sms.driver')) {
             'log' => new LogSmsSender($app->isProduction(), config('services.sms.log_channel')),

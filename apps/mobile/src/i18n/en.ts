@@ -105,6 +105,7 @@ const en = {
     outcomeFailed: 'The target was not reached. Every hold was released.',
     outcomeCancelled: 'This deal was cancelled. Every hold was released or refunded.',
     outcomeClosing: 'The deal is closing. The final price is coming soon.',
+    share: 'Share',
   },
   checkout: {
     title: 'Review and join',
@@ -164,6 +165,15 @@ const en = {
       'Your bank declined the charge when the deal closed, so we released the hold.',
     rejection_capture_cutoff_passed:
       'The hold ran out of time before the deal could charge it, so we released it.',
+    status_pending_authorization: 'Waiting for card',
+    status_authorized: 'Held',
+    status_failed: 'Failed',
+    status_voided: 'Released',
+    status_expired: 'Expired',
+    status_captured: 'Charged',
+    status_capture_failed: 'Charge failed',
+    status_partially_refunded: 'Partly refunded',
+    status_refunded: 'Refunded',
   },
   fakePay: {
     title: 'Test payment',
@@ -201,7 +211,6 @@ const en = {
     holdAmount: 'Held on card',
     finalUnitPrice: 'Final price per unit',
     captureAmount: 'Charged',
-    restReleased: 'The rest of the hold is released, never charged.',
     card: 'Card',
     joinedOn: 'Joined {{date}}',
     cancel: 'Cancel my join',
@@ -211,6 +220,10 @@ const en = {
     completePayment: 'Complete payment',
     viewOrder: 'View order',
     viewDeal: 'View deal',
+    releasedAmount: 'The rest of the hold, {{amount}}, was released and never charged.',
+    paymentTitle: 'Payment',
+    paymentStatus: 'Payment status',
+    holdExpires: 'Hold valid until',
   },
   orders: {
     title: 'My orders',
@@ -251,6 +264,12 @@ const en = {
     invoice_credit_note: 'Credit note',
     returnWindow: 'You can return unused items until {{date}}. Contact us to start a return.',
     deliveredOn: 'Delivered {{date}}',
+    placedOn: 'Placed {{date}}',
+    courier: 'Courier',
+    invoiceNotReady: 'Being prepared. Pull down to refresh in a moment.',
+    noInvoices: "Your invoice appears here once it's issued.",
+    invoiceFailed: "The invoice didn't open. Check your connection and try again.",
+    returnsPolicy: 'Returns policy',
   },
   account: {
     title: 'Account',
@@ -266,6 +285,11 @@ const en = {
     addName: 'Add your name',
     testPayments: 'Test payments: no card is charged',
     languageRestart: 'The app restarts to switch the layout direction.',
+    help: 'Help',
+    howItWorks: 'How it works',
+    terms: 'Terms of use',
+    returns: 'Returns policy',
+    deleteAccount: 'Delete account',
   },
   language: {
     ar: 'العربية',
@@ -333,6 +357,56 @@ const en = {
     codeExpired: 'This code expired. Request a new one.',
     codeExhausted: 'Too many wrong codes. Request a new one.',
     codeInvalid: "That code isn't right. Check it and try again.",
+  },
+  help: {
+    title: 'How group buying works',
+    intro: 'Four simple steps from joining to delivery.',
+    step1Title: 'Join a deal',
+    step1Body:
+      'Choose a quantity and place a hold on your card. A hold reserves the amount; it is not a charge.',
+    step2Title: 'The price drops as people join',
+    step2Body:
+      'Each price tier unlocks at a set number of units. Once the target is reached, the deal is confirmed.',
+    step3Title: 'Everyone pays the final price',
+    step3Body:
+      "When the deal closes we charge the final price, which can be lower than your hold, and release the rest. If the target isn't reached, the whole hold is released.",
+    step4Title: 'We deliver to you',
+    step4Body:
+      'We place one bulk order with the supplier, receive it at our warehouse in Saudi Arabia and ship it to you with tracking.',
+    faqTitle: 'Questions',
+    faq1Q: 'Is a hold the same as a payment?',
+    faq1A:
+      'No. A hold reserves the amount on your card for up to 14 days, and your bank may show it as pending. We only charge if the deal succeeds, and only the final price.',
+    faq2Q: 'Which cards can I use?',
+    faq2A: 'Mada, Visa, Mastercard and Apple Pay.',
+    faq3Q: 'Can I cancel?',
+    faq3A:
+      'Yes, for free, while the deal is open and before it is confirmed. Your hold is released straight away.',
+    faq4Q: "What happens if the target isn't reached?",
+    faq4A: 'The deal ends without an order and we release every hold. You pay nothing.',
+    faq5Q: 'When will I get my order?',
+    faq5A:
+      'Imported products usually arrive a few weeks after the deal closes. You can follow every step in My orders.',
+    browse: 'Browse deals',
+  },
+  deleteAccount: {
+    title: 'Delete account',
+    erased:
+      'Deleting your account erases your name, email, mobile number, saved addresses and push notifications, and signs you out on every device.',
+    kept: 'We keep your orders, invoices and payment records, with the delivery details on them, as Saudi tax law requires.',
+    again: 'You can sign up again later with the same number, but it will be a new, empty account.',
+    final: "This can't be undone.",
+    button: 'Delete my account',
+    confirmTitle: 'Delete your account?',
+    confirmBody:
+      'Your personal data is erased and you are signed out everywhere. This cannot be undone.',
+    blockedTitle: "Your account can't be deleted yet",
+    blocked_joins:
+      'A join is waiting for payment or holding money on your card. Cancel it, or wait until the deal closes.',
+    blocked_orders: 'An order is still on its way or within its return window.',
+    blocked_payments: 'A hold or a refund is still being processed.',
+    doneTitle: 'Account deleted',
+    doneBody: 'Your personal data was erased. Thank you for buying with us.',
   },
   push: {
     channelName: 'Order and deal updates',

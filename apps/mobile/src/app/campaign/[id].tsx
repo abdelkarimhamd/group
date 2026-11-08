@@ -1,7 +1,15 @@
 import { Image } from 'expo-image';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
 import { useCampaign, useCampaignProgress } from '@/api/queries';
 import type { CampaignDetail, CampaignImage } from '@/api/types';
@@ -18,7 +26,9 @@ import { CampaignStatusPill } from '@/components/StatusPills';
 import { Text } from '@/components/Text';
 import { TierLadder } from '@/components/TierLadder';
 import { useNow } from '@/components/useNow';
+import { config } from '@/config';
 import { useFormat } from '@/i18n/useFormat';
+import { campaignUrl } from '@/lib/links';
 import {
   campaignPhase,
   isDealConfirmed,
@@ -121,6 +131,11 @@ function CampaignView({
           <Button title={t('campaign.opensOn', { date: date(campaign.starts_at) })} disabled />
         ) : undefined
       }>
+      <Stack.Screen
+        options={{
+          headerRight: () => <ShareButton title={campaign.title} campaignId={campaign.id} />,
+        }}
+      />
       <Gallery
         images={
           campaign.images.length > 0 ? campaign.images : campaign.image ? [campaign.image] : []
@@ -266,6 +281,28 @@ function CampaignView({
         </Card>
       ) : null}
     </Screen>
+  );
+}
+
+/** Shares the deal's page on the website, which opens the app where it is installed. */
+function ShareButton({ title, campaignId }: { title: string; campaignId: string }) {
+  const { t, locale } = useFormat();
+  const share = () => {
+    const url = campaignUrl(config.webUrl, locale, campaignId);
+    // iOS shares the link as a link next to the text; Android has only the text.
+    void Share.share(
+      Platform.OS === 'ios' ? { message: title, url } : { message: `${title}\n${url}`, title },
+    ).catch(() => {});
+  };
+  return (
+    <Pressable
+      testID="share-deal"
+      accessibilityRole="button"
+      accessibilityLabel={t('campaign.share')}
+      hitSlop={12}
+      onPress={share}>
+      <Icon name="share-outline" size={22} color="primary" />
+    </Pressable>
   );
 }
 

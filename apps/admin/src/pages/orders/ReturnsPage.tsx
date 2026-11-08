@@ -61,7 +61,8 @@ export function ReturnsPage() {
               key: 'customer',
               render: (_, r) => (
                 <>
-                  {r.customer.name ?? '—'} · <Ltr>{r.customer.phone}</Ltr>
+                  {r.customer.name ?? '—'} ·{' '}
+                  {r.customer.phone ? <Ltr>{r.customer.phone}</Ltr> : t('orders.accountDeleted')}
                 </>
               ),
             },

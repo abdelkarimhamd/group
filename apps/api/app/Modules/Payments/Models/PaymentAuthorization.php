@@ -3,6 +3,7 @@
 namespace App\Modules\Payments\Models;
 
 use App\Modules\Campaign\Models\CampaignParticipation;
+use App\Modules\Notifications\Push\PushSubject;
 use App\Modules\Payments\Enums\PaymentStatus;
 use App\Modules\Payments\Enums\RejectionReason;
 use Carbon\CarbonImmutable;
@@ -44,7 +45,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read CampaignParticipation $participation
  * @property-read Collection<int, Refund> $refunds
  */
-class PaymentAuthorization extends Model
+class PaymentAuthorization extends Model implements PushSubject
 {
     use HasUuids;
 
@@ -132,5 +133,11 @@ class PaymentAuthorization extends Model
     public function refunds(): HasMany
     {
         return $this->hasMany(Refund::class)->orderBy('id');
+    }
+
+    /** A payment's messages open its join. */
+    public function pushLinks(): array
+    {
+        return $this->participation()->first()?->pushLinks() ?? [];
     }
 }

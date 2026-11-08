@@ -37,6 +37,12 @@ The mobile app shows the same form: it opens `/{locale}/payments/app` in a WebVi
 
 `NEXT_PUBLIC_PAYMENTS_MODE=fake` (the default, and what CI uses) shows a test form instead, with two buttons. They send the customer to the same return page with `id=fake_authorized_<payment id>` (or `fake_declined_…`), which the API accepts only in its fake payment mode.
 
+## The mobile app's links and account deletion
+
+Links to deals and account pages open the mobile app when it is installed (universal links on iOS, app links on Android). The site serves the two files the phones check, from `src/lib/app-links.ts`: `/.well-known/apple-app-site-association` once `APPLE_TEAM_ID` is set (with `IOS_BUNDLE_ID`, default `sa.groupbuy.app`), and `/.well-known/assetlinks.json` once `ANDROID_CERT_SHA256` is set (the SHA-256 fingerprints of the signing certificates, separated by commas: Google Play's app signing key from Play Console, Setup, App signing, and the upload key; with `ANDROID_APP_PACKAGE`, default `sa.groupbuy.app`). Until then each answers 404. Both are read when the site runs, so changing them needs a restart, not a build. They list `/{locale}/campaigns` and `/{locale}/account` and everything under them, the same paths as `APP_LINK_PATHS` in `apps/mobile/app.config.ts`, and never the payment pages, which must come back to the website. The app's `EXPO_PUBLIC_WEB_URL` must be this site's https address.
+
+Customers delete their account at the bottom of `/{locale}/account` (the `#delete-account` section). The App Store and Google Play ask for this web address as well as the button in the app. The API refuses while a join, an order, a hold or a refund is still open and says which (`blocked_by`); the page lists them.
+
 ## How the code is organised
 
 | Path | What it holds |

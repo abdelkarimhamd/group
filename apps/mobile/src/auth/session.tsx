@@ -21,7 +21,11 @@ import { authToken } from './token';
 type AuthContextValue = {
   isSignedIn: boolean;
   signIn: (session: CustomerSession) => void;
-  signOut: () => Promise<void>;
+  /**
+   * Forgets the session on this device. `revoke: false` skips telling the API, for a token
+   * that already stopped working (the account was deleted).
+   */
+  signOut: (options?: { revoke?: boolean }) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -29,6 +33,12 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [isSignedIn, setSignedIn] = useState(() => authToken.get() !== null);
+
+  // Already signed in at launch: refresh this device's push token with the API (Expo can hand
+  // out a new one), without asking for permission again.
+  useEffect(() => {
+    if (authToken.get()) void registerForPush({ prompt: false });
+  }, []);
 
   // The API rejected the token: drop the customer's data; the next protected action asks
   // them to sign in again.
@@ -59,14 +69,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient],
   );
 
-  const signOut = useCallback(async () => {
-    if (authToken.get()) {
-      await api.logout().catch(() => {});
-    }
-    await authToken.clear();
-    clearPrivateData(queryClient);
-    setSignedIn(false);
-  }, [queryClient]);
+  const signOut = useCallback(
+    async ({ revoke = true }: { revoke?: boolean } = {}) => {
+      if (revoke && authToken.get()) {
+        await api.logout().catch(() => {});
+      }
+      await authToken.clear();
+      clearPrivateData(queryClient);
+      setSignedIn(false);
+    },
+    [queryClient],
+  );
 
   const value = useMemo<AuthContextValue>(
     () => ({ isSignedIn, signIn, signOut }),

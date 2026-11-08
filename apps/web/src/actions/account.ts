@@ -3,9 +3,9 @@
 import { refresh } from "next/cache";
 import { isLocale, type Locale } from "@/i18n/config";
 import { requestApi, unwrap } from "@/lib/api/server";
-import { toActionFailure, type ActionFailure } from "@/lib/api/errors";
+import { ApiError, toActionFailure, type ActionFailure } from "@/lib/api/errors";
 import type { Address, AddressInput, User } from "@/lib/api/types";
-import { getToken } from "@/lib/session";
+import { clearSession, getToken } from "@/lib/session";
 
 async function authed(localeValue: string) {
   const locale: Locale = isLocale(localeValue) ? localeValue : "ar";
@@ -86,4 +86,32 @@ export async function deleteAddress(input: { locale: string; id: string }): Prom
   } catch (error) {
     return toActionFailure(error);
   }
+}
+
+/** What can keep an account from being deleted (AccountDeletionBlocked.blocked_by). */
+export type DeletionBlocker = "joins" | "orders" | "payments";
+
+/**
+ * Deletes the customer's account (DELETE /me, PDPL erasure), then forgets the
+ * session: every token of the account stopped working. A 409 lists in
+ * `blockedBy` what is still open.
+ */
+export async function deleteAccount(input: {
+  locale: string;
+}): Promise<{ ok: true } | (ActionFailure & { blockedBy?: DeletionBlocker[] })> {
+  const { api } = await authed(input.locale);
+  if (!api) return signedOut;
+  try {
+    await unwrap(api.DELETE("/me"));
+  } catch (error) {
+    const failure = toActionFailure(error);
+    if (error instanceof ApiError && error.code === "account_deletion_blocked") {
+      const listed = (error.body as { blocked_by?: unknown } | undefined)?.blocked_by;
+      const known: DeletionBlocker[] = ["joins", "orders", "payments"];
+      return { ...failure, blockedBy: known.filter((reason) => Array.isArray(listed) && listed.includes(reason)) };
+    }
+    return failure;
+  }
+  await clearSession();
+  return { ok: true };
 }

@@ -19,6 +19,7 @@ use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Payments\Gateway\PaymentGateway;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
@@ -275,7 +276,8 @@ final class NotificationsTest extends TestCase
         $this->register($token, ['platform' => 'ios', 'token' => 'fcm-token-1'])->assertNoContent();
         $this->assertSame(1, DeviceToken::count());
 
-        $this->paidJoin($this->closableCampaign(['min_target_qty' => 5]), 1, $token, $address);
+        $campaign = $this->closableCampaign(['min_target_qty' => 5]);
+        [$participation] = $this->paidJoin($campaign, 1, $token, $address);
 
         $this->assertSame(['push', 'sms'], Notification::query()->orderBy('channel')->pluck('channel')->map->value->all());
         $this->assertCount(1, $this->push->sent);
@@ -283,7 +285,13 @@ final class NotificationsTest extends TestCase
         $this->assertSame(['fcm-token-1'], $push['tokens']);
         $this->assertSame('تم انضمامك', $push['title']);
         $this->assertSame($this->sms->sent[0]['message'], $push['body']);
-        $this->assertSame(['notification_id' => Notification::query()->where('channel', 'push')->value('uuid'), 'template' => 'joined'], $push['data']);
+        // A tap opens the join in the app.
+        $this->assertSame([
+            'notification_id' => Notification::query()->where('channel', 'push')->value('uuid'),
+            'template' => 'joined',
+            'participation_id' => $participation->uuid,
+            'campaign_id' => $campaign->uuid,
+        ], $push['data']);
 
         // Another account signing in on the same device takes the token over.
         [$other, $otherToken] = $this->customerWithToken();
@@ -307,6 +315,28 @@ final class NotificationsTest extends TestCase
         $this->forgetAuthenticatedUsers();
         $this->assertFalse(DeviceToken::query()->where('user_id', $other->id)->exists());
         $this->assertSame(10, DeviceToken::query()->where('user_id', $user->id)->count());
+    }
+
+    #[Test]
+    public function a_tap_on_a_push_message_opens_the_order_join_or_deal_it_is_about(): void
+    {
+        [, $token, $address] = $this->customerReadyToJoin();
+        $this->register($token, ['platform' => 'android', 'token' => 'fcm-token-1'])->assertNoContent();
+        $campaign = $this->closableCampaign();
+        [$join] = $this->paidJoin($campaign, 3, $token, $address);
+        $this->captureAll($campaign);
+        $order = CustomerOrder::query()->where('participation_id', $join->id)->sole();
+
+        $links = [];
+        foreach ($this->push->sent as $push) {
+            $links[$push['data']['template']] = Arr::except($push['data'], ['notification_id', 'template']);
+        }
+
+        $this->assertSame([
+            'joined' => ['participation_id' => $join->uuid, 'campaign_id' => $campaign->uuid],
+            'deal_confirmed' => ['campaign_id' => $campaign->uuid],
+            'charged' => ['order_id' => $order->uuid, 'participation_id' => $join->uuid, 'campaign_id' => $campaign->uuid],
+        ], $links);
     }
 
     #[Test]
