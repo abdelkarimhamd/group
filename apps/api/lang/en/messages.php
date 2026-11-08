@@ -63,6 +63,7 @@ return [
         'payment_in_progress' => 'Your last payment is still being processed. Wait for it to finish before trying another card.',
         'already_paid' => 'This join is already paid: its card hold went through.',
         'cancellation_not_allowed' => 'This join can no longer be cancelled: the deal is confirmed or the campaign has closed.',
+        'account_deletion_blocked' => 'Your account can\'t be deleted yet: a join, an order, a payment or a refund is still open. Try again once it has finished.',
         'payment_not_found' => 'We could not find that payment.',
         'payment_not_captured' => 'Only a captured payment can be refunded.',
         'order_not_for_payment' => 'That order was not paid with this payment.',

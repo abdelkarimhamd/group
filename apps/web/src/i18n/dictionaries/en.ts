@@ -353,6 +353,22 @@ export const en: Dictionary = {
       "You haven't accepted the privacy policy yet. We'll ask when you first join a campaign.",
     privacyOutdated: "We updated the privacy policy since you accepted it.",
     acceptPrivacy: "Accept the current policy",
+    deleteTitle: "Delete account",
+    deleteErased:
+      "Deleting your account erases your name, email, mobile number and saved addresses, stops our messages and signs you out on every device. This can't be undone.",
+    deleteKept: "We keep your orders, invoices and payment records, with the delivery details on them, as Saudi tax law requires. Signing in again with the same number starts a new account.",
+    deleteButton: "Delete my account",
+    deleteConfirm: "Delete your account? Your personal data is erased and you are signed out everywhere.",
+    deleteYes: "Yes, delete it",
+    deleteKeep: "Keep my account",
+    deleteBlocked: "Your account can't be deleted yet:",
+    deleteBlockedBy: {
+      joins: "A join is waiting for payment or holding money on your card. Cancel it, or wait until the campaign closes.",
+      orders: "An order is still on its way or within its return window.",
+      payments: "A hold or a refund is still being processed.",
+    },
+    deleteDone: "Your account was deleted and your personal data erased. Thank you for buying with us.",
+    deleteHome: "Back to the home page",
   },
   joins: {
     title: "My joins",

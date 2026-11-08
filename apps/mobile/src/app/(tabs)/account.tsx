@@ -17,12 +17,20 @@ import { LOCALES, type Locale } from '@/i18n/locale';
 import { useChangeLocale } from '@/i18n/useChangeLocale';
 import { useFormat } from '@/i18n/useFormat';
 import { confirmAction } from '@/lib/confirm';
+import { webPageUrl, type WebPage } from '@/lib/links';
 import { colors, radius, space } from '@/theme/tokens';
 
 export default function AccountScreen() {
-  const { t, phone } = useFormat();
+  const { t, phone, locale } = useFormat();
   const { isSignedIn, signOut } = useAuth();
   const me = useMe(isSignedIn);
+
+  const openPage = (page: WebPage) =>
+    WebBrowser.openBrowserAsync(
+      page === 'privacy' && config.privacyPolicyUrl
+        ? config.privacyPolicyUrl
+        : webPageUrl(config.webUrl, locale, page),
+    );
 
   const askSignOut = async () => {
     const ok = await confirmAction({
@@ -78,27 +86,54 @@ export default function AccountScreen() {
       <LanguagePicker />
 
       <Card padded={false}>
+        <View style={styles.cardHeader}>
+          <Text variant="small" weight="semibold" color="textMuted">
+            {t('account.help')}
+          </Text>
+        </View>
+        <NavRow
+          icon="help-circle-outline"
+          title={t('account.howItWorks')}
+          onPress={() => router.push('/how-it-works')}
+        />
+        <Divider />
+        <NavRow
+          icon="return-down-back-outline"
+          title={t('account.returns')}
+          onPress={() => void openPage('returns')}
+        />
+        <Divider />
+        <NavRow
+          icon="document-text-outline"
+          title={t('account.terms')}
+          onPress={() => void openPage('terms')}
+        />
+        <Divider />
         <NavRow
           icon="shield-checkmark-outline"
           title={t('account.privacy')}
-          onPress={() => {
-            if (config.privacyPolicyUrl) void WebBrowser.openBrowserAsync(config.privacyPolicyUrl);
-            else router.push('/privacy');
-          }}
+          onPress={() => void openPage('privacy')}
         />
-        {isSignedIn ? (
-          <>
-            <Divider />
-            <NavRow
-              testID="sign-out"
-              icon="log-out-outline"
-              title={t('account.signOut')}
-              danger
-              onPress={() => void askSignOut()}
-            />
-          </>
-        ) : null}
       </Card>
+
+      {isSignedIn ? (
+        <Card padded={false}>
+          <NavRow
+            testID="sign-out"
+            icon="log-out-outline"
+            title={t('account.signOut')}
+            onPress={() => void askSignOut()}
+          />
+          <Divider />
+          <NavRow
+            testID="delete-account"
+            icon="trash-outline"
+            title={t('account.deleteAccount')}
+            danger
+            onPress={() => router.push('/delete-account')}
+          />
+        </Card>
+      ) : null}
 
       {config.paymentProvider === 'fake' ? (
         <Notice tone="warning" icon="flask-outline" message={t('account.testPayments')} />
@@ -178,6 +213,10 @@ const styles = StyleSheet.create({
   },
   signedOut: {
     gap: space.md,
+  },
+  cardHeader: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
   },
   languages: {
     flexDirection: 'row',

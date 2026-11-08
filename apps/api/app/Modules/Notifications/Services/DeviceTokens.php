@@ -36,4 +36,13 @@ final class DeviceTokens
             );
         });
     }
+
+    /**
+     * Stops every push to the customer, for example when they delete their
+     * account.
+     */
+    public function forget(User $user): void
+    {
+        DB::table('device_tokens')->where('user_id', $user->id)->delete();
+    }
 }

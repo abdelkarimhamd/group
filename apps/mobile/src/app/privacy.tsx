@@ -15,10 +15,11 @@ import { Text } from '@/components/Text';
 import { config } from '@/config';
 import { useFormat } from '@/i18n/useFormat';
 import { needsPrivacyConsent } from '@/lib/account';
+import { webPageUrl } from '@/lib/links';
 
 /** PDPL consent, required before the first join and again whenever the policy changes. */
 export default function PrivacyScreen() {
-  const { t, date } = useFormat();
+  const { t, date, locale } = useFormat();
   const queryClient = useQueryClient();
   const { isSignedIn } = useAuth();
   const me = useMe(isSignedIn);
@@ -58,14 +59,16 @@ export default function PrivacyScreen() {
           {user.privacy_consent && !needed ? ` · ${date(user.privacy_consent.accepted_at)}` : ''}
         </Text>
       ) : null}
-      {config.privacyPolicyUrl ? (
-        <Button
-          variant="secondary"
-          icon="open-outline"
-          title={t('privacy.readFull')}
-          onPress={() => void WebBrowser.openBrowserAsync(config.privacyPolicyUrl!)}
-        />
-      ) : null}
+      <Button
+        variant="secondary"
+        icon="open-outline"
+        title={t('privacy.readFull')}
+        onPress={() =>
+          void WebBrowser.openBrowserAsync(
+            config.privacyPolicyUrl ?? webPageUrl(config.webUrl, locale, 'privacy'),
+          )
+        }
+      />
       {accept.error ? <Notice tone="danger" message={errorMessage(accept.error)} /> : null}
     </Screen>
   );

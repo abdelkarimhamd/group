@@ -125,6 +125,10 @@ const messages: Record<string, Text> = {
   reservation_expired: { ar: "انتهى الحجز.", en: "The reservation expired." },
   payment_in_progress: { ar: "الدفع قيد المعالجة.", en: "A payment is still in progress." },
   provider_payment_mismatch: { ar: "عملية الدفع لا تطابق.", en: "That payment does not match." },
+  account_deletion_blocked: {
+    ar: "لا يمكن حذف حسابك الآن: لديك مشاركة أو طلب أو دفعة أو استرداد لم يكتمل بعد. حاول مرة أخرى بعد اكتماله.",
+    en: "Your account can't be deleted yet: a join, an order, a payment or a refund is still open. Try again once it has finished.",
+  },
 };
 
 class HttpError extends Error {
@@ -588,6 +592,30 @@ const routes: Array<[string, RegExp, Handler]> = [
     }
     if (ctx.body.locale === "ar" || ctx.body.locale === "en") user.locale = ctx.body.locale;
     return { body: { data: userOf(user) } };
+  }],
+
+  ["DELETE", /^\/me$/, (ctx) => {
+    // Like the API: refused while anything is still open, otherwise the
+    // personal details go, the history stays and every token stops working.
+    const user = requireUser(ctx);
+    const joins = [...participations.values()].filter((p) => p.userId === user.id);
+    const blockedBy: string[] = [];
+    if (joins.some((p) => p.status === "pending_payment" || p.status === "authorized")) blockedBy.push("joins");
+    if ([...orders.values()].some((o) => o.userId === user.id && !["completed", "cancelled", "returned"].includes(o.status))) {
+      blockedBy.push("orders");
+    }
+    const joinIds = new Set(joins.map((p) => p.id));
+    if ([...payments.values()].some((pay) => joinIds.has(pay.participationId) && ["pending_authorization", "authorized"].includes(pay.status))) {
+      blockedBy.push("payments");
+    }
+    if (blockedBy.length > 0) throw new HttpError(409, "account_deletion_blocked", { blocked_by: blockedBy });
+
+    for (const address of userAddresses(user.id)) addresses.delete(address.id);
+    for (const [token, userId] of tokens) if (userId === user.id) tokens.delete(token);
+    customersByPhone.delete(user.phone);
+    user.name = null;
+    user.email = null;
+    return { status: 204 };
   }],
 
   ["POST", /^\/me\/privacy-consent$/, (ctx) => {

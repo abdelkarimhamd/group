@@ -7,6 +7,7 @@ use App\Modules\Campaign\Models\CampaignParticipation;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Fulfillment\Models\Shipment;
 use App\Modules\Identity\Models\User;
+use App\Modules\Notifications\Push\PushSubject;
 use App\Modules\Orders\Enums\InvoiceType;
 use App\Modules\Orders\Enums\OrderStatus;
 use App\Modules\Payments\Models\PaymentAuthorization;
@@ -56,7 +57,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property-read Collection<int, Shipment> $shipments
  * @property-read OrderReturn|null $orderReturn
  */
-class CustomerOrder extends Model
+class CustomerOrder extends Model implements PushSubject
 {
     use HasUuids;
 
@@ -190,5 +191,14 @@ class CustomerOrder extends Model
     public function refunds(): HasMany
     {
         return $this->hasMany(Refund::class)->orderBy('id');
+    }
+
+    public function pushLinks(): array
+    {
+        return [
+            'order_id' => $this->uuid,
+            'participation_id' => $this->participation()->value('uuid'),
+            'campaign_id' => $this->campaign()->value('uuid'),
+        ];
     }
 }

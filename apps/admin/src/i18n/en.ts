@@ -785,6 +785,7 @@ const en = {
     number: 'Order number',
     search: 'Order number or phone',
     customer: 'Customer',
+    accountDeleted: 'Account deleted',
     total: 'Total',
     unitPrice: 'Unit price',
     goodsTotal: 'Goods',

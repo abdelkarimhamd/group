@@ -103,6 +103,14 @@ test("Apple Pay's domain file is served as it is, never moved under a locale", a
   expect(response.status()).toBe(404);
 });
 
+test("the app link files are never moved under a locale", async ({ request }) => {
+  // The build has no APPLE_TEAM_ID or ANDROID_CERT_SHA256, so both are 404, never a redirect.
+  for (const file of ["/.well-known/apple-app-site-association", "/.well-known/assetlinks.json"]) {
+    const response = await request.get(file, { maxRedirects: 0 });
+    expect(response.status(), file).toBe(404);
+  }
+});
+
 test.describe("the app's payment page", () => {
   const PAYMENT_ID = "0198f5a2-0000-7000-8000-0000000000aa";
   const checkout = (origin: string) => ({
@@ -324,5 +332,22 @@ test.describe("account", () => {
     await jeddah.getByRole("button", { name: ar.common.delete }).click();
     await jeddah.getByRole("button", { name: ar.common.delete }).click();
     await expect(page.getByTestId("address-card")).toHaveCount(1);
+  });
+
+  test("account deletion waits for open orders", async ({ page }) => {
+    await page.goto("/ar/account");
+    await signIn(page, undefined, null);
+    // The mock's delivered order is still in its return window, so it is open.
+    const section = page.getByTestId("delete-account");
+    await section.getByRole("button", { name: ar.account.deleteButton }).click();
+    await expect(section.getByText(ar.account.deleteConfirm)).toBeVisible();
+    await section.getByRole("button", { name: ar.account.deleteKeep }).click();
+    await section.getByRole("button", { name: ar.account.deleteButton }).click();
+    await section.getByTestId("confirm-delete-account").click();
+    await expect(section.getByText(ar.account.deleteBlocked)).toBeVisible();
+    await expect(section.getByText(ar.account.deleteBlockedBy.orders)).toBeVisible();
+    // Still signed in.
+    await page.reload();
+    await expect(page).toHaveURL(/\/ar\/account$/);
   });
 });

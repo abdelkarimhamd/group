@@ -122,6 +122,7 @@ const cases: [string, () => Promise<unknown>][] = [
   ['listMyOrders', () => api.listMyOrders({ per_page: 20 })],
   ['getMyOrder', () => api.getMyOrder(id)],
   ['logout', () => api.logout()],
+  ['deleteMe', () => api.deleteMe()],
 ];
 
 it('covers every api function', () => {

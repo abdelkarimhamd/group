@@ -9,6 +9,7 @@ use App\Modules\Campaign\Enums\DeliveryMode;
 use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Identity\Models\AdminUser;
+use App\Modules\Notifications\Push\PushSubject;
 use App\Modules\Pricing\TierSet;
 use App\Modules\Supplier\Models\SupplierQuotation;
 use Carbon\CarbonImmutable;
@@ -80,7 +81,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 #[Fillable(['title_ar', 'title_en', 'min_target_qty', 'max_qty', 'per_customer_max_qty', 'starts_at', 'delivery_mode'])]
 #[UseFactory(CampaignFactory::class)]
-class Campaign extends Model
+class Campaign extends Model implements PushSubject
 {
     /** @use HasFactory<CampaignFactory> */
     use HasFactory, HasUuids;
@@ -257,5 +258,10 @@ class Campaign extends Model
         return $this->status === CampaignStatus::Active
             && $this->deadline_at !== null
             && $now->lessThan($this->deadline_at);
+    }
+
+    public function pushLinks(): array
+    {
+        return ['campaign_id' => $this->uuid];
     }
 }

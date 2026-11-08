@@ -6,6 +6,7 @@ use App\Modules\Campaign\Enums\ParticipationStatus;
 use App\Modules\Catalog\Models\ProductVariant;
 use App\Modules\Identity\Models\Address;
 use App\Modules\Identity\Models\User;
+use App\Modules\Notifications\Push\PushSubject;
 use App\Modules\Orders\Models\CustomerOrder;
 use App\Modules\Payments\Models\PaymentAuthorization;
 use Carbon\CarbonImmutable;
@@ -49,7 +50,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property-read PaymentAuthorization|null $latestPayment
  * @property-read CustomerOrder|null $order
  */
-class CampaignParticipation extends Model
+class CampaignParticipation extends Model implements PushSubject
 {
     use HasUuids;
 
@@ -146,5 +147,13 @@ class CampaignParticipation extends Model
     public function order(): HasOne
     {
         return $this->hasOne(CustomerOrder::class, 'participation_id');
+    }
+
+    public function pushLinks(): array
+    {
+        return [
+            'participation_id' => $this->uuid,
+            'campaign_id' => $this->campaign()->value('uuid'),
+        ];
     }
 }

@@ -191,3 +191,10 @@ npx eas-cli submit --profile production --platform ios       # App Store Connect
 ```
 
 Store submission needs a Google Play developer account (and a service account key for `submit`) and an Apple Developer Program membership.
+
+Links to the website open the app once both sides know each other:
+
+- The app: `EXPO_PUBLIC_WEB_URL` is the https site (the build adds the associated domain and the Android intent filter).
+- The website: in `deploy/env/web.env`, `APPLE_TEAM_ID` (Apple Developer, Membership) and `ANDROID_CERT_SHA256` (Play Console, Setup, App signing: the app signing key's SHA-256, and the upload key's, separated by commas). Then `docker compose up -d`. Check that `https://SITE_HOST/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json` answer with JSON.
+
+The store listings ask for an account deletion address: `https://SITE_HOST/ar/account#delete-account` (or `/en/`). Customers sign in there and delete the account; the app has the same under Account.

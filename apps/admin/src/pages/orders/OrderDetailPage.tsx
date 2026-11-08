@@ -241,7 +241,11 @@ export function OrderDetailPage() {
               <Typography.Paragraph style={{ margin: 0 }}>
                 {o.customer.name ?? '—'}
                 <br />
-                <Ltr>{o.customer.phone}</Ltr>
+                {o.customer.phone ? (
+                  <Ltr>{o.customer.phone}</Ltr>
+                ) : (
+                  <Typography.Text type="secondary">{t('orders.accountDeleted')}</Typography.Text>
+                )}
               </Typography.Paragraph>
               <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
                 {a.recipient_name} · <Ltr>{a.recipient_phone}</Ltr>

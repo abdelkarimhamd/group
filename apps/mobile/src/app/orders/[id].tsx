@@ -1,6 +1,6 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useOrder } from '@/api/queries';
@@ -14,8 +14,10 @@ import { Screen } from '@/components/Screen';
 import { ErrorState, LoadingState } from '@/components/States';
 import { OrderStatusPill } from '@/components/StatusPills';
 import { Text } from '@/components/Text';
+import { config } from '@/config';
 import { useFormat } from '@/i18n/useFormat';
 import { addressLine } from '@/lib/account';
+import { webPageUrl } from '@/lib/links';
 import { ORDER_STEPS, orderStepIndex } from '@/lib/order';
 import { isPast } from '@/lib/time';
 import { colors, space } from '@/theme/tokens';
@@ -30,6 +32,7 @@ export default function OrderScreen() {
       order={order.data}
       refreshing={order.isRefetching}
       onRefresh={() => void order.refetch()}
+      reload={async () => (await order.refetch()).data}
     />
   );
 }
@@ -38,14 +41,31 @@ function OrderDetail({
   order,
   refreshing,
   onRefresh,
+  reload,
 }: {
   order: Order;
   refreshing: boolean;
   onRefresh: () => void;
+  /** Reads the order again, for invoice links (each works for 30 minutes). */
+  reload: () => Promise<Order | undefined>;
 }) {
   const { t, money, date, locale, phone } = useFormat();
   const step = orderStepIndex(order.status);
   const refunded = order.payment.refunded_amount.amount_minor > 0;
+  const [invoiceError, setInvoiceError] = useState(false);
+
+  // The link in the order on screen may be older than its 30 minutes: read a fresh one.
+  const openInvoice = async (invoiceId: string) => {
+    setInvoiceError(false);
+    try {
+      const fresh = await reload();
+      const url = fresh?.invoices.find((invoice) => invoice.id === invoiceId)?.pdf_url;
+      if (url) await WebBrowser.openBrowserAsync(url);
+      else setInvoiceError(true);
+    } catch {
+      setInvoiceError(true);
+    }
+  };
 
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
@@ -57,19 +77,41 @@ function OrderDetail({
         <Text variant="small" color="textMuted">
           {order.product_variant.name} {t('joins.quantity', { n: order.quantity })}
         </Text>
+        <Text variant="small" color="textSubtle">
+          {t('orders.placedOn', { date: date(order.created_at) })}
+        </Text>
         {step !== null ? <Steps current={step} /> : null}
         {order.delivered_at ? (
           <Text variant="small" color="textMuted">
             {t('orders.deliveredOn', { date: date(order.delivered_at) })}
           </Text>
         ) : null}
+        <Button
+          variant="ghost"
+          compact
+          title={t('joins.viewDeal')}
+          onPress={() =>
+            router.push({ pathname: '/campaign/[id]', params: { id: order.campaign.id } })
+          }
+        />
       </Card>
 
       {order.return_window_ends_at && !isPast(order.return_window_ends_at) ? (
-        <Notice
-          tone="info"
-          message={t('orders.returnWindow', { date: date(order.return_window_ends_at) })}
-        />
+        <Card style={styles.gap}>
+          <Notice
+            tone="info"
+            message={t('orders.returnWindow', { date: date(order.return_window_ends_at) })}
+          />
+          <Button
+            variant="secondary"
+            compact
+            icon="open-outline"
+            title={t('orders.returnsPolicy')}
+            onPress={() =>
+              void WebBrowser.openBrowserAsync(webPageUrl(config.webUrl, locale, 'returns'))
+            }
+          />
+        </Card>
       ) : null}
 
       <Card style={styles.gap}>
@@ -119,26 +161,39 @@ function OrderDetail({
         </Text>
       </Card>
 
-      {order.invoices.length > 0 ? (
-        <Card padded={false}>
-          <View style={styles.cardHeader}>
-            <Text variant="heading">{t('orders.invoices')}</Text>
+      <Card padded={false}>
+        <View style={styles.cardHeader}>
+          <Text variant="heading">{t('orders.invoices')}</Text>
+        </View>
+        {order.invoices.length === 0 ? (
+          <View style={styles.cardBody}>
+            <Text variant="small" color="textMuted">
+              {t('orders.noInvoices')}
+            </Text>
           </View>
-          {order.invoices.map((invoice, i) => (
-            <Fragment key={invoice.id}>
-              {i > 0 ? <Divider /> : null}
-              <NavRow
-                icon="document-text-outline"
-                title={t(`orders.invoice_${invoice.type}`)}
-                subtitle={`${invoice.invoice_number} · ${money(invoice.total)}`}
-                onPress={() => {
-                  if (invoice.pdf_url) void WebBrowser.openBrowserAsync(invoice.pdf_url);
-                }}
-              />
-            </Fragment>
-          ))}
-        </Card>
-      ) : null}
+        ) : null}
+        {order.invoices.map((invoice, i) => (
+          <Fragment key={invoice.id}>
+            {i > 0 ? <Divider /> : null}
+            <NavRow
+              testID={`invoice-${invoice.id}`}
+              icon="document-text-outline"
+              title={t(`orders.invoice_${invoice.type}`)}
+              subtitle={
+                invoice.pdf_url
+                  ? `${invoice.invoice_number} · ${date(invoice.issued_at)} · ${money(invoice.total)}`
+                  : t('orders.invoiceNotReady')
+              }
+              onPress={invoice.pdf_url ? () => void openInvoice(invoice.id) : undefined}
+            />
+          </Fragment>
+        ))}
+        {invoiceError ? (
+          <View style={styles.cardBody}>
+            <Notice tone="danger" message={t('orders.invoiceFailed')} />
+          </View>
+        ) : null}
+      </Card>
     </Screen>
   );
 }
@@ -181,10 +236,8 @@ function Tracking({ shipment }: { shipment: Shipment }) {
   const events = [...shipment.events].reverse();
   return (
     <View style={styles.gap}>
-      <DetailRow
-        label={t('orders.trackingNumber')}
-        value={`${shipment.courier} · ${shipment.tracking_number}`}
-      />
+      <DetailRow label={t('orders.courier')} value={shipment.courier} />
+      <DetailRow label={t('orders.trackingNumber')} value={shipment.tracking_number} />
       <Text weight="medium">{t(`orders.shipment_${shipment.status}`)}</Text>
       {events.map((event, i) => (
         <View key={`${event.occurred_at}-${i}`} style={styles.event}>
@@ -223,6 +276,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     paddingTop: space.lg,
     paddingBottom: space.xs,
+  },
+  cardBody: {
+    paddingHorizontal: space.lg,
+    paddingBottom: space.lg,
   },
   steps: {
     flexDirection: 'row',

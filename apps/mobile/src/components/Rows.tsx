@@ -38,7 +38,7 @@ export function DetailRow({
   );
 }
 
-/** A tappable settings-style row. */
+/** A tappable settings-style row. Without `onPress` it is shown but disabled, without the chevron. */
 export function NavRow({
   icon,
   title,
@@ -50,7 +50,7 @@ export function NavRow({
   icon: IconName;
   title: string;
   subtitle?: string;
-  onPress: () => void;
+  onPress?: () => void;
   danger?: boolean;
   testID?: string;
 }) {
@@ -58,6 +58,8 @@ export function NavRow({
     <Pressable
       testID={testID}
       accessibilityRole="button"
+      accessibilityState={{ disabled: !onPress }}
+      disabled={!onPress}
       onPress={onPress}
       style={({ pressed }) => [styles.navRow, pressed && { backgroundColor: colors.surfaceMuted }]}>
       <Icon name={icon} size={22} color={danger ? 'danger' : 'textMuted'} />
@@ -71,7 +73,7 @@ export function NavRow({
           </Text>
         ) : null}
       </View>
-      {danger ? null : <Icon name="chevron-forward" size={18} color="textSubtle" />}
+      {danger || !onPress ? null : <Icon name="chevron-forward" size={18} color="textSubtle" />}
     </Pressable>
   );
 }

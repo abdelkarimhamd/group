@@ -129,6 +129,12 @@ describe('labels for everything the API can send', () => {
     ['orders.shipment_', enumOf('ShipmentStatus')],
     ['orders.invoice_', propertyEnum('InvoiceRef', 'type')],
     ['pay.rejection_', enumOf('PaymentRejectionReason')],
+    ['pay.status_', enumOf('PaymentStatus')],
+    [
+      'deleteAccount.blocked_',
+      schemas.AccountDeletionBlocked.allOf.find((part: Tree) => part.properties).properties
+        .blocked_by.items.enum,
+    ],
     ['campaign.cancelRule_', propertyEnum('CampaignDetail', 'cancellation_rule')],
     ['language.', enumOf('Locale')],
     ['validation.', ['required', 'phone', 'fourDigits', 'fiveDigits', 'shortAddress']],

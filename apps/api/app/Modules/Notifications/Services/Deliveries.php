@@ -33,6 +33,7 @@ final class Deliveries
         private readonly Templates $templates,
         private readonly SmsSender $sms,
         private readonly PushSender $push,
+        private readonly PushLinks $links,
     ) {}
 
     public function deliver(int $notificationId): void
@@ -161,7 +162,7 @@ final class Deliveries
             return $this->push->send($tokens, $text['title'], $text['body'], [
                 'notification_id' => $notification->uuid,
                 'template' => $notification->template_key->value,
-            ]);
+            ] + $this->links->for($notification));
         }
 
         throw new LogicException("Nothing sends {$notification->channel->value} messages yet.");

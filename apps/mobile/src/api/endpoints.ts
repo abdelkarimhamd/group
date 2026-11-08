@@ -60,6 +60,15 @@ export const api = {
     return res.data;
   },
 
+  /**
+   * Deletes the account (PDPL erasure). Every token of the account stops working, so the
+   * caller forgets the session without signing out. A 409 `account_deletion_blocked` says in
+   * `blocked_by` what is still open.
+   */
+  async deleteMe(): Promise<void> {
+    await call(client.DELETE('/me'));
+  },
+
   async acceptPrivacyPolicy(policyVersion: string): Promise<User> {
     const res = await call(
       client.POST('/me/privacy-consent', { body: { policy_version: policyVersion } }),

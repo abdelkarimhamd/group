@@ -19,9 +19,12 @@ import { createQueryClient } from '@/api/query-client';
 import { AuthProvider } from '@/auth/session';
 import { applyLayoutDirection } from '@/i18n/locale';
 import { useFormat } from '@/i18n/useFormat';
+import { configurePush } from '@/push';
+import { PushObserver } from '@/push/PushObserver';
 import { colors, fonts } from '@/theme/tokens';
 
 void SplashScreen.preventAutoHideAsync();
+configurePush();
 
 const navigationTheme = {
   ...DefaultTheme,
@@ -90,7 +93,10 @@ export default function RootLayout() {
               <Stack.Screen name="profile" options={{ title: t('profile.title') }} />
               <Stack.Screen name="addresses/index" options={{ title: t('addresses.title') }} />
               <Stack.Screen name="addresses/edit" options={{ title: t('addresses.newTitle') }} />
+              <Stack.Screen name="how-it-works" options={{ title: t('account.howItWorks') }} />
+              <Stack.Screen name="delete-account" options={{ title: t('deleteAccount.title') }} />
             </Stack>
+            <PushObserver />
           </ThemeProvider>
         </LocaleProvider>
       </AuthProvider>

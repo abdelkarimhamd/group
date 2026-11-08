@@ -776,6 +776,7 @@ const ar: Translation<typeof en> = {
     number: 'رقم الطلب',
     search: 'رقم الطلب أو الجوال',
     customer: 'العميل',
+    accountDeleted: 'حساب محذوف',
     total: 'الإجمالي',
     unitPrice: 'سعر الوحدة',
     goodsTotal: 'قيمة البضاعة',
