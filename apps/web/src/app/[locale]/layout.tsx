@@ -14,6 +14,10 @@ const plex = IBM_Plex_Sans_Arabic({
   weight: ["400", "500", "600", "700"],
   variable: "--font-plex-arabic",
   display: "swap",
+  // Eight files (four weights, Arabic and Latin) would be preloaded ahead of
+  // the first campaign photo. Unpreloaded, the browser fetches only the faces
+  // a page uses, and text shows at once in the size-matched fallback.
+  preload: false,
 });
 
 export async function generateStaticParams() {

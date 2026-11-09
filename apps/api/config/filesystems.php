@@ -76,6 +76,12 @@ return [
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => true,
             'report' => false,
+            // A stalled storage call fails instead of holding the request
+            // until PHP's max_execution_time.
+            'http' => [
+                'connect_timeout' => (int) env('AWS_CONNECT_TIMEOUT_SECONDS', 5),
+                'timeout' => (int) env('AWS_TIMEOUT_SECONDS', 30),
+            ],
         ],
 
         // Supplier quote files (DOCUMENTS_DISK=s3-documents): a private bucket,
@@ -90,6 +96,12 @@ return [
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => true,
             'report' => false,
+            // A stalled storage call fails instead of holding the request
+            // until PHP's max_execution_time.
+            'http' => [
+                'connect_timeout' => (int) env('AWS_CONNECT_TIMEOUT_SECONDS', 5),
+                'timeout' => (int) env('AWS_TIMEOUT_SECONDS', 30),
+            ],
         ],
 
     ],

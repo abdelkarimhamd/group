@@ -251,6 +251,9 @@ return [
         // How long a sign-in lasts before the person must sign in again.
         'customer_token_days' => 90,
         'admin_token_hours' => 12,
+        // A token's last_used_at is written at most this often, not on every
+        // request (Sanctum's default), so reading a page is not a database write.
+        'token_last_used_minutes' => 15,
     ],
 
     'account' => [
@@ -270,6 +273,18 @@ return [
         'disk' => env('MEDIA_DISK', 'public'),
         'documents_disk' => env('DOCUMENTS_DISK', 'local'),
         'image_max_kb' => 10240,
+        // Product photos are stored as WebP no larger than this on their long
+        // side (enough for the campaign page on a large screen). Listing
+        // photos often weigh several megabytes, which is what a customer on a
+        // weak mobile network waits for. A photo with more pixels than
+        // photo_max_source_pixels is kept as uploaded, because decoding it
+        // would not fit in PHP's memory limit (deploy/api/php.ini).
+        'photo_max_px' => 1600,
+        'photo_webp_quality' => 80,
+        'photo_max_source_pixels' => 25_000_000,
+        // Each photo gets a new file name and is never overwritten, so
+        // browsers and the CDN may keep it for a year.
+        'photo_cache_control' => 'public, max-age=31536000, immutable',
         'attachment_max_kb' => 20480,
         'attachment_url_minutes' => 30,
         // Limits that keep one record's files reviewable on one screen.

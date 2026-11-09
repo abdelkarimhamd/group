@@ -26,10 +26,22 @@ const conventions: Middleware = {
   },
 };
 
+/** Sends a read with a deadline (config.readTimeoutMs); anything else as it is. */
+async function send(request: Request): Promise<Response> {
+  // Looked up per call so tests can swap globalThis.fetch.
+  if (request.method !== 'GET') return globalThis.fetch(request);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.readTimeoutMs);
+  try {
+    return await globalThis.fetch(request, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const client = createClient<paths>({
   baseUrl: config.apiUrl,
-  // Looked up per call so tests can swap globalThis.fetch.
-  fetch: (request) => globalThis.fetch(request),
+  fetch: send,
 });
 client.use(conventions);
 

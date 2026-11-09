@@ -75,6 +75,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
+use Laravel\Sanctum\Events\TokenAuthenticated;
 use Laravel\Sanctum\PersonalAccessToken;
 use Laravel\Sanctum\Sanctum;
 
@@ -211,6 +212,10 @@ class AppServiceProvider extends ServiceProvider
     /**
      * A blocked or anonymized account's tokens stop working at once, before
      * they expire. Which guard accepts which model is set in config/auth.php.
+     *
+     * Sanctum would also write last_used_at on every request (off in
+     * config/sanctum.php); it is written here at most every
+     * groupbuy.auth.token_last_used_minutes, so reading is not a write.
      */
     private function configureTokens(): void
     {
@@ -219,6 +224,15 @@ class AppServiceProvider extends ServiceProvider
                 && ($token->tokenable instanceof User || $token->tokenable instanceof AdminUser)
                 && $token->tokenable->isActive(),
         );
+
+        Event::listen(function (TokenAuthenticated $event): void {
+            $token = $event->token;
+            $every = (int) config('groupbuy.auth.token_last_used_minutes');
+
+            if ($token->last_used_at === null || $token->last_used_at->lte(now()->subMinutes($every))) {
+                $token->forceFill(['last_used_at' => now()])->saveQuietly();
+            }
+        });
     }
 
     /**

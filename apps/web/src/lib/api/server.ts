@@ -15,6 +15,13 @@ export function apiBaseUrl(): string {
 }
 
 /**
+ * How long a page waits for a read before showing its error state. Without
+ * it a stalled API holds the page for Node's own limit of five minutes.
+ * Writes (server actions) are not cut short: their outcome must be known.
+ */
+export const READ_TIMEOUT_MS = 10_000;
+
+/**
  * openapi-fetch hands over a Request whose body is a stream, which Node sends
  * with Transfer-Encoding: chunked. Some servers in front of PHP (and Prism)
  * reject chunked request bodies, so the body is buffered and sent with a
@@ -22,12 +29,13 @@ export function apiBaseUrl(): string {
  */
 async function sendBuffered(request: Request): Promise<Response> {
   const body = request.body ? await request.arrayBuffer() : undefined;
+  const read = request.method === "GET" || request.method === "HEAD";
   return fetch(request.url, {
     method: request.method,
     headers: request.headers,
     body,
     cache: "no-store",
-    signal: request.signal,
+    signal: read ? AbortSignal.any([request.signal, AbortSignal.timeout(READ_TIMEOUT_MS)]) : request.signal,
   });
 }
 

@@ -24,16 +24,18 @@ final class StoredFiles
     /**
      * Store the upload as `{directory}/{name}.{extension}` (a fresh UUIDv7
      * unless a name is given), then run `$then` with its path; if `$then`
-     * throws, the file is deleted and the error passed on.
+     * throws, the file is deleted and the error passed on. `$options` go to
+     * the disk with the file (for S3, object settings such as CacheControl).
      *
      * @template T
      *
      * @param  Closure(string): T  $then
+     * @param  array<string, string>  $options
      * @return T
      */
-    public static function storeThen(UploadedFile $file, string $directory, string $disk, Closure $then, ?string $name = null): mixed
+    public static function storeThen(UploadedFile $file, string $directory, string $disk, Closure $then, ?string $name = null, array $options = []): mixed
     {
-        $path = $file->storeAs($directory, ($name ?? (string) Str::uuid7()).'.'.$file->extension(), $disk);
+        $path = $file->storeAs($directory, ($name ?? (string) Str::uuid7()).'.'.$file->extension(), ['disk' => $disk] + $options);
 
         if ($path === false) {
             throw new RuntimeException("Could not store an upload under {$directory} on the {$disk} disk.");

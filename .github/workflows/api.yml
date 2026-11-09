@@ -60,7 +60,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
-          extensions: pdo_pgsql, pgsql, redis, pcntl, posix
+          extensions: pdo_pgsql, pgsql, redis, pcntl, posix, gd, exif
           coverage: none
 
       - name: Cache Composer packages

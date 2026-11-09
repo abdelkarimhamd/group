@@ -8,18 +8,21 @@ use App\Modules\Catalog\Http\Resources\AdminImageResource;
 use App\Modules\Catalog\Models\Product;
 use App\Modules\Catalog\Models\ProductImage;
 use App\Modules\Catalog\Models\ProductVariant;
+use App\Modules\Catalog\Services\ProductPhotos;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\StoredFiles;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
  * Product photos. Files go to the media disk (config groupbuy.media.disk):
- * local storage until the S3-compatible bucket is set up.
+ * local storage until the S3-compatible bucket is set up. Each upload is
+ * stored as a resized WebP file (ProductPhotos) that browsers may cache.
  */
 final class AdminProductImageController extends AdminController
 {
@@ -41,7 +44,21 @@ final class AdminProductImageController extends AdminController
 
         $disk = (string) config('groupbuy.media.disk');
         $uuid = (string) Str::uuid7();
-        $image = StoredFiles::storeThen($request->file('file'), "products/{$parent->uuid}", $disk,
+        $upload = $request->file('file');
+        $photo = ProductPhotos::optimize($upload);
+
+        try {
+            $image = $this->storePhoto($photo, $request, $parent, $variantId, $disk, $uuid);
+        } finally {
+            ProductPhotos::discard($photo, $upload);
+        }
+
+        return AdminImageResource::make($image->load('variant'))->response()->setStatusCode(201);
+    }
+
+    private function storePhoto(UploadedFile $photo, ProductImageRequest $request, Product $parent, ?int $variantId, string $disk, string $uuid): ProductImage
+    {
+        return StoredFiles::storeThen($photo, "products/{$parent->uuid}", $disk,
             fn (string $path): ProductImage => DB::transaction(function () use ($request, $parent, $variantId, $disk, $uuid, $path): ProductImage {
                 $image = new ProductImage($request->safe()->only(['alt_ar', 'alt_en', 'sort_order']));
                 $image->uuid = $uuid;
@@ -59,9 +76,8 @@ final class AdminProductImageController extends AdminController
                 return $image;
             }),
             $uuid,
+            ['CacheControl' => (string) config('groupbuy.media.photo_cache_control')],
         );
-
-        return AdminImageResource::make($image->load('variant'))->response()->setStatusCode(201);
     }
 
     public function destroy(Request $request, string $image): Response

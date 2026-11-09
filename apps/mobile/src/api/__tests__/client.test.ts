@@ -91,6 +91,31 @@ describe('api client', () => {
     expect(error.message).toBe("We can't reach the server. Check your connection and try again.");
   });
 
+  it('gives up on a stalled read as a network error, but never cuts a write short', async () => {
+    jest.useFakeTimers();
+    const signals: (AbortSignal | undefined)[] = [];
+    globalThis.fetch = jest.fn(
+      (_input: Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          signals.push(init?.signal ?? undefined);
+          init?.signal?.addEventListener('abort', () => reject(new Error('Aborted')));
+        }),
+    ) as unknown as typeof fetch;
+    try {
+      const read = api.listCategories().catch((e: unknown) => e);
+      void api.syncPayment(ids.payment, `fake_authorized_${ids.payment}`).catch(() => undefined);
+      await jest.advanceTimersByTimeAsync(20_000);
+
+      const error = (await read) as ApiError;
+      expect(error.isNetworkError).toBe(true);
+      expect(signals).toHaveLength(2);
+      expect(signals[0]?.aborted).toBe(true);
+      expect(signals[1]).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('sends the fake provider id to payment sync', async () => {
     const server = mockApi().on('POST', `/payments/${ids.payment}/sync`, { body: { data: {} } });
     await api.syncPayment(ids.payment, `fake_authorized_${ids.payment}`);
