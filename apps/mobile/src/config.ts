@@ -56,4 +56,10 @@ export const config = {
   progressPollMs: 5_000,
   /** The safety-net read while connected to Reverb. */
   progressPushedPollMs: 30_000,
+  /**
+   * How long a read (GET) waits for the API before it fails as a network error, which the
+   * query client retries. Android's networking has no limit of its own, so a stalled read on
+   * a weak network would spin forever. Writes are never cut short: their outcome must be known.
+   */
+  readTimeoutMs: 20_000,
 } as const;

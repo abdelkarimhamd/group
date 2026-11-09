@@ -383,7 +383,7 @@ export function Gallery({ campaign }: { campaign: CampaignDetail }) {
   return (
     <section aria-label={t.campaign.gallery}>
       <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
-        <CampaignImage image={current} alt={current.alt ?? campaign.title} eager className="aspect-square w-full" />
+        <CampaignImage image={current} alt={current.alt ?? campaign.title} priority className="aspect-square w-full" />
       </div>
       {images.length > 1 ? (
         <ul className="mt-3 flex gap-2 overflow-x-auto">

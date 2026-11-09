@@ -98,12 +98,16 @@ export function CampaignImage({
   sizes = "md",
   alt,
   eager = false,
+  priority = false,
 }: {
   image: Pick<Image, "url" | "alt"> | null | undefined;
   className?: string;
   sizes?: "sm" | "md";
   alt?: string;
+  /** Load at once rather than when scrolled near: for photos in the first screen. */
   eager?: boolean;
+  /** The page's largest photo: fetched ahead of other images. */
+  priority?: boolean;
 }) {
   const { t } = useI18n();
   const url = image?.url;
@@ -141,7 +145,8 @@ export function CampaignImage({
       ref={checkLoaded}
       src={image.url}
       alt={alt ?? image.alt ?? ""}
-      loading={eager ? "eager" : "lazy"}
+      loading={eager || priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : undefined}
       decoding="async"
       onError={() => setFailedUrl(image.url)}
       className={cx("object-cover", className)}

@@ -8,7 +8,17 @@ import type { CampaignSummary } from "@/lib/api/types";
 import { TimeUntil } from "./countdown";
 import { CampaignImage, CampaignStatusBadge, DealConfirmedBadge, ProgressBar } from "./campaign-bits";
 
-export function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
+/**
+ * `photo` says how soon the photo loads: "priority" for the first card of the
+ * page (usually its largest element), "eager" for the rest of the first row.
+ */
+export function CampaignCard({
+  campaign,
+  photo = "lazy",
+}: {
+  campaign: CampaignSummary;
+  photo?: "priority" | "eager" | "lazy";
+}) {
   const { t, locale } = useI18n();
   const { progress } = campaign;
   const priceDrops = campaign.lowest_unit_price.amount_minor < campaign.current_unit_price.amount_minor;
@@ -16,7 +26,12 @@ export function CampaignCard({ campaign }: { campaign: CampaignSummary }) {
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:shadow-md hover:ring-brand-200">
       <div className="relative aspect-[4/3] bg-slate-100">
-        <CampaignImage image={campaign.image} className="size-full" />
+        <CampaignImage
+          image={campaign.image}
+          className="size-full"
+          priority={photo === "priority"}
+          eager={photo === "eager"}
+        />
         <div className="absolute start-3 top-3 flex flex-wrap gap-1.5">
           <CampaignStatusBadge status={campaign.status} />
           {progress.deal_confirmed_at && campaign.status === "active" ? <DealConfirmedBadge /> : null}

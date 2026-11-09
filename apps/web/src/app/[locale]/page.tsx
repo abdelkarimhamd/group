@@ -27,7 +27,7 @@ async function OpenCampaigns() {
   const page = await orNull(listCampaigns(locale, { filter: "open", perPage: 6 }));
   if (!page) return <LoadError />;
   if (page.data.length === 0) return <EmptyState>{t.home.emptyOpen}</EmptyState>;
-  return <CampaignGrid campaigns={page.data} />;
+  return <CampaignGrid campaigns={page.data} first />;
 }
 
 async function UpcomingCampaigns() {

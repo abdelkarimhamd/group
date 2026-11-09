@@ -108,6 +108,22 @@ To run a command once with different settings, without changing the running cont
 docker compose run --rm -e ROLE=cli -e SOME_SETTING=value api php artisan <command>
 ```
 
+## Performance
+
+What the code already does is listed in `docs/architecture.md` (Performance). What the setup decides:
+
+- **Keep the API, PostgreSQL and Redis in one region and one network**, close to customers (a Saudi cloud provider or one of AWS's Middle East regions). A page makes several queries in a row, so every millisecond between the API and the database is paid several times.
+- **Connection pooling.** The API opens a database connection per request. Before traffic grows, put the managed provider's pooler (or PgBouncer) in front of PostgreSQL in transaction mode. The API already sends plain queries (`DB_EMULATE_PREPARES=true`), which transaction mode needs. Point `DB_HOST`/`DB_PORT` of the `api` and `worker` containers at the pooler. Keep `migrate` pointed at the database itself: it signs in as the owner role, which the pooler does not need to know.
+- **CDN for product photos.** Photos are stored as WebP, at most 1600 px, with `Cache-Control: public, max-age=31536000, immutable`. Put a CDN in front of the media bucket and set `AWS_MEDIA_URL` to it. Photos uploaded before this change keep their original format and headers.
+- **More than one server.** Run more `api` and `web` containers behind a load balancer. Each holds no state of its own (sessions, cache and queue are in Redis), and the scheduler stays at exactly one.
+- **Monitoring.** API errors and 10% of request traces go to Sentry (`SENTRY_TRACES_SAMPLE_RATE`). The website and the app send nothing yet: real user monitoring (Core Web Vitals from customers' phones) needs a provider.
+
+To measure the website the way a customer on a mid-range phone and a weak 4G network sees it, build it, start it, and run Lighthouse's mobile profile with applied throttling (150 ms round trip, 1.6 Mbps, CPU 4 times slower):
+
+```bash
+npx lighthouse https://SITE/ar --only-categories=performance --throttling-method=devtools --view
+```
+
 ## Scheduled jobs and alerts
 
 The scheduler runs everything in `apps/api/routes/console.php`. A failing command exits non-zero and logs an error. The ones that move money or state are `onOneServer` and `withoutOverlapping`.

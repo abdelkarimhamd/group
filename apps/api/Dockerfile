@@ -7,7 +7,7 @@
 
 FROM dunglas/frankenphp:1-php8.3-bookworm AS base
 
-RUN install-php-extensions pdo_pgsql redis pcntl intl gd opcache \
+RUN install-php-extensions pdo_pgsql redis pcntl intl gd exif opcache \
     && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 COPY deploy/api/php.ini $PHP_INI_DIR/conf.d/zz-groupbuy.ini

@@ -7,13 +7,23 @@ import type { CampaignFilter, CampaignSummary } from "@/lib/api/types";
 import { CampaignCard } from "./campaign-card";
 import { Alert, Button, Spinner } from "./ui";
 
-export function CampaignGrid({ campaigns }: { campaigns: CampaignSummary[] }) {
+/** Cards in the first row on a wide screen; their photos load at once on the page's first grid. */
+const FIRST_ROW = 3;
+
+/**
+ * `first` marks the grid at the top of the page: its first photo is fetched
+ * ahead of everything else and the rest of its first row is not lazy.
+ */
+export function CampaignGrid({ campaigns, first = false }: { campaigns: CampaignSummary[]; first?: boolean }) {
   return (
     <ul className="grid gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3">
-      {campaigns.map((campaign) => (
+      {campaigns.map((campaign, index) => (
         <li key={campaign.id} className="flex">
           <div className="flex w-full">
-            <CampaignCard campaign={campaign} />
+            <CampaignCard
+              campaign={campaign}
+              photo={!first || index >= FIRST_ROW ? "lazy" : index === 0 ? "priority" : "eager"}
+            />
           </div>
         </li>
       ))}
@@ -59,7 +69,7 @@ export function CampaignList({
 
   return (
     <div>
-      <CampaignGrid campaigns={items} />
+      <CampaignGrid campaigns={items} first />
       {failed ? (
         <Alert tone="danger" className="mt-6">
           {t.common.networkError}

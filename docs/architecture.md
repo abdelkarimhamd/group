@@ -198,6 +198,16 @@ API errors are `{"message", "code"}`. Throw `App\Exceptions\ApiException` with a
 - **Business numbers live in `config/groupbuy.php`:** campaign length, hold lifetime, capture cutoff, minimum margin. Each one cites the decision behind it.
 - **Request IDs:** every response has an `X-Request-Id` header. The ID appears in logs, audit records and status history.
 
+## Performance
+
+- **Reads stay cheap.** List endpoints page with `CursorPage`; resources declare the relations they need (`RELATIONS`) and lazy loading throws outside production, so N+1 queries fail the tests. `tests/Feature/Http/QueryBudgetTest.php` checks that the busiest reads run the same number of queries however much data there is, and that a signed-in read writes nothing: Sanctum's `last_used_at` is written at most every `auth.token_last_used_minutes`.
+- **One round trip per query.** PDO binds values itself (`PDO::ATTR_EMULATE_PREPARES`, `DB_EMULATE_PREPARES`) instead of prepare, execute and deallocate, which also lets a transaction-mode pooler sit in front of PostgreSQL.
+- **Index foreign keys that are read or followed.** PostgreSQL does not index a foreign key by itself. Index one that a page filters on or that an `ON DELETE CASCADE`/`SET NULL` follows; foreign keys to admin users are only shown and stay unindexed.
+- **Small photos.** Product photos are stored as WebP no larger than `media.photo_max_px` (`Catalog\Services\ProductPhotos`, turned upright from EXIF), with a year-long `Cache-Control` because each file name is new.
+- **Nothing waits forever.** Every provider call has a timeout (`config/services.php`), S3 calls too (`config/filesystems.php`). The website gives up on an API read after 10 seconds and shows its error state; the app after 20 seconds, then retries. Writes are never cut short, because their outcome must be known.
+- **The website** prerenders each page's shell and streams the data (Cache Components). The first campaign photo on a page loads at once with high priority; the others load as they scroll into view. Fonts are self-hosted and not preloaded, so the photo is not queued behind them.
+- **The app** pauses polling while it is in the background (TanStack Query's focus follows `AppState`).
+
 ## Testing
 
 - Tests run against PostgreSQL, not SQLite, because triggers, `jsonb` and row locks behave differently.

@@ -71,6 +71,11 @@ return [
 
     'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
 
+    // Sanctum writes last_used_at on every authenticated request. The app
+    // writes it at most every groupbuy.auth.token_last_used_minutes instead
+    // (AppServiceProvider::configureTokens).
+    'last_used_at' => false,
+
     /*
     |--------------------------------------------------------------------------
     | Sanctum Middleware

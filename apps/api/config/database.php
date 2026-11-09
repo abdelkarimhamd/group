@@ -103,6 +103,13 @@ return [
             // Query errors show the SQL with `?`, never the values (phone
             // numbers, names, addresses), in logs and in Sentry.
             'mask_bindings_in_exception_messages' => true,
+            // PDO binds the values itself, so each query is one round trip to
+            // PostgreSQL instead of three (prepare, execute, deallocate), and a
+            // transaction-mode pooler such as PgBouncer can sit in front.
+            // Laravel sends booleans as 'true' and 'false' in this mode.
+            'options' => [
+                PDO::ATTR_EMULATE_PREPARES => (bool) env('DB_EMULATE_PREPARES', true),
+            ],
         ],
 
         'sqlsrv' => [
